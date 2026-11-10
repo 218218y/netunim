@@ -4,7 +4,10 @@ The scoped protocol is opt-in per Bridge on each computer. Install both updated
 web clients and runtimes before activating it. The runtime versions remain Bank
 79 and Document 48 for wire compatibility. Use the release commit, rather than
 the version number alone, to distinguish these builds. Updated listeners also
-report `pairingProtocol: 1` on loopback `/health`. The security page at
+report `pairingProtocol: 1` on loopback `/health`. Each installer also stages a
+fresh, public `installationId`. The listener snapshots it at startup, and the
+installer checks it against the staged value before accepting the listener.
+The security page at
 `/security.html` on each site accepts one-time pairing codes.
 
 ## Authority
@@ -90,7 +93,7 @@ Native and legacy-site measurements use different baseline identities. For the
 actual scoped browser path collect the request duration and Server-Timing in
 DevTools. Only share aggregate timings and counts.
 
-For a deliberate downgrade, complete the transition and run
+For a deliberate downgrade to a runtime that predates protocol 1, complete the transition and run
 `node server.mjs --pairing prepare-rollback` while the scoped runtime is
 running. This prepares a fresh legacy credential without re-enabling the old
 one on the scoped listener. Use the current runtime's `--stop-existing`
@@ -101,6 +104,12 @@ the preserved registry will recognize previously active scoped keys. Reissue
 locally if a browser was re-paired to the legacy key. Do not delete pairing
 state, DPAPI files, provider profiles, Everything settings, browser data or
 offline queues. A downgrade restores the legacy trust model while in use.
+
+For a rollback between protocol 1 builds, drain the current listener and use
+the prior runtime against the existing local data. Keep the existing registry
+and keys. The installation ID identifies the selected runtime and is independent
+of pairing. Retain the previous installer or its release commit for the Document
+Bridge, whose successful installation cleans up inactive runtime directories.
 
 Automated tests cover the HTTP and production wiring, enrollment/replay,
 cross-Origin access, capability denial, restart, failed registry writes, key

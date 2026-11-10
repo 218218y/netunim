@@ -10,7 +10,11 @@ Real filesystem targets are checked before publishing results and again before
 every read/open/reveal/delete; links escaping the approved roots are rejected.
 The website may remove individual files. Use Windows Explorer to remove folders.
 Production origins are exact; previews/localhost need explicit local permission.
-Pair manually using bridge-token.txt. Installation reports contain no pairing key.
+The installer checks the active installation ID and pairingProtocol 1. Pair
+each exact site Origin using a one-time local console code on its Security
+page. Follow docs/BRIDGE_SCOPED_PAIRING_DESIGN_20261109.md for begin, issue,
+status and finish. bridge-token.txt is reserved for legacy compatibility
+and documented recovery. Keep pairing credentials out of diagnostics.
 The following older feature notes are subject to these security boundaries.
 
 NETUNIM Document Bridge v39 - paged Everything search + AcroForm-aware PDF content + native preview
@@ -19,9 +23,8 @@ NETUNIM Document Bridge v39 - paged Everything search + AcroForm-aware PDF conte
 Shared website integration
 --------------------------
 One Bridge installation serves both Netunim Orders and Netunim Kupa on the same PC.
-Both sites use the same loopback service on 127.0.0.1:8766 and the same per-computer
-Bridge token. The default CORS allowlist includes both bargig-orders.pages.dev and
-bargig-kupa.pages.dev families, plus the bargig-furniture.com production family.
+Both sites use the same loopback service on 127.0.0.1:8766. Each allowed Origin
+receives a separate key during scoped pairing. Default Origins are exact.
 
 Search scope
 ------------

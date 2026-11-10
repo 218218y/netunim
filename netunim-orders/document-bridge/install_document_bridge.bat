@@ -66,6 +66,8 @@ for %%F in (server.mjs scoped-pairing.mjs pairing-console.mjs file-access-policy
 )
 if exist "%STAGING%\pdfjs" rmdir /S /Q "%STAGING%\pdfjs" >nul 2>nul
 xcopy /E /I /Y "%~dp0pdfjs" "%STAGING%\pdfjs" >nul || goto :stage_error
+rem The listener snapshots this public, per-install identifier at startup.
+"%NODE_EXE%" -e "require('node:fs').writeFileSync(process.argv[1],require('node:crypto').randomBytes(16).toString('hex'),{flag:'wx'})" "%STAGING%\installation-id.txt" || goto :stage_error
 
 echo Building local Windows Preview Handler host...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0build_native_preview.ps1" -Source "%~dp0native_preview_host.cs" -Output "%STAGING%\NetunimPreviewHost.exe"
@@ -190,7 +192,10 @@ echo ============================================================
 echo Document Bridge installed successfully on THIS computer.
 echo Everything will be started automatically in background mode
 echo whenever the Bridge starts. No Everything search window is needed.
-echo Notepad will open with diagnostics. Pair explicitly using bridge-token.txt in the local Bridge folder.
+echo Notepad will open with diagnostics. Pair a site using a one-time code
+echo from the local Bridge console and the site's Security page.
+echo See docs\BRIDGE_SCOPED_PAIRING_DESIGN_20261109.md for the --pairing commands.
+echo bridge-token.txt is reserved for legacy compatibility and documented recovery.
 echo ============================================================
 echo.
 start "" notepad.exe "%SUMMARY%"
@@ -266,7 +271,15 @@ exit /b 1
 
 :activate_error
 rem If the new listener did start, stop it before switching the active marker back.
-"%NODE_EXE%" "%RUNTIME%\server.mjs" --stop-existing >nul 2>nul
+if exist "%RUNTIME%\server.mjs" (
+  "%NODE_EXE%" "%RUNTIME%\server.mjs" --stop-existing >nul 2>nul
+  if errorlevel 1 (
+    echo ERROR: Startup failed and shutdown is unconfirmed. Both runtimes and recovery files were preserved.
+    echo Close the listener normally before retrying. See: %APPROOT%\bridge.log
+    pause
+    exit /b 1
+  )
+)
 call :restore_state
 start "" wscript.exe "%AUTOSTART%"
 if exist "%RUNTIME%" rmdir /S /Q "%RUNTIME%" >nul 2>nul

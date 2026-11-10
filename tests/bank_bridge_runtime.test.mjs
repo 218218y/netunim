@@ -9,7 +9,9 @@ import {readPairingAdminToken} from '../netunim-kupa/bank-bridge/scoped-pairing.
 
 test('staged Bank runtime starts its real HTTP capabilities with isolated files and no provider login',{timeout:process.platform==='win32'?120000:30000},async t=>{
   const key='a'.repeat(64),image=Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]);
-  const f=await bankStage(t,{prepare:async({app})=>{
+  const installationId='a'.repeat(32);
+  const f=await bankStage(t,{prepare:async({app,runtime})=>{
+    await fs.writeFile(path.join(runtime,'installation-id.txt'),installationId);
     const cache=path.join(app,'cheque-image-cache'),now=new Date(),eventDate=String(now.getFullYear())+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0');
     await fs.mkdir(cache);await fs.writeFile(path.join(cache,key+'.bin'),image);await fs.writeFile(path.join(cache,key+'.json'),JSON.stringify({key,contentType:'image/png',size:image.length,eventDate}));
   }});
@@ -28,7 +30,13 @@ test('staged Bank runtime starts its real HTTP capabilities with isolated files 
   assert.equal(await fs.readFile(cliToken,'utf8'),initialKey);
   const explicitPrint=await runCli('--print-token');
   assert.ok(explicitPrint.stdout.split(/\r?\n/).includes(initialKey.trim()));
-  assert.deepEqual(await (await request('/health?probe=1',{token:'wrong'})).json(),{ok:true,service:'netunim-kupa-bank-bridge',version:79,creditContractVersion:2,pairingProtocol:1});
+  assert.deepEqual(await (await request('/health?probe=1',{token:'wrong'})).json(),{ok:true,service:'netunim-kupa-bank-bridge',version:79,creditContractVersion:2,pairingProtocol:1,installationId});
+  await runCli('--check-running');
+  const marker=path.join(f.runtime,'installation-id.txt');
+  await fs.writeFile(marker,'b'.repeat(32));
+  await assert.rejects(runCli('--check-running'),error=>error.code===1&&error.stderr.includes('An older instance may still be running'));
+  assert.equal((await (await request('/health')).json()).installationId,installationId);
+  await fs.writeFile(marker,installationId);
   assert.equal((await request('/credentials',{method:'POST',body:{password:'never-save-this'},token:'wrong'})).status,401);await assert.rejects(fs.access(path.join(app,'hapoalim-credentials.dpapi')),{code:'ENOENT'});
   const status=await (await request('/status')).json();assert.equal(status.configured,false);assert.equal(status.branchNumber,'');
   assert.equal((await (await request('/balance',{method:'POST',body:{}})).json()).code,'NOT_CONFIGURED');

@@ -234,6 +234,8 @@ test('binary preview preserves bytes, MIME, encoded filename, length and authent
   assert.equal(response.status, 200);
   assert.deepEqual(response.bytes, Buffer.from([0, 1, 255, 65]));
   assert.equal(response.headers['content-type'], 'application/pdf');
+  assert.equal(response.headers['cache-control'], 'no-store');
+  assert.equal(response.headers['x-content-type-options'], 'nosniff');
   assert.equal(response.headers['content-length'], '4');
   assert.equal(response.headers['content-disposition'], `inline; filename*=UTF-8''${encodeURIComponent('דו״ח.pdf')}`);
   assert.equal(response.headers['access-control-allow-origin'], origin);

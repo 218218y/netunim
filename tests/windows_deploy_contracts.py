@@ -338,6 +338,31 @@ class WindowsBankVaultContracts(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "nt", "Production Document Bridge startup runs in the required Windows CI job")
 class WindowsDocumentBridgeRuntimeContracts(unittest.TestCase):
+    def test_failed_activation_preserves_recovery_until_shutdown_is_confirmed(self):
+        source = (ROOT/'netunim-orders/document-bridge/install_document_bridge.bat').read_text(encoding='utf8')
+        start = source.index('\n:activate_error\n')
+        end = source.index('\n:move_dir_with_retry\n', start)
+        block = source[start:end].replace('start "" wscript.exe "%AUTOSTART%"', 'echo restarted>>"%CI_CALLS%"')
+        for stop_exit in (1, 0):
+            with self.subTest(stop_exit=stop_exit), tempfile.TemporaryDirectory(prefix='document rollback spaces ') as scratch:
+                base = Path(scratch)
+                runtime = base/'new runtime'
+                runtime.mkdir()
+                (runtime/'server.mjs').write_text("import fs from 'node:fs';fs.appendFileSync(process.env.CI_CALLS,'stop\\n');process.exit(Number(process.env.STOP_EXIT));")
+                script = base/'verify.bat'
+                script.write_text('@echo off\nsetlocal EnableExtensions DisableDelayedExpansion\n'+block+
+                                  '\n:restore_state\necho restored>>"%CI_CALLS%"\nexit /b 0\n', newline='\r\n')
+                log = base/'calls.txt'
+                node = shutil.which('node.exe')
+                self.assertIsNotNone(node)
+                env = {**os.environ, 'APPROOT': str(base), 'RUNTIME': str(runtime), 'NODE_EXE': node,
+                       'CI_CALLS': str(log), 'STOP_EXIT': str(stop_exit)}
+                result = subprocess.run(['cmd.exe','/d','/c','call',str(script)], cwd=base, env=env,
+                                        input='\n'*4, capture_output=True, encoding='utf8', errors='replace', timeout=10)
+                self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
+                self.assertEqual(runtime.exists(), bool(stop_exit))
+                self.assertEqual(log.read_text().splitlines(), ['stop'] if stop_exit else ['stop','restored','restarted'])
+
     def test_native_preview_resolves_actual_browser_viewport(self):
         compiler = Path(os.environ['WINDIR'])/'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
         with tempfile.TemporaryDirectory(prefix='netunim-viewport-') as directory:
@@ -365,6 +390,8 @@ class WindowsDocumentBridgeRuntimeContracts(unittest.TestCase):
             staged = re.search(r"for %%F in \((server\.mjs[^)]+)\)", installer).group(1).split()
             for name in staged:
                 shutil.copyfile(source / name, runtime / name)
+            marker = runtime / "installation-id.txt"
+            marker.write_text("a" * 32, encoding="ascii")
             staged_lib = runtime / "lib.mjs"
             lib_source = staged_lib.read_text(encoding="utf8")
             self.assertEqual(lib_source.count("BRIDGE_PORT=8766;"), 1)
@@ -418,6 +445,17 @@ class WindowsDocumentBridgeRuntimeContracts(unittest.TestCase):
                 self.assertEqual(health["service"], "netunim-orders-document-bridge")
                 self.assertEqual(health["version"], 48)
                 self.assertEqual(health["pid"], process.pid)
+                self.assertEqual(health["pairingProtocol"], 1)
+                self.assertEqual(health["installationId"], "a" * 32)
+                check_args = [str(executable), str(runtime / "server.mjs"), "--check-running"]
+                for expected, code in (("a" * 32, 0), ("b" * 32, 1)):
+                    marker.write_text(expected, encoding="ascii")
+                    check = subprocess.run(check_args, env=env, cwd=app, capture_output=True,
+                                           timeout=15, creationflags=subprocess.CREATE_NO_WINDOW)
+                    self.assertEqual(check.returncode, code, check.stderr.decode("utf8", errors="replace"))
+                    if code:
+                        self.assertIn(b"An older instance may still be running", check.stderr)
+                self.assertEqual(request("/health")[1]["installationId"], "a" * 32)
                 status, data, _ = request("/health", headers={"Origin": "https://untrusted.example"})
                 self.assertEqual((status, data["code"]), (403, "ORIGIN_NOT_ALLOWED"))
                 for target in ("/documents/delete", "/documents/preview-file", "/shutdown"):

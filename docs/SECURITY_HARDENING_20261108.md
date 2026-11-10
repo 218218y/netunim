@@ -92,12 +92,12 @@ wildcard entries in persisted configuration no longer grant access. Add only
 individual necessary origins locally; do not authorize production credentials
 for preview deployments. Existing pairing tokens are preserved by upgrades.
 
-Neither installer copies a token to the clipboard. Document installation reports
-no longer include a token. Pairing is an explicit local action using
-`bridge-token.txt`; that file must never accompany a support report. Previously
-exported installation reports/backups may still contain the old token; remove
-them and rotate a potentially exposed token. This is not yet a one-time pairing
-protocol or separate per-site scoped credentials.
+Both installers keep credentials out of the clipboard and installation reports.
+Current releases use one-time local console codes and separate per-Origin keys.
+See [Scoped Bridge pairing](BRIDGE_SCOPED_PAIRING_DESIGN_20261109.md) for the
+transition and recovery procedure. Keep `bridge-token.txt` local for legacy
+compatibility and recovery. Review older exported reports and backups for
+exposed tokens before sharing and rotate any affected credentials.
 
 Bank disconnect now clears the saved session URL, stops only Chrome/Edge
 processes launched for the exact private bank profile, waits for exit, removes

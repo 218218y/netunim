@@ -53,6 +53,15 @@ for %%F in (server.mjs bank-money-value.mjs scoped-pairing.mjs pairing-console.m
   )
 )
 
+rem The listener snapshots this public, per-install identifier at startup.
+node -e "require('node:fs').writeFileSync(process.argv[1],require('node:crypto').randomBytes(16).toString('hex'),{flag:'wx'})" "%STAGING%\installation-id.txt"
+if errorlevel 1 (
+  rmdir /S /Q "%STAGING%" >nul 2>nul
+  echo ERROR: Could not identify the staged Bank Bridge runtime.
+  pause
+  exit /b 1
+)
+
 pushd "%STAGING%"
 echo Installing the pinned bank and credit-card scraper dependency...
 rem The bridge uses Chrome/Edge already installed on Windows. Puppeteer must not download its own browser.
@@ -149,7 +158,7 @@ copy /Y "%~dp0rollback_bank_bridge.bat" "%APPROOT%\rollback_bank_bridge.bat" >nu
 
 start "" wscript.exe "%AUTOSTART%"
 timeout /t 2 /nobreak >nul
-node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=79)||Number(j.creditContractVersion)!==2)process.exit(2)}).catch(()=>process.exit(1))"
+node "%APPDIR%\server.mjs" --check-running
 if errorlevel 1 (
   node "%APPDIR%\server.mjs" --stop-existing
   if errorlevel 1 (
@@ -162,7 +171,7 @@ if errorlevel 1 (
   if exist "%APPDIR%" move "%APPDIR%" "%APPFAILED%" >nul 2>nul
   if exist "%APPBACKUP%" move "%APPBACKUP%" "%APPDIR%" >nul 2>nul
   if exist "%APPDIR%" start "" wscript.exe "%AUTOSTART%"
-  echo ERROR: Bank Bridge v78 did not start correctly. The previous runtime was restored when available.
+  echo ERROR: The new Bank Bridge runtime failed verification. The previous runtime was restored when available.
   echo See: %APPROOT%\bridge.log
   pause
   exit /b 1
@@ -170,7 +179,9 @@ if errorlevel 1 (
 
 echo.
 echo Bank Bridge was installed successfully in a stable local folder and added to Windows startup.
-echo To pair explicitly, open bridge-token.txt in the local Bridge folder on THIS computer.
+echo Pair a site using a one-time code from the local Bridge console and the site's Security page.
+echo See docs\BRIDGE_SCOPED_PAIRING_DESIGN_20261109.md for the --pairing commands.
+echo bridge-token.txt is reserved for legacy compatibility and documented recovery.
 echo Install the Bridge separately on every other computer that should refresh bank or credit-card data.
 echo Hapoalim and credit-card credentials stay encrypted by Windows DPAPI on each computer and are never uploaded to Kupa or Supabase.
 echo American Express uses installed Chrome/Edge with the current DigitalV3 connector; Camoufox under %CAMOUFOX_INSTALL_DIR% remains a bounded fallback only.

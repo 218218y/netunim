@@ -56,6 +56,9 @@ const {APP_ROOT,TOKEN_PATH}=bridgeRuntime.paths;
 const pairing=createScopedPairing({root:APP_ROOT,permissions:['document.read','document.delete','document.maintenance']});
 const {appendLog,writeJsonFile,ensureToken,loadConfig,saveConfig}=bridgeRuntime;
 const RUNTIME_ROOT=fileURLToPath(new URL('.',import.meta.url));
+// Capture the staged installation identity once, independently of app data.
+const marker=(await fs.readFile(new URL('./installation-id.txt',import.meta.url),'utf8').catch(()=> '')).trim();
+const installationId=/^[a-f0-9]{32}$/.test(marker)?marker:'';
 const PDF_MAINTENANCE_TASK_NAME='NetunimDocumentBridgePdfMaintenance';
 const PDF_FORM_INDEX_PATH=path.join(APP_ROOT,'pdf-form-index.json');
 const PDF_FORM_INDEX_JOURNAL_PATH=path.join(APP_ROOT,'pdf-form-index.journal.jsonl');
@@ -217,14 +220,15 @@ async function createRequestHandler(){
       return result;
     }},
   });
-  return createDocumentBridgeHttpHandler({loadConfig,readToken:ensureToken,routes,health:service.health,appendLog,pairing});
+  const health=()=>({...service.health(),...(installationId?{installationId}:{})});
+  return createDocumentBridgeHttpHandler({loadConfig,readToken:ensureToken,routes,health,appendLog,pairing});
 }
 
 const replacementAgent=new http.Agent({keepAlive:false});
 const {stopExisting,checkRunning}=createBridgeReplacementCommand({
   token:{path:TOKEN_PATH,read:(file,encoding)=>fs.readFile(file,encoding),readAdmin:()=>readPairingAdminToken(APP_ROOT)},
   listener:{port:BRIDGE_PORT,request:(options,callback)=>http.request({...options,agent:replacementAgent},callback),
-    allowedOrigins:async()=>(await loadConfig()).allowedOrigins},
+    allowedOrigins:async()=>(await loadConfig()).allowedOrigins,installationId},
   processes:processControl,
   runtime:{now:Date.now,setTimeout,log:appendLog},
 });
@@ -265,4 +269,8 @@ const service=createBridgeService({
 const main=process.argv[2]==='--pairing'
   ?runPairingConsole({root:APP_ROOT,port:BRIDGE_PORT,args:process.argv.slice(3)})
   :service.main();
-main.catch(async error=>{await appendLog(`FATAL code=${error?.code||'ERROR'}`);console.error('Document Bridge failed. See bridge.log for the diagnostic code.');process.exitCode=1});
+main.catch(async error=>{
+  await appendLog(`FATAL code=${error?.code||'ERROR'}`);
+  console.error(process.argv[2]==='--check-running'?error.message:'Document Bridge failed. See bridge.log for the diagnostic code.');
+  process.exitCode=1;
+});

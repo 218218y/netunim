@@ -6,9 +6,10 @@ import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
 import {createBridgeRuntimeFiles} from '../netunim-orders/document-bridge/bridge-runtime-files.mjs';
 import {DEFAULT_ALLOWED_ORIGINS} from '../netunim-orders/document-bridge/lib.mjs';
 const root=new URL('../netunim-orders/document-bridge/',import.meta.url),baseline=JSON.parse(readFileSync(new URL('./fixtures/document-runtime-policies.json',import.meta.url),'utf8'));
-const securityPolicies={"saveConfig": "0fc1e36b92f0f768eb427fb865fd992516ef9fe04799d9ad15dff628994be432", "printDoctor": "bb0159eabd319e077dc6174519c6b6dc5bb3226aed712398f66b79a4bf5fb631", "writeInstallSummary": "ab91197a93a18a882407a5c03fdfcc5fc2f18d6d416cf452977ccc9af1102e27",
- "loopbackRequest":"83298355bc220e6762cdbbd3f9dcf6e5f72f3b0821ed044786c01a5d85c9282e",
- "checkRunning":"f0795adbf57ad7c8e75586f9ab7594b245c75b02d68cbdc25f30610b05201450"};
+const securityPolicies={"saveConfig": "0fc1e36b92f0f768eb427fb865fd992516ef9fe04799d9ad15dff628994be432", "printDoctor": "bb0159eabd319e077dc6174519c6b6dc5bb3226aed712398f66b79a4bf5fb631", "writeInstallSummary": "98790ec0e751c0014bba06e1780220a0137155b7630b28b17c45d79b51b428eb",
+ "loopbackRequest":"34bbc944d18674f98f48deac0b3cc2ea40aacf70ea5ad6eed8c7ff8356dee8f8",
+ "stopExisting":"d0ec7e0f31e5c644b1cb8efd7f52408297cd15b26f4f3c269ec35d7ad5667f91",
+ "checkRunning":"3b8b4ba5edd9d9832b1708b08910a5dd9e9a89c83f9de0d250e2e140245132dc"};
 const expectedLoadConfig=`async function loadConfig(){
   const raw=await readJsonFile(CONFIG_PATH,{});
   return {

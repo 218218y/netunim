@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 import socket
 import subprocess
@@ -59,16 +60,16 @@ with tempfile.TemporaryDirectory(prefix='bridge-upgrade-', dir=ROOT / '.work') a
     fake_es = app / 'not-everything.exe'
     shutil.copyfile(executable, fake_es)
     env = {**os.environ, 'NETUNIM_DOCUMENT_BRIDGE_HOME': str(app),
-           'NETUNIM_EVERYTHING_ES_PATH': str(fake_es)}
+           'NETUNIM_EVERYTHING_ES_PATH': str(fake_es), 'NETUNIM_EVERYTHING_EXE_PATH': str(fake_es)}
     report['privateNodeSha256'] = sha(binary)
     report['portSubstitution'] = 'Only the disposable lib.mjs BRIDGE_PORT was changed.'
     report['currentSource'] = git('rev-parse', 'HEAD').decode().strip()
     report['dirty'] = bool(git('status', '--porcelain').strip())
 
     def request():
-        connection = http.client.HTTPConnection('127.0.0.1', port, timeout=2)
+        connection = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
         try:
-            connection.request('GET', '/health')
+            connection.request('GET', '/health', headers={'Connection': 'close'})
             response = connection.getresponse()
             assert response.status == 200
             return json.loads(response.read())
@@ -80,11 +81,34 @@ with tempfile.TemporaryDirectory(prefix='bridge-upgrade-', dir=ROOT / '.work') a
                                 env=env, cwd=app, capture_output=True, timeout=20,
                                 creationflags=subprocess.CREATE_NO_WINDOW)
         if success:
-            assert result.returncode == 0, result.stderr.decode('utf8', errors='replace')
+            log = app / 'bridge.log'
+            fatal = re.findall(r'FATAL code=([A-Z_]+)', log.read_text(encoding='utf8'))[-1:] if log.exists() else []
+            assert result.returncode == 0, (args, result.stderr.decode('utf8', errors='replace'), fatal)
         else:
             assert result.returncode != 0
-            assert b'HEALTHCHECK_FAILED' in result.stderr or b'health check failed' in result.stderr
+            assert any(message in result.stderr for message in (
+                b'HEALTHCHECK_FAILED', b'health check failed', b'did not respond on the local port',
+                b'An older instance may still be running',
+            )), result.stderr.decode('utf8', errors='replace')
         return result.returncode
+
+    def start(runtime):
+        child = subprocess.Popen([str(executable), str(runtime / 'server.mjs')],
+                                 env=env, cwd=app, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 creationflags=subprocess.CREATE_NO_WINDOW)
+        children.append(child)
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                health = request()
+                break
+            except OSError:
+                if child.poll() is not None or time.monotonic() >= deadline:
+                    raise RuntimeError('owned Bridge did not become ready')
+                time.sleep(.025)
+        assert health['pid'] == child.pid
+        assert health['service'] == 'netunim-orders-document-bridge'
+        return child, health
 
     previous = None
     token_digest = None
@@ -95,10 +119,10 @@ with tempfile.TemporaryDirectory(prefix='bridge-upgrade-', dir=ROOT / '.work') a
             revision = git('rev-parse', '--verify', args.from_revision + '^{commit}').decode().strip()
             old_lib = git('show', revision + ':' + PREFIX + 'lib.mjs').decode('utf8')
             old_version = re.search(r'BRIDGE_VERSION=(\d+);', old_lib).group(1)
-            assert int(old_version) < int(current_version), 'replacement must advance the runtime version'
+            assert int(old_version) <= int(current_version), 'baseline must not be newer than the candidate'
             history = [(old_version, revision)]
-        for version, revision in [*history, (current_version, None)]:
-            runtime = app / ('app-v' + version)
+        for index, (version, revision) in enumerate([*history, (current_version, None)]):
+            runtime = app / f'app-v{version}-{index}'
             runtime.mkdir()
             if revision:
                 names = git('ls-tree', '--name-only', revision + ':' + PREFIX.rstrip('/')).decode().splitlines()
@@ -112,6 +136,9 @@ with tempfile.TemporaryDirectory(prefix='bridge-upgrade-', dir=ROOT / '.work') a
             sources['lib.mjs'] = original_lib.replace(b'BRIDGE_PORT=8766;', f'BRIDGE_PORT={port};'.encode())
             for name, data in sources.items():
                 (runtime / name).write_bytes(data)
+            if revision is None or b'installation-id.txt' in sources['server.mjs']:
+                installation_id = secrets.token_hex(16)
+                (runtime / 'installation-id.txt').write_text(installation_id, encoding='ascii')
             stage = {'version': int(version), 'revision': revision or report['currentSource'],
                      'originalLibSha256': sha(original_lib), 'modules': len(sources),
                      'stagedModulesSha256': sha(b''.join(name.encode()+b'\0'+sources[name] for name in sorted(sources)))}
@@ -125,37 +152,43 @@ with tempfile.TemporaryDirectory(prefix='bridge-upgrade-', dir=ROOT / '.work') a
                 # Check the owned listener immediately before invoking the real
                 # replacement CLI. No command ever targets the installed port.
                 assert request()['pid'] == previous.pid
-                stage['oldVersionCheckRejected'] = command(runtime, '--check-running', success=False) != 0
+                stage['previousListenerRejected'] = command(runtime, '--check-running', success=False) != 0
                 command(runtime, '--stop-existing')
                 previous.communicate(timeout=10)
                 assert previous.returncode == 0
                 stage['oldOwnedProcessExitedCleanly'] = True
-            child = subprocess.Popen([str(executable), str(runtime / 'server.mjs')],
-                                     env=env, cwd=app, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                     creationflags=subprocess.CREATE_NO_WINDOW)
-            children.append(child)
-            deadline = time.monotonic() + 10
-            while True:
-                try:
-                    health = request()
-                    break
-                except OSError:
-                    if child.poll() is not None or time.monotonic() >= deadline:
-                        raise RuntimeError('owned Bridge did not become ready')
-                    time.sleep(.025)
-            assert health['pid'] == child.pid
-            assert health['service'] == 'netunim-orders-document-bridge'
+            child, health = start(runtime)
             assert health['version'] == int(version)
-            command(runtime, '--check-running')
+            if revision is None:
+                assert health['pairingProtocol'] == 1
+                assert health['installationId'] == installation_id
+                command(runtime, '--check-running')
+                stage['installationVerified'] = True
+            else:
+                rollback_runtime = runtime
+                rollback_version = health['version']
             assert sha((app / 'bridge-token.txt').read_bytes()) == token_digest
             assert sha((app / 'config.json').read_bytes()) == config_digest
-            stage.update({'newVersionCheckPassed': True, 'tokenPreserved': True, 'configurationPreserved': True})
+            stage.update({'listenerHealthy': True, 'tokenPreserved': True, 'configurationPreserved': True})
             report['stages'].append(stage)
             previous = child
         assert request()['pid'] == previous.pid
         command(runtime, '--stop-existing')
         previous.communicate(timeout=10)
         assert previous.returncode == 0
+
+        # Reopen the previous runtime against the same disposable data root.
+        registry_before = {file.name: sha(file.read_bytes()) for file in (app / 'pairing-v1').glob('*') if file.is_file()}
+        restored, health = start(rollback_runtime)
+        assert health['version'] == rollback_version
+        assert sha((app / 'bridge-token.txt').read_bytes()) == token_digest
+        assert sha((app / 'config.json').read_bytes()) == config_digest
+        command(runtime, '--stop-existing')
+        restored.communicate(timeout=10)
+        assert restored.returncode == 0
+        assert {file.name: sha(file.read_bytes()) for file in (app / 'pairing-v1').glob('*') if file.is_file()} == registry_before
+        report['rollback'] = {'version': rollback_version, 'tokenPreserved': True,
+                              'configurationPreserved': True, 'pairingRegistryPreserved': True}
         report['finalShutdownClean'] = True
     finally:
         for child in children:
