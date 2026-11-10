@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {edgeFixture} from './edge_handler_fixture.mjs';
+import {edgeFixture,edgeAuthorization} from './edge_handler_fixture.mjs';
 import {readJsonBodyBounded} from '../netunim-orders/supabase/functions/_shared/http-input.js';
 
 const names = ['morning-documents', 'google-drive-oauth', 'google-calendar-oauth'];
 const request = (body, headers = {'Content-Type':'application/json'}) => new Request('https://example.supabase.co/functions/v1/test', {
-  method:'POST', headers:{Authorization:'Bearer test', ...headers}, body, duplex:'half',
+  method:'POST', headers:{Authorization:edgeAuthorization(), ...headers}, body, duplex:'half',
 });
 for (const name of names) {
   test(`${name}: JSON is byte bounded across chunks even without an honest length`, async () => {

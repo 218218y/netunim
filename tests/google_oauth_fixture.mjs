@@ -81,7 +81,7 @@ export async function oauthFixture(name, options = {}) {
   const clock = manualTimers();
   const f = await edgeFixture(name, {...options, env:{...GOOGLE_TEST_ENV, ...options.env}, database, rpc, httpPorts:clock});
   const invoke = action => f.handler(new Request('https://example.supabase.co/functions/v1/test', {
-    method:'POST', headers:{Authorization:'Bearer test', Origin:'https://app.example.test', 'Content-Type':'application/json'}, body:JSON.stringify({action, return_url:'https://app.example.test/'}),
+    method:'POST', headers:{Authorization:f.authorization, Origin:'https://app.example.test', 'Content-Type':'application/json'}, body:JSON.stringify({action, return_url:'https://app.example.test/'}),
   }));
   const callback = (value = rawState) => f.handler(new Request('https://example.supabase.co/functions/v1/test/callback?state='+value+'&code=test-code'));
   async function waitForRequests(count = 1) {

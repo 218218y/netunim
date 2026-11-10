@@ -5,7 +5,7 @@ import {edgeFixture} from './edge_handler_fixture.mjs';
 const owner='00000000-0000-4000-8000-000000000001';
 function invoke(f,action,extra={}) {
   return f.handler(new Request('https://example.supabase.co/functions/v1/morning-documents',{
-    method:'POST',headers:{Authorization:'Bearer synthetic-user','Content-Type':'application/json'},
+    method:'POST',headers:{Authorization:f.authorization,'Content-Type':'application/json'},
     body:JSON.stringify({action,...extra})
   }));
 }

@@ -2,6 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const read=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
+
+test('the operator rollout lists the versions published by both Bridge listeners',()=>{
+  const rollout=read('docs/SECURITY_OPERATOR_ROLLOUT_HE.md');
+  for (const [service,file] of [
+    ['Bank Bridge','netunim-kupa/bank-bridge/server.mjs'],
+    ['Document Bridge','netunim-orders/document-bridge/lib.mjs'],
+  ]) {
+    const runtime=/\bconst BRIDGE_VERSION\s*=\s*(\d+)\s*;/.exec(read(file))?.[1];
+    const documented=new RegExp('^\\d+\\. '+service+' \\*\\*(\\d+)\\*\\*','m').exec(rollout)?.[1];
+    assert.ok(runtime, `${service} runtime version`);
+    assert.equal(documented,runtime,service);
+  }
+});
 test('every bank runtime dependency is exact and covered by one integrity-protected lockfile',()=>{
   const directory='netunim-kupa/bank-bridge/',manifest=JSON.parse(read(directory+'package.json')),lock=JSON.parse(read(directory+'package-lock.json'));
   assert.deepEqual(lock.packages[''].dependencies,manifest.dependencies);

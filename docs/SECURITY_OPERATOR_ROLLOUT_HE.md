@@ -30,6 +30,9 @@ git pull --ff-only origin main
 1. Bank Bridge **80** באמצעות `netunim-kupa\bank-bridge\install_bank_bridge.bat`.
 2. Document Bridge **48** באמצעות `netunim-orders\document-bridge\install_document_bridge.bat`.
 
+Bank Bridge 79 כלל עדכון תלויות. גרסה 80 כוללת גם את תיקוני המיפוי של CAL
+ותיעוד המבצעים בעסקאות MAX. [עדכון התלויות](BANK_DEPENDENCY_SECURITY_20261109.md) · [עדכוני הספקים](CREDIT_PROVIDER_UPDATES_20261110.md)
+
 מתחילים במחשב אחד. רושמים את מזהה ה־commit של חבילת ההתקנה ומודדים בו Baseline
 לפני החלפת המחברים. לאחר ההתקנה בודקים שהאתרים טענו את גרסת ה־Service Worker
 העדכנית. כל מתקין דורש `pairingProtocol: 1` ומשווה את מזהה ההתקנה לזה שהמאזין
@@ -97,6 +100,10 @@ git pull --ff-only origin main
 כדי שכל המופעים ייטענו עם ההגדרה החדשה; אין צורך לשנות סודות בנק או מפתחות הצפנה.
 
 ## 4. הפעלת MFA פעם אחת בחשבון, לאחר פריסת שני האתרים
+
+לפני הרישום יש לוודא שארבע פונקציות השרת `google-calendar-oauth`,
+`google-drive-oauth`, `morning-documents` ו־`morning-expenses` נפרסו
+מהגרסה המאומתת. לאחר אימות גורם, פעולות מוגנות דורשות אסימון ברמת `aal2`.
 
 תחילה ודא שבכל שלושת המחשבים נטענה גרסת האתר החדשה, ובמסך ההתחברות מופיע
 שדה קוד מאפליקציית אימות. לאחר מכן:

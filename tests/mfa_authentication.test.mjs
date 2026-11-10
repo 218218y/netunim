@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {completeSupabaseMfa,verifySupabaseFactor} from '../shared/supabase-mfa.js';
-import {hasUserMfaAssurance} from '../netunim-orders/supabase/functions/_shared/mfa-assurance.js';
 import {edgeFixture} from './edge_handler_fixture.mjs';
 import {createCloudAuth as ordersAuth} from '../netunim-orders/site/assets/js/cloud/auth.js';
 import {createCloudAuth as kupaAuth} from '../netunim-kupa/site/assets/js/cloud/auth.js';
@@ -51,20 +50,40 @@ test('MFA transport deadlines abort without automatic retry',async()=>{
   }}),{code:'mfa_connection_failed'});
   assert.equal(calls,1);assert.equal(aborted,true);
 });
-test('server assurance uses Auth factors and the already-validated token, never editable metadata',()=>{
-  assert.equal(hasUserMfaAssurance(session().user,jwt()),false);
-  assert.equal(hasUserMfaAssurance({...session().user,user_metadata:{aal:'aal2'}},jwt()),false);
-  assert.equal(hasUserMfaAssurance(session().user,jwt('aal2',other)),false);
-  assert.equal(hasUserMfaAssurance(session().user,jwt('aal2')),true);
-  assert.equal(hasUserMfaAssurance({id:owner,factors:[]},jwt()),true);
-});
-for(const name of ['google-calendar-oauth','google-drive-oauth','morning-documents','morning-expenses'])test(`${name}: actual Edge boundary rejects lower assurance before data/provider calls`,async()=>{
-  const f=await edgeFixture(name,{user:{...session().user,app_metadata:{morning_expenses_read:true}},env:{MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test'}});
-  const invoke=token=>f.handler(new Request('https://example.supabase.co/functions/v1/'+name,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'{"action":"unknown_no_side_effect","user_metadata":{"aal":"aal2"}}'}));
-  assert.equal((await invoke(jwt())).status,401);
-  assert.equal((await invoke(jwt('aal2',other))).status,401);
-  assert.equal(f.operations.length,0);assert.equal(f.requests.length,0);
-  assert.notEqual((await invoke(jwt('aal2'))).status,401);
+for(const name of ['google-calendar-oauth','google-drive-oauth','morning-documents','morning-expenses'])test(`${name}: actual Edge boundary requires verified MFA state and matching claims`,async()=>{
+  const user={id:owner,user_metadata:{aal:'aal2',factors:[]},app_metadata:{morning_expenses_read:true}};
+  const accepted=async(options,{token=jwt(),factorReads=0,allowed}={})=>{
+    const f=await edgeFixture(name,{user,env:{MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test'},...options});
+    const response=await f.handler(new Request('https://example.supabase.co/functions/v1/'+name,{
+      method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({action:'unknown_no_side_effect',owner_id:other}),
+    }));
+    assert.equal(response.status!==401,allowed);
+    assert.deepEqual(f.authCalls,[token]);
+    assert.deepEqual(f.factorReads,Array(factorReads).fill(owner));
+    assert.equal(f.operations.length+f.requests.length,0);
+    return response;
+  };
+  for (const factors of [[],[{...factor,status:'unverified'}]]) {
+    await accepted({user:{...user,factors}},{allowed:true});
+    await accepted({listFactors:async()=>({data:{factors}})},{factorReads:1,allowed:true});
+  }
+  await accepted({user:{...user,factors:[factor]}},{allowed:false});
+  await accepted({user:{...user,factors:[factor]}},{token:jwt('aal2'),allowed:true});
+  await accepted({listFactors:async()=>({data:{factors:[factor]}})},{factorReads:1,allowed:false});
+  await accepted({listFactors:async()=>({data:{factors:[factor]}})},{token:jwt('aal2'),factorReads:1,allowed:true});
+  for (const factors of [null,{},[null],[{...factor,status:'unknown'}],[{status:'unverified'}]]) {
+    await accepted({user:{...user,factors}},{allowed:false});
+    await accepted({listFactors:async()=>({data:{factors}})},{factorReads:1,allowed:false});
+  }
+  const error=new Error('synthetic private Auth details');
+  for (const listFactors of [async()=>({data:{},error:null}),async()=>({data:{factors:[]},error}),async()=>{throw error}]) {
+    const response=await accepted({listFactors},{factorReads:1,allowed:false});
+    assert.doesNotMatch(await response.text(),/synthetic private Auth details/);
+  }
+  await accepted({getUser:async()=>({data:{user},error})},{allowed:false});
+  await accepted({},{token:jwt('aal2',other),allowed:false});
+  await accepted({user:{...user,factors:[]}},{token:jwt('unknown'),allowed:false});
 });
 
 for(const app of ['orders','kupa'])test(`${app}: password-only and stale MFA results cannot publish credentials`,async()=>{
