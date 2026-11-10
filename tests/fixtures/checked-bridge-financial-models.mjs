@@ -1,6 +1,7 @@
 import {normalizeCreditScrapeTransaction,normalizeCreditMonthSlice,normalizeCreditScrapeAccount} from '../../netunim-kupa/bank-bridge/credit-transaction-model.mjs';
 import {normalizeCreditProfileInput} from '../../netunim-kupa/bank-bridge/credit-profile-model.mjs';
 import {normalizeChequeItemObject,chequeItemKey} from '../../netunim-kupa/bank-bridge/hapoalim-cheque-model.mjs';
+import {mergeHapoalimAdditionalDetails} from '../../netunim-kupa/bank-bridge/hapoalim-additional-details-model.mjs';
 import {hapoalimCreditSettlementProvider,normalizeHapoalimCreditPermissionDetails} from '../../netunim-kupa/bank-bridge/hapoalim-credit-settlement-model.mjs';
 /** @type {unknown} */ const wire={};
 const row=normalizeCreditScrapeTransaction(wire);
@@ -34,6 +35,14 @@ if(cheque){
   void chequeAmount;
 }
 const settlement=hapoalimCreditSettlementProvider({});
+const mergedCheque=mergeHapoalimAdditionalDetails(wire).checkItems[0];
+if(mergedCheque){
+  /** @type {number} */ const amount=mergedCheque.amount;
+  /** @type {string} */ const imageKey=mergedCheque.imageFrontKey;
+  // @ts-expect-error A verified cheque number cannot become a numeric sequence.
+  mergedCheque.checkNumber=1;
+  void [amount,imageKey];
+}
 /** @type {''|'visaCal'|'max'|'isracard'|'amex'} */ const issuer=settlement;
 const details=normalizeHapoalimCreditPermissionDetails(wire);
 // @ts-expect-error A provider suffix list cannot become a numeric sequence.

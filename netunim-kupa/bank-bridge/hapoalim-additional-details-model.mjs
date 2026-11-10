@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-check
 import { readBankMoney } from './bank-money-value.mjs';
 import {
   chequeItemKey,
@@ -18,13 +18,18 @@ import {
 } from './hapoalim-detail-keys.mjs';
 import { compactText, meaningfulDetailValue } from './hapoalim-detail-values.mjs';
 
+/** @typedef {Parameters<typeof chequeItemKey>[0]} ChequeItem */
+/** @typedef {ChequeItem & {imageFrontKey:string,imageBackKey:string}} ChequeItemWithImages */
+
+/** @param {unknown} payload */
 export function normalizeHapoalimAdditionalDetails(payload) {
-  const checkNumbers = new Set(),
-    items = [],
-    itemKeys = new Set();
+  /** @type {Set<string>} */ const checkNumbers = new Set();
+  const itemKeys = new Set();
+  /** @type {ChequeItem[]} */ const items = [];
   let referenceNumber = '',
     checkCount = null,
     hasDocumentReference = false;
+  /** @param {ChequeItem|null} item */
   const addItem = (item) => {
     if (!item) return;
     const key = chequeItemKey(item);
@@ -34,6 +39,7 @@ export function normalizeHapoalimAdditionalDetails(payload) {
     if (item.checkNumber) checkNumbers.add(item.checkNumber);
     if (item.hasDocumentReference) hasDocumentReference = true;
   };
+  /** @param {string} key @param {unknown} value */
   const consumeSemanticField = (key, value) => {
     if (isUnsafeTechnicalDetailKey(key)) return;
     if (isDocumentDetailKey(key)) {
@@ -55,6 +61,7 @@ export function normalizeHapoalimAdditionalDetails(payload) {
     }
     if (isChequeNumberKey(key) && clean !== '0') checkNumbers.add(clean);
   };
+  /** @param {unknown} value */
   const visit = (value, path = '', depth = 0) => {
     if (depth > 5 || value === null || value === undefined) return;
     if (Array.isArray(value)) {
@@ -72,7 +79,7 @@ export function normalizeHapoalimAdditionalDetails(payload) {
     }
     for (const tableItem of normalizeChequeTableObject(value)) addItem(tableItem);
     addItem(normalizeChequeItemObject(value));
-    const entries = Object.entries(value);
+    /** @type {[string,unknown][]} */ const entries = Object.entries(value);
     const labelEntry = entries.find(
       ([key, child]) => isSemanticLabelKey(key) && meaningfulDetailValue(child)
     );
@@ -120,32 +127,39 @@ export function normalizeHapoalimAdditionalDetails(payload) {
   };
 }
 
+/** @param {...unknown} sources */
 export function mergeHapoalimAdditionalDetails(...sources) {
-  const checkNumbers = new Set(),
-    checkItems = [],
-    itemKeys = new Set();
+  /** @type {Set<string>} */ const checkNumbers = new Set();
+  const itemKeys = new Set();
+  /** @type {ChequeItemWithImages[]} */ const checkItems = [];
   let referenceNumber = '',
     declaredCount = 0,
     hasDocumentReference = false;
-  for (const source of sources) {
-    if (!source || typeof source !== 'object') continue;
+  for (const value of sources) {
+    if (!value || typeof value !== 'object') continue;
+    const source = /** @type {Record<string,unknown>} */ (value);
     if (!referenceNumber) referenceNumber = compactText(source.referenceNumber, 100);
     const count = readBankMoney(source.checkCount);
-    if (Number.isFinite(count) && count > 0)
+    if (count !== null && Number.isFinite(count) && count > 0)
       declaredCount = Math.max(declaredCount, Math.trunc(count));
     if (source.hasDocumentReference === true) hasDocumentReference = true;
     for (const value of Array.isArray(source.checkNumbers) ? source.checkNumbers : []) {
       const clean = compactText(value, 80);
       if (clean && clean !== '0') checkNumbers.add(clean);
     }
-    for (const raw of Array.isArray(source.checkItems) ? source.checkItems : []) {
+    /** @type {unknown[]} */ const sourceItems = Array.isArray(source.checkItems) ? source.checkItems : [];
+    for (const value of sourceItems) {
+      if (!value || typeof value !== 'object') continue;
+      const raw = /** @type {Record<string,unknown>} */ (value);
       const amount = readBankMoney(raw?.amount);
+      if (amount === null || amount <= 0) continue;
+      /** @type {ChequeItemWithImages} */
       const item = {
         bankNumber: compactText(raw?.bankNumber, 20),
         branchNumber: compactText(raw?.branchNumber, 20),
         accountNumber: compactText(raw?.accountNumber, 40),
         checkNumber: compactText(raw?.checkNumber, 80),
-        amount: amount !== null && amount > 0 ? amount : null,
+        amount,
         hasDocumentReference: raw?.hasDocumentReference === true,
         imageFrontKey: /^[a-f0-9]{64}$/.test(String(raw?.imageFrontKey || ''))
           ? String(raw.imageFrontKey)
@@ -154,11 +168,7 @@ export function mergeHapoalimAdditionalDetails(...sources) {
           ? String(raw.imageBackKey)
           : '',
       };
-      if (
-        !item.amount ||
-        !(item.checkNumber || (item.bankNumber && item.branchNumber && item.accountNumber))
-      )
-        continue;
+      if (!(item.checkNumber || (item.bankNumber && item.branchNumber && item.accountNumber))) continue;
       const key = chequeItemKey(item);
       if (itemKeys.has(key)) continue;
       itemKeys.add(key);
@@ -180,13 +190,12 @@ export function mergeHapoalimAdditionalDetails(...sources) {
   };
 }
 
+/** @param {unknown} baseUrl @param {unknown} pfmDetails @param {unknown} accountId */
 export function buildHapoalimAdditionalDetailsUrl(baseUrl, pfmDetails, accountId) {
   const base = new URL(String(baseUrl || '')),
     url = new URL(String(pfmDetails || ''), base);
   if (url.origin !== base.origin) {
-    const e = new Error('כתובת פרטי התנועה אינה שייכת לבנק הפועלים');
-    e.code = 'UNSAFE_DETAIL_URL';
-    throw e;
+    throw Object.assign(new Error('כתובת פרטי התנועה אינה שייכת לבנק הפועלים'), { code: 'UNSAFE_DETAIL_URL' });
   }
   url.searchParams.set('accountId', String(accountId || ''));
   url.searchParams.set('lang', 'he');
