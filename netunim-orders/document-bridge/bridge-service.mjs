@@ -15,7 +15,7 @@ export function createBridgeService({files,search,pdf,documents,maintenance,inst
   const {PDF_FORM_MAINTENANCE_MAX_FILES,PDF_FORM_MAINTENANCE_MAX_MS}=pdf.policy;
   const loadPdfFormIndex=pdfIndexRuntime.index.load,withFileLock=pdf.withFileLock;
   const {manualMaintenance,activePdfMaintenanceLock}=maintenance;
-  const {printDoctor,writeInstallSummary,stopExisting,checkRunning}=installation;
+  const {printDoctor,writeInstallSummary,stopExisting,checkRunning,waitForStartup}=installation;
   const {documentCommands,documentResults,previewTextCache,nativePreviewSession}=documents;
   const process=listener.host,http={createServer:listener.createServer},createRequestHandler=listener.handler;
   let server=null,shuttingDown=false,pdfMaintenanceStopRequested=false;
@@ -155,7 +155,10 @@ export function createBridgeService({files,search,pdf,documents,maintenance,inst
   }
     if(arg==='--print-token'){console.log(await ensureToken());return}
     if(arg==='--stop-existing'){await stopExisting();return}
-    if(arg==='--check-running'){await checkRunning();return}
+    if(arg==='--check-running'){
+      await (process.argv.includes('--wait-for-startup')?waitForStartup():checkRunning());
+      return;
+    }
     if(arg==='--write-install-summary'){await writeInstallSummary();return}
     if(process.platform!=='win32')throw new Error('Document Bridge is intended for Windows.');
     await init();

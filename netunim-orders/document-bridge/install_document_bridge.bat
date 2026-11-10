@@ -158,8 +158,7 @@ copy /Y "%~dp0configure_document_bridge.bat" "%CONFIGURETARGET%" >nul || goto :a
 copy /Y "%~dp0run_pdf_maintenance.ps1" "%RUNNERTARGET%" >nul || goto :activate_error
 copy /Y "%~dp0run_pdf_maintenance_hidden.vbs" "%MAINTENANCELAUNCHER%" >nul || goto :activate_error
 start "" wscript.exe "%AUTOSTART%"
-timeout /t 2 /nobreak >nul
-"%NODE_EXE%" "%RUNTIME%\server.mjs" --check-running
+"%NODE_EXE%" "%RUNTIME%\server.mjs" --check-running --wait-for-startup
 if not "%ERRORLEVEL%"=="0" goto :activate_error
 
 powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%~dp0install_pdf_maintenance_task.ps1" -AppRoot "%APPROOT%"
@@ -294,7 +293,7 @@ set "MOVE_SOURCE=%~1"
 set "MOVE_TARGET=%~2"
 for /L %%R in (1,1,12) do (
   move "%MOVE_SOURCE%" "%MOVE_TARGET%" >nul 2>nul && exit /b 0
-  >nul 2>nul timeout /t 1 /nobreak
+  "%NODE_EXE%" -e "setTimeout(()=>{},1000)"
 )
 echo ERROR: Could not activate new runtime "%MOVE_TARGET%" after waiting for staging handles to close.
 exit /b 1
