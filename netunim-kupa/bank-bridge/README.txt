@@ -20,7 +20,7 @@ Installation / upgrade (Windows)
 3. The installer first builds and validates a staged runtime. Only after it succeeds does it stop an older Netunim bridge and activate the new runtime under:
    %LOCALAPPDATA%\NetunimKupaBankBridge\app
 4. The Startup entry is a fixed ASCII-only VBS launcher. It resolves %LOCALAPPDATA% when Windows starts; it never stores the path of the ZIP/project folder and therefore is not broken by Hebrew/non-ASCII Windows paths or by moving the project folder.
-5. The installer starts the Bridge hidden and verifies its installation ID and pairingProtocol 1. Pair each exact site Origin with a one-time code from the local console on the site's Security page. Follow docs/BRIDGE_SCOPED_PAIRING_DESIGN_20261109.md.
+5. The installer starts the Bridge hidden and verifies its installation ID and pairingProtocol 1. Pair each exact site Origin with a one-time code from the local console on the site's Security page. From the repository root, follow docs/BRIDGE_SCOPED_PAIRING_DESIGN_20261109.md (Local console). The commands resolve and verify the installed private Node executable.
 6. Open Kupa -> Bank, enter the Hapoalim user code/password and, when more than one account exists, enter BOTH branch number and account number. Hapoalim account IDs are built exactly as 12-branch-account; the Bridge never guesses a branch from an account-number suffix.
 7. Click "Refresh now" for a silent test. If the bank requires extra verification, use "Open bank verification"; only that button opens a visible Chrome/Edge window.
 
@@ -72,7 +72,7 @@ Maintenance
 - To reinstall or upgrade: run install_bank_bridge.bat again. The runtime and Windows startup/recovery files are prepared before the previous listener drains. A failed activation restores those files and verifies the previous listener when it can be safely restarted.
 - To return to the preserved version, run %LOCALAPPDATA%\NetunimKupaBankBridge\rollback_bank_bridge.bat. Run it again to swap back. It verifies and uses the private Node runtime. The 79/80 swap retains scoped pairing, credentials, profiles and logs in the per-user data directory.
 - If setup reports that it could not verify automatic recovery, keep the paths printed by setup and check bridge.log in the per-user data directory.
-- For documented legacy recovery, show the local legacy key from the installed runtime. Keep bridge-token.txt and its contents local. Use cd /d "%LOCALAPPDATA%\NetunimKupaBankBridge\app" then node server.mjs --print-token
+- For documented legacy recovery, use the Bank local console above and run & $node $server --print-token. Keep bridge-token.txt and its contents local.
 - To start manually for diagnostics: run the installed start_bank_bridge.bat without --hidden.
 - Runtime log for hidden startup: %LOCALAPPDATA%\NetunimKupaBankBridge\bridge.log
 - To remove only Windows autostart: remove_bank_bridge_autostart.bat

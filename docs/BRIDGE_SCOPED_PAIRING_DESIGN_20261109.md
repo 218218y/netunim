@@ -1,9 +1,10 @@
 # Scoped Bridge pairing
 
 The scoped protocol is opt-in per Bridge on each computer. Install both updated
-web clients and runtimes before activating it. The runtime versions remain Bank
-79 and Document 48 for wire compatibility. Use the release commit, rather than
-the version number alone, to distinguish these builds. Updated listeners also
+web clients and runtimes before activating it. See the
+[operator rollout](SECURITY_OPERATOR_ROLLOUT_HE.md) for the current versions
+and installer paths. Record the release commit to distinguish builds that
+share a runtime version. Updated listeners also
 report `pairingProtocol: 1` on loopback `/health`. Each installer also stages a
 fresh, public `installationId`. The listener snapshots it at startup, and the
 installer checks it against the staged value before accepting the listener.
@@ -42,32 +43,59 @@ finish through the existing owners.
    clients are still paired. Confirm search, preview, bank and credit use before
    changing permissions. Confirm that each intended site has received the
    updated `/security.html`. Choose its canonical HTTPS Origin.
-2. Open an interactive terminal as the Windows user that runs the Bridge.
-   Use its installed Node executable and active `server.mjs`. Bank uses
-   `%LOCALAPPDATA%\NetunimKupaBankBridge\app\server.mjs`. Document uses
-   the active runtime directory named by
-   `%LOCALAPPDATA%\NetunimDocumentBridge\active-runtime.txt`.
-3. Run `node server.mjs --pairing status` for the selected Bridge.
-   Run `node server.mjs --pairing begin` and type `APPROVE` to open a
+2. Open the [local console](#local-console) for the selected Bridge.
+3. Run `& $node $server --pairing status`.
+   Run `& $node $server --pairing begin` and type `APPROVE` to open a
    seven-day overlap. A Bank runtime configured in legacy-reflect mode must
    first be switched to the existing allowlist mode.
 4. Issue a code for one Origin, for example
-   `node server.mjs --pairing issue https://orders.bargig-furniture.com document.read`
-   or `node server.mjs --pairing issue https://kupa.bargig-furniture.com bank.read bank.refresh`.
+   `& $node $server --pairing issue https://orders.bargig-furniture.com document.read`
+   or `& $node $server --pairing issue https://kupa.bargig-furniture.com bank.read bank.refresh`.
    Type `APPROVE`. Paste the code on the exact site's security page within
    two minutes, selecting the correct Bridge. Keep the code out of terminal
    transcripts and support tickets. Repeat for each site, Bridge, and
-   required permission set. A new issue/exchange rotates the previous key
-   for that exact Origin.
+   required permission set. To replace a key, issue and exchange another code
+   for the same Origin. The exchange invalidates the previous key.
 5. Confirm the paired site works and that disallowed actions are blocked.
    Verify the other site independently. Run
-   `node server.mjs --pairing revoke ORIGIN` to revoke only that Origin
+   `& $node $server --pairing revoke ORIGIN` to revoke only that Origin
    or cancel its pending first pairing. Reissue locally if required.
-6. Run `node server.mjs --pairing finish` after accepting all sites for this
+6. Run `& $node $server --pairing finish` after accepting all sites for this
    Bridge. This permanently closes its overlap. Keep the old installer and
    the recorded release commit for recovery. Repeat on the other computers
    after the canary, including cold and warm search/preview on C: and Y:,
    mapped-drive failures, and the normal bank/credit workflow.
+
+## Local console
+
+From the repository root, start an interactive `powershell.exe -NoProfile
+-ExecutionPolicy Bypass` as the Windows user running the Bridge. Paste one
+of these blocks to verify the pinned executable and select the active server.
+
+Bank Bridge
+
+```powershell
+$root = Join-Path $env:LOCALAPPDATA 'NetunimKupaBankBridge'
+$node = & .\netunim-kupa\bank-bridge\install_node_runtime.ps1 -AppRoot $root -VerifyOnly
+$server = Join-Path $root 'app\server.mjs'
+& $node $server --check-running
+& $node $server --pairing status
+```
+
+Document Bridge
+
+```powershell
+$root = Join-Path $env:LOCALAPPDATA 'NetunimDocumentBridge'
+$node = & .\netunim-orders\document-bridge\install_node_runtime.ps1 -AppRoot $root -VerifyOnly
+$active = (Get-Content -LiteralPath (Join-Path $root 'active-runtime.txt') -Raw).Trim()
+if ($active -notmatch '^app-v[0-9]+-[0-9]+-[0-9]+$') { throw 'Invalid Document Bridge runtime' }
+$server = Join-Path (Join-Path $root $active) 'server.mjs'
+& $node $server --check-running
+& $node $server --pairing status
+```
+
+Use the same `$node` and `$server` for the pairing commands. Repeat the block
+after reinstalling or switching runtimes so it resolves the active copy.
 
 Pairing codes are 32-byte random values. The registry contains only digests,
 exact origins, record IDs and permissions. A local admin credential is stored
@@ -88,13 +116,14 @@ showing credentials or asserting which browser is currently connected.
 Collect local timing on both sides of the update with the same test plan and
 transport. Use at least 20 warm repetitions per scenario and record cold
 requests separately. The timing CLI can still exercise read routes after
-cutover with `node tools/measure-document-bridge.mjs --native plan.json report.json`.
+cutover with `& $node tools/measure-document-bridge.mjs --native plan.json report.json`
+from the repository root after opening the Document Bridge console.
 Native and legacy-site measurements use different baseline identities. For the
 actual scoped browser path collect the request duration and Server-Timing in
 DevTools. Only share aggregate timings and counts.
 
 For a deliberate downgrade to a runtime that predates protocol 1, complete the transition and run
-`node server.mjs --pairing prepare-rollback` while the scoped runtime is
+`& $node $server --pairing prepare-rollback` while the scoped runtime is
 running. This prepares a fresh legacy credential without re-enabling the old
 one on the scoped listener. Use the current runtime's `--stop-existing`
 (or the Bank rollback helper) to drain it before installing/starting the
@@ -105,11 +134,13 @@ locally if a browser was re-paired to the legacy key. Do not delete pairing
 state, DPAPI files, provider profiles, Everything settings, browser data or
 offline queues. A downgrade restores the legacy trust model while in use.
 
-For a rollback between protocol 1 builds, drain the current listener and use
-the prior runtime against the existing local data. Keep the existing registry
-and keys. The installation ID identifies the selected runtime and is independent
-of pairing. Retain the previous installer or its release commit for the Document
-Bridge, whose successful installation cleans up inactive runtime directories.
+For a Bank rollback between protocol 1 builds, run the installed
+`%LOCALAPPDATA%\NetunimKupaBankBridge\rollback_bank_bridge.bat`.
+It drains the listener, swaps to the preserved runtime, and verifies it.
+Run the same helper again to roll forward. For Document Bridge, reinstall
+from the previous release checkout. Its installer cleans up inactive runtime
+directories after successful activation. Keep the local registry and keys.
+The installation ID identifies the selected runtime independently of pairing.
 
 Automated tests cover the HTTP and production wiring, enrollment/replay,
 cross-Origin access, capability denial, restart, failed registry writes, key

@@ -194,7 +194,7 @@ echo Everything will be started automatically in background mode
 echo whenever the Bridge starts. No Everything search window is needed.
 echo Notepad will open with diagnostics. Pair a site using a one-time code
 echo from the local Bridge console and the site's Security page.
-echo See docs\BRIDGE_SCOPED_PAIRING_DESIGN_20261109.md for the --pairing commands.
+echo See README.txt beside this installer for the local pairing console.
 echo bridge-token.txt is reserved for legacy compatibility and documented recovery.
 echo ============================================================
 echo.
