@@ -39,19 +39,70 @@ export function createAuthenticatedAccountScope({loadSession}){
   return {current,replace,assertCurrent,subscribe};
 }
 
-// Auth refresh is a rotating-token operation. Preserve the login on temporary
-// failures and let the caller's normal retry/reconnect flow retry it later.
+const TERMINAL_REFRESH_CODES = new Set([
+  'refresh_token_not_found', 'refresh_token_already_used', 'session_expired', 'session_not_found',
+]);
+
+// Supabase documents these codes as evidence that the credential or session
+// is gone. Keep the login on all other failures, including unknown 4xx.
+// https://supabase.com/docs/guides/auth/debugging/error-codes
 /** @param {Response} response @param {{error_code?:string,code?:string}|null} body */
-export function temporaryAuthRefreshError(response, body) {
+export function recoverableAuthRefreshError(response, body) {
   const status = response.status;
   const reason = body?.error_code ?? body?.code ?? '';
   const timedOut = status === 408 || reason === 'request_timeout';
-  if (!timedOut && status !== 429 && status < 500 &&
-      !['over_request_rate_limit', 'unexpected_failure', 'conflict'].includes(reason)) return null;
-  const code = timedOut ? 'SUPABASE_NETWORK_TIMEOUT' : 'SUPABASE_AUTH_REFRESH_UNAVAILABLE';
-  return Object.assign(new Error('חידוש ההתחברות לענן אינו זמין כרגע. אפשר לנסות שוב.'), {
-    code, status, response: {status, headers: response.headers},
+  if ([400, 401, 403].includes(status) && TERMINAL_REFRESH_CODES.has(reason)) return null;
+  const code = timedOut ? 'SUPABASE_NETWORK_TIMEOUT' :
+    status === 429 || reason === 'over_request_rate_limit' ? 'SUPABASE_AUTH_REFRESH_RATE_LIMIT' :
+    'SUPABASE_AUTH_REFRESH_UNAVAILABLE';
+  return Object.assign(authRefreshFailure(code), {
+    status, response: {status, headers: response.headers},
   });
+}
+
+/** @param {string} code */
+function authRefreshFailure(code) {
+  return Object.assign(new Error('חידוש ההתחברות לענן אינו זמין כרגע. אפשר לנסות שוב.'), {code});
+}
+
+// One attempt, with a deadline covering headers and the entire body. The
+// caller may recover on a later sync/reconnect. Supabase can recover a lost
+// rotation receipt when the token presented is the active token's parent.
+// https://supabase.com/docs/guides/auth/sessions#what-is-refresh-token-reuse-detection-and-what-does-it-protect-from
+/**
+ * @param {string} baseUrl @param {HeadersInit} headers @param {string} refreshToken
+ * @param {{fetchRequest:typeof fetch, createController:()=>AbortController,
+ *   setTimer:typeof setTimeout, clearTimer:typeof clearTimeout}} ports
+ */
+export async function requestAuthRefresh(baseUrl, headers, refreshToken, {fetchRequest, createController, setTimer, clearTimer}) {
+  const controller = createController();
+  /** @type {ReturnType<typeof setTimer> | undefined} */
+  let timer;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimer(() => {
+      reject(authRefreshFailure('SUPABASE_NETWORK_TIMEOUT'));
+      controller.abort();
+    }, 20_000);
+  });
+  const request = async () => {
+    try {
+      const response = await fetchRequest(`${baseUrl}/auth/v1/token?grant_type=refresh_token`, {
+        method: 'POST', headers, body: JSON.stringify({refresh_token: refreshToken}), signal: controller.signal,
+      });
+      const body = await response.json().catch(error => {
+        if (!(error instanceof SyntaxError)) throw error;
+        return null;
+      });
+      return {response, body};
+    } catch {
+      throw authRefreshFailure('SUPABASE_NETWORK_UNAVAILABLE');
+    }
+  };
+  try {
+    return await Promise.race([request(), deadline]);
+  } finally {
+    clearTimer(timer);
+  }
 }
 
 /** @param {unknown} previous @param {unknown} current */
@@ -65,7 +116,7 @@ export function assertRefreshTokenCurrent(previous, current) {
 
 /** @param {{user?:{id?:string},access_token?:unknown,refresh_token?:unknown}|null} session @param {string|null} owner */
 export function assertRefreshReceipt(session, owner) {
-  if (session?.user?.id !== owner || typeof session.access_token !== 'string' || !session.access_token.trim() ||
+  if (!session || session.user?.id !== owner || typeof session.access_token !== 'string' || !session.access_token.trim() ||
       typeof session.refresh_token !== 'string' || !session.refresh_token.trim()) {
     throw Object.assign(new Error('חידוש ההתחברות לענן החזיר תשובה לא תקינה. אפשר לנסות שוב.'), {
       code: 'SUPABASE_AUTH_REFRESH_UNAVAILABLE',

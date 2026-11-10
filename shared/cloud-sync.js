@@ -194,12 +194,13 @@ export function normalizeCloudError(input){
   /** @type {CloudErrorKind} */ let kind='fatal';
   if(code==='PT429'||lower.includes('save_busy'))kind='busy';
   else if(code==='PT409'||lower.includes('revision_conflict'))kind='revision_conflict';
-  else if(status===429||code==='SUPABASE_DATA_API_RATE_LIMIT')kind='rate_limited';
+  else if(status===429||code==='SUPABASE_DATA_API_RATE_LIMIT'||code==='SUPABASE_AUTH_REFRESH_RATE_LIMIT')kind='rate_limited';
   else if(code==='SUPABASE_AUTH_REFRESH_UNAVAILABLE')kind='service_unavailable';
   else if(status===409)kind='conflict';
   else if(status!==null&&[500,502,503,504].includes(status)||['PGRST002','PGRST003','SUPABASE_DATA_API_BACKOFF'].includes(code))kind='service_unavailable';
+  else if(code==='SUPABASE_NETWORK_TIMEOUT')kind='timeout';
   else if(status===401||status===403||code==='42501'||code==='cloud_auth_required')kind='auth';
-  else if(code==='SUPABASE_NETWORK_TIMEOUT'||String(data.name||'')==='AbortError'||lower.includes('timeout')||lower.includes('timed out'))kind='timeout';
+  else if(String(data.name||'')==='AbortError'||lower.includes('timeout')||lower.includes('timed out'))kind='timeout';
   else if(code==='SUPABASE_NETWORK_UNAVAILABLE'||String(data.name||'')==='TypeError'||lower.includes('failed to fetch')||lower.includes('networkerror')||lower.includes('load failed'))kind='network';
   const retryAfterMs=retryAfterMilliseconds(response,input);
   return {kind,code:code||null,status,retryAfterMs:retryAfterMs||null,original:input};
