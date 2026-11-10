@@ -109,8 +109,8 @@ test('the retired Bank library has no current source, import or installer entry'
         }
       }
     }
-  const installer = fs.readFileSync(path.join(root, 'install_bank_bridge.bat'), 'utf8'),
-    list = installer.match(/for %%F in \((server\.mjs[^)]+)\)/)?.[1];
+  const installer = fs.readFileSync(path.join(root, 'runtime-files.txt'), 'utf8'),
+    list = installer.trim();
   assert.ok(list);
   assert.ok(!list.split(/\s+/).includes('lib.mjs'));
 });

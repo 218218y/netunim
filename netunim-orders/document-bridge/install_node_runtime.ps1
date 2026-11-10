@@ -1,4 +1,8 @@
-param([Parameter(Mandatory=$true)][string]$AppRoot)
+param(
+  [Parameter(Mandatory=$true)][string]$AppRoot,
+  [switch]$VerifyOnly,
+  [switch]$WithNpm
+)
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
@@ -6,7 +10,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $version = '24.22.2'
 $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
-if ($arch -ne 'x64') { throw "Unsupported Windows architecture for pinned Document Bridge Node runtime: $arch" }
+if ($arch -ne 'x64') { throw "Unsupported Windows architecture for pinned Bridge Node runtime: $arch" }
 
 $asset = "node-v$version-win-x64.zip"
 $runtimePrefix = "node-v$version-win-x64-"
@@ -54,6 +58,9 @@ function Test-NodeRuntime([string]$RuntimeDirectory) {
   try {
     if (-not (Test-Path -LiteralPath $RuntimeDirectory -PathType Container)) { return $false }
     Assert-NodeBinary (Join-Path $RuntimeDirectory 'node.exe')
+    if ($WithNpm -and -not (Test-Path -LiteralPath (Join-Path $RuntimeDirectory 'node_modules/npm/bin/npm-cli.js') -PathType Leaf)) {
+      return $false
+    }
     return $true
   } catch {
     Write-InstallLog "Private Node runtime verification failed for $RuntimeDirectory : $($_.Exception.Message)"
@@ -69,18 +76,28 @@ function Assert-ArchiveHash([string]$ArchivePath) {
   Write-InstallLog "Verified Node archive SHA-256 for $ArchivePath"
 }
 
-function Extract-NodeExecutable([string]$ArchivePath, [string]$DestinationPath) {
+function Expand-PrivateRuntime([string]$ArchivePath, [string]$DestinationDirectory) {
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   $zip = [System.IO.Compression.ZipFile]::OpenRead($ArchivePath)
   try {
-    $entryName = "node-v$version-win-x64/node.exe"
-    $entry = @($zip.Entries | Where-Object { $_.FullName -eq $entryName }) | Select-Object -First 1
-    if (-not $entry) { throw "Verified Node archive does not contain $entryName" }
-    $input = $entry.Open()
-    try {
-      $output = [System.IO.File]::Create($DestinationPath)
-      try { $input.CopyTo($output) } finally { $output.Dispose() }
-    } finally { $input.Dispose() }
+    $prefix = "node-v$version-win-x64/"
+    $nodeEntry = $zip.GetEntry($prefix + 'node.exe')
+    if (-not $nodeEntry) { throw 'Verified Node archive does not contain node.exe' }
+    $entries = @($nodeEntry)
+    if ($WithNpm) {
+      $entries += @($zip.Entries | Where-Object {
+        $_.FullName.StartsWith($prefix + 'node_modules/npm/', [StringComparison]::Ordinal) -and $_.Name
+      })
+    }
+    $destinationPrefix = [IO.Path]::GetFullPath($DestinationDirectory) + [IO.Path]::DirectorySeparatorChar
+    foreach ($entry in $entries) {
+      $destination = [IO.Path]::GetFullPath((Join-Path $DestinationDirectory $entry.FullName.Substring($prefix.Length)))
+      if (-not $destination.StartsWith($destinationPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Unexpected entry path in the verified Node archive'
+      }
+      [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destination)) | Out-Null
+      [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $destination)
+    }
   } finally { $zip.Dispose() }
 }
 
@@ -121,9 +138,10 @@ if (Test-Path -LiteralPath $pointerPath -PathType Leaf) {
   if ((Test-RuntimeName $currentName) -and (Test-NodeRuntime (Join-Path $AppRoot $currentName))) {
     Write-InstallLog "Existing private Node runtime verified: $currentName"
     Write-Output (Join-Path (Join-Path $AppRoot $currentName) 'node.exe')
-    exit 0
+    return
   }
 }
+if ($VerifyOnly) { throw "The pinned private Node runtime is missing or invalid. Run the Bridge installer again. Diagnostics: $logPath" }
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $random = [Guid]::NewGuid().ToString('N').Substring(0, 8)
@@ -142,6 +160,7 @@ try {
   $archivePath = $null
   $localCandidates = New-Object System.Collections.Generic.List[string]
   $localCandidates.Add((Join-Path $PSScriptRoot $asset))
+  if ($WithNpm) { $localCandidates.Add((Join-Path $PSScriptRoot "../../netunim-orders/document-bridge/$asset")) }
   if ($env:USERPROFILE) { $localCandidates.Add((Join-Path (Join-Path $env:USERPROFILE 'Downloads') $asset)) }
   $localCandidates.Add((Join-Path (Join-Path $AppRoot 'downloads') $asset))
 
@@ -174,8 +193,8 @@ Automatic Node.js download failed: $($_.Exception.Message)
 Manual install path (fully supported):
 1. Download exactly: $asset
 2. Official release directory: $manualUrl
-3. Put $asset next to install_document_bridge.bat (or leave it in Downloads).
-4. Run install_document_bridge.bat again. The installer will verify SHA-256 before using it.
+3. Put $asset next to the Bridge installer (or leave it in Downloads).
+4. Run the Bridge installer again. It will verify SHA-256 before using the archive.
 Expected archive SHA-256: $expectedArchiveSha256
 Diagnostics: $logPath
 "@
@@ -183,17 +202,21 @@ Diagnostics: $logPath
   }
 
   Write-InstallLog "Extracting node.exe from verified archive: $archivePath"
-  Extract-NodeExecutable $archivePath $tempNode
+  Expand-PrivateRuntime $archivePath $tempDirectory
   Write-InstallLog "Extracted node.exe; verifying pinned SHA-256 and runtime version."
   Assert-NodeBinary $tempNode
   Write-InstallLog "Verified extracted node.exe SHA-256 and runtime version."
 
-  Move-Item -LiteralPath $tempDirectory -Destination $runtimeDirectory
+  [IO.Directory]::Move($tempDirectory, $runtimeDirectory)
   if (-not (Test-NodeRuntime $runtimeDirectory)) { throw 'Private Node.js runtime failed verification after activation.' }
 
   $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
   [System.IO.File]::WriteAllText($tempPointer, $runtimeName + [Environment]::NewLine, $utf8NoBom)
-  Move-Item -LiteralPath $tempPointer -Destination $pointerPath -Force
+  if ([IO.File]::Exists($pointerPath)) {
+    [IO.File]::Replace($tempPointer, $pointerPath, [NullString]::Value)
+  } else {
+    [IO.File]::Move($tempPointer, $pointerPath)
+  }
   Write-InstallLog "Activated private Node runtime: $runtimeName"
   Write-Output (Join-Path $runtimeDirectory 'node.exe')
 } catch {

@@ -154,9 +154,9 @@ test('bridge searches Everything with server-side folder authorization and Unico
   assert.match(nodeInstaller,/Downloads/,'filtered PCs must support a verified local Node archive');
   assert.match(nodeInstaller,/TimeoutSec/,'network Node download must have a bounded timeout');
   assert.doesNotMatch(nodeInstaller,/latest/i,'private Node installer must never follow a moving latest alias');
-  assert.ok(nodeInstaller.indexOf('Assert-ArchiveHash $archivePath')<nodeInstaller.indexOf('Extract-NodeExecutable $archivePath'),'Node archive must be verified before extraction');
+  assert.ok(nodeInstaller.indexOf('Assert-ArchiveHash $archivePath')<nodeInstaller.indexOf('Expand-PrivateRuntime $archivePath'),'Node archive must be verified before extraction');
   assert.match(nodeInstaller,/Get-FileHash[^\n]*SHA256/,'downloaded Node binary must be hashed before activation');
-  assert.match(nodeInstaller,/Move-Item[^\n]*\$tempPointer[^\n]*\$pointerPath[^\n]*-Force/,'Node pointer activation must be a single-file replacement after verification');
+  assert.match(nodeInstaller,/\[IO\.File\]::Replace\(\$tempPointer, \$pointerPath,/,'Node pointer activation must be a single-file replacement after verification');
   assert.match(lib,/BRIDGE_NODE_VERSION='24\.22\.2'/);
   assert.match(lib,/BRIDGE_NODE_WIN_X64_SHA256='1c331340fa6cac5e4294725959070a143fa0507195a78ad77eed7943f719aac9'/);
   assert.match(server,/privateNodeRuntimeInfoSync/,'Windows Bridge must validate that process.execPath is the private pinned runtime');

@@ -16,17 +16,19 @@ test('every bank runtime dependency is exact and covered by one integrity-protec
   }
   assert.equal(manifest.overrides.puppeteer,'$puppeteer');
   assert.equal(lock.packages['node_modules/puppeteer'].version,'25.16.0');
-  const installer=read(directory+'install_bank_bridge.bat');
-  assert.match(installer,/npm ci --omit=dev --ignore-scripts/);
-  assert.doesNotMatch(installer,/npm install|--package-lock=false|--no-save/);
+  const installer=read(directory+'setup-bank-bridge.mjs');
+  assert.match(installer,/node_modules\/npm\/bin\/npm-cli\.js/);
+  assert.match(installer,/'ci', '--omit=dev', '--ignore-scripts'/);
+  assert.doesNotMatch(installer,/'install',|--package-lock=false|--no-save/);
 });
 test('both Bridge installers use the same checksum-verified private Node runtime',()=>{
   const document=read('netunim-orders/document-bridge/install_node_runtime.ps1'),bank=read('netunim-kupa/bank-bridge/install_node_runtime.ps1');
   assert.equal(bank.replaceAll('\r\n','\n'),document.replaceAll('\r\n','\n'));
   assert.match(bank,/expectedArchiveSha256/);assert.match(bank,/expectedNodeSha256/);assert.match(bank,/Get-FileHash/);
-  for(const name of ['install_bank_bridge.bat','start_bank_bridge.bat']){
-    const script=read('netunim-kupa/bank-bridge/'+name);
-    assert.match(script,/node-runtime\.txt/);assert.match(script,/node-v24\.22\.2-win-x64-/);
-    assert.match(script,/PATH=%APPROOT%\\%NODERUNTIME%;%PATH%/);
-  }
+  const directory='netunim-kupa/bank-bridge/';
+  const setup=read(directory+'setup_bank_bridge.ps1'),start=read(directory+'start_bank_bridge.bat');
+  assert.match(setup,/\$nodeInstaller -AppRoot \$appRoot -WithNpm/);
+  assert.match(setup,/\$nodeInstaller -AppRoot \$appRoot -VerifyOnly/);
+  assert.match(start,/"%NODE%" server\.mjs/);
+  assert.doesNotMatch(read(directory+'rollback_bank_bridge.bat'),/where node/);
 });

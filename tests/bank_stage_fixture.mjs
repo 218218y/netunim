@@ -19,7 +19,7 @@ export async function bankStage(t,{prepare=async()=>{}}={}){
   });
   const root=fileURLToPath(new URL('../netunim-kupa/bank-bridge/',import.meta.url)),runtime=path.join(directory,'staged runtime'),app=path.join(directory,'NetunimKupaBankBridge');
   await fs.mkdir(runtime);await fs.mkdir(app);
-  const installer=await fs.readFile(path.join(root,'install_bank_bridge.bat'),'utf8'),staged=installer.match(/for %%F in \((server\.mjs[^)]+)\)/)?.[1];assert.ok(staged);
+  const installer=await fs.readFile(path.join(root,'runtime-files.txt'),'utf8'),staged=installer.trim();assert.ok(staged);
   for(const file of staged.split(/\s+/).filter(file=>file.endsWith('.mjs')))await fs.copyFile(path.join(root,file),path.join(runtime,file));
   const entry=path.join(runtime,'server.mjs'),original=await fs.readFile(entry,'utf8');assert.ok(original.includes('const PORT=8765;'));
   await fs.writeFile(entry,original.replace('const PORT=8765;',`const PORT=${port};`));

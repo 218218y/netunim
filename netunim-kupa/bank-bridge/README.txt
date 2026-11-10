@@ -15,7 +15,7 @@ It logs in locally, returns the selected account's current balance plus a bounde
 
 Installation / upgrade (Windows)
 --------------------------------
-1. Keep Google Chrome or Microsoft Edge installed/up to date. The installer provisions a checksum-verified private Node.js 24.22.2 runtime.
+1. Keep Google Chrome or Microsoft Edge installed/up to date. The installer provisions private Node.js 24.22.2 and npm from a checksum-verified archive.
 2. Run install_bank_bridge.bat.
 3. The installer first builds and validates a staged runtime. Only after it succeeds does it stop an older Netunim bridge and activate the new runtime under:
    %LOCALAPPDATA%\NetunimKupaBankBridge\app
@@ -69,7 +69,9 @@ A failed refresh also preserves the exact failure stage and upstream Hapoalim HT
 
 Maintenance
 -----------
-- To reinstall or upgrade: run install_bank_bridge.bat again. The old runtime is not replaced until staging checks pass.
+- To reinstall or upgrade: run install_bank_bridge.bat again. The runtime and Windows startup/recovery files are prepared before the previous listener drains. A failed activation restores those files and verifies the previous listener when it can be safely restarted.
+- To return to the preserved version, run %LOCALAPPDATA%\NetunimKupaBankBridge\rollback_bank_bridge.bat. Run it again to swap back. It verifies and uses the private Node runtime. The 79/80 swap retains scoped pairing, credentials, profiles and logs in the per-user data directory.
+- If setup reports that it could not verify automatic recovery, keep the paths printed by setup and check bridge.log in the per-user data directory.
 - For documented legacy recovery, show the local legacy key from the installed runtime. Keep bridge-token.txt and its contents local. Use cd /d "%LOCALAPPDATA%\NetunimKupaBankBridge\app" then node server.mjs --print-token
 - To start manually for diagnostics: run the installed start_bank_bridge.bat without --hidden.
 - Runtime log for hidden startup: %LOCALAPPDATA%\NetunimKupaBankBridge\bridge.log

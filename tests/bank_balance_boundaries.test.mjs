@@ -110,8 +110,8 @@ test('Hapoalim account reader consumes canonical financial evidence and installe
     read('shared/bank-money-value.js').replace(/\r\n/g, '\n')
   );
   assert.ok(
-    read('netunim-kupa/bank-bridge/install_bank_bridge.bat').includes(
-      'server.mjs bank-money-value.mjs'
+    read('netunim-kupa/bank-bridge/runtime-files.txt').includes(
+      'bank-money-value.mjs'
     )
   );
   assert.ok(read('netunim-kupa/bank-bridge/server.mjs').includes('const BRIDGE_VERSION=80'));
