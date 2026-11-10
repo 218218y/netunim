@@ -271,35 +271,193 @@ class WindowsDeploymentContracts(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "nt", "Actual cmd.exe coverage runs in the required Windows CI job")
 class WindowsBankInstallerRollbackContracts(unittest.TestCase):
-    def test_startup_failure_cannot_swap_a_runtime_without_confirmed_shutdown(self):
-        source = (ROOT/'netunim-kupa/bank-bridge/install_bank_bridge.bat').read_text(encoding='utf8')
-        start = source.index('if errorlevel 1 (', source.index('start "" wscript.exe "%AUTOSTART%"'))
-        end = source.index('\necho Bank Bridge was installed successfully', start)
-        block = source[start:end].replace('start "" wscript.exe "%AUTOSTART%"', 'echo restarted>>"%CI_CALLS%"')
-        for stop_exit in (1, 0):
-            with self.subTest(stop_exit=stop_exit), tempfile.TemporaryDirectory(prefix='bank rollback spaces ') as scratch:
-                base = Path(scratch)
-                for name in ('app', 'app-rollback', 'app-failed'):
-                    (base/name).mkdir()
-                    (base/name/'marker.txt').write_text(name)
-                (base/'app/server.mjs').write_text("import fs from 'node:fs';fs.appendFileSync(process.env.CI_CALLS,'stop\\n');process.exit(Number(process.env.STOP_EXIT));")
-                script = base/'verify.bat'
-                script.write_text('@echo off\nsetlocal EnableExtensions DisableDelayedExpansion\n'
-                                  'node -e "process.exit(1)"\n'+block, newline='\r\n')
-                log = base/'calls.txt'
-                env = {**os.environ, 'APPROOT': str(base), 'APPDIR': str(base/'app'), 'APPBACKUP': str(base/'app-rollback'),
-                       'APPFAILED': str(base/'app-failed'), 'AUTOSTART': 'unused', 'CI_CALLS': str(log), 'STOP_EXIT': str(stop_exit)}
-                result = subprocess.run(['cmd.exe','/d','/c','call',str(script)], cwd=base, env=env,
-                                        input='\n'*4, capture_output=True, encoding='utf8', errors='replace', timeout=10)
-                self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
-                if stop_exit:
-                    for name in ('app','app-rollback','app-failed'):
-                        self.assertEqual((base/name/'marker.txt').read_text(), name)
-                    self.assertEqual(log.read_text().splitlines(), ['stop'])
-                else:
-                    self.assertEqual((base/'app/marker.txt').read_text(), 'app-rollback')
-                    self.assertEqual((base/'app-failed/marker.txt').read_text(), 'app')
-                    self.assertEqual(log.read_text().splitlines(), ['stop','restarted'])
+    def test_real_setup_with_private_node_restores_the_previous_runtime_and_helpers(self):
+        import ctypes
+        from ctypes import wintypes
+        from contextlib import contextmanager
+
+        bridge = ROOT / 'netunim-kupa/bank-bridge'
+        archive = ROOT / 'netunim-orders/document-bridge/node-v24.22.2-win-x64.zip'
+        with tempfile.TemporaryDirectory(prefix='bank setup spaces ') as directory:
+            base = Path(directory)
+            source = base / 'source'
+            source.mkdir()
+            local = base / 'local'
+            appdata = base / 'roaming'
+            root = local / 'NetunimKupaBankBridge'
+            active = root / 'app'
+            backup = root / 'app-rollback'
+            startup = appdata / 'Microsoft/Windows/Start Menu/Programs/Startup/NetunimKupaBankBridge.vbs'
+            helper = root / 'rollback_bank_bridge.bat'
+            system = Path(os.environ['SystemRoot'])
+            env = {**os.environ, 'LOCALAPPDATA': str(local), 'APPDATA': str(appdata),
+                   'USERPROFILE': str(base), 'PSModulePath': str(system / 'System32/WindowsPowerShell/v1.0/Modules'),
+                   'PATH': os.pathsep.join(map(str, (
+                       system / 'System32', system, system / 'System32/WindowsPowerShell/v1.0')))}
+            self.assertIsNone(shutil.which('node.exe', path=env['PATH']))
+            self.assertIsNone(shutil.which('npm.cmd', path=env['PATH']))
+            with socket.socket() as sock:
+                sock.bind(('127.0.0.1', 0))
+                port = sock.getsockname()[1]
+
+            files = (bridge / 'runtime-files.txt').read_text().splitlines()
+            for file in [*files, 'runtime-files.txt', 'setup-bank-bridge.mjs', 'setup_bank_bridge.ps1',
+                         'install_node_runtime.ps1', 'install_bank_bridge.bat', 'rollback_bank_bridge.bat',
+                         'launch_hidden.vbs']:
+                shutil.copyfile(bridge / file, source / file)
+            shutil.copyfile(archive, source / archive.name)
+            # Provider downloads and live browser checks are outside this fixture.
+            # Exercise the real Node provisioning, npm ci, setup, HTTP and drain.
+            manifest = {'name': 'bank-setup-fixture', 'version': '1.0.0'}
+            (source / 'package.json').write_text(json.dumps(manifest))
+            (source / 'package-lock.json').write_text(json.dumps({
+                **manifest, 'lockfileVersion': 3, 'packages': {'': manifest}}))
+            (source / 'provision-camoufox.mjs').write_text('')
+            server = (source / 'server.mjs').read_text(encoding='utf8').replace(
+                'const PORT=8765;', f'const PORT={port};').replace(
+                "if(args.has('--doctor')){", "if(args.has('--doctor'))process.exit(0);\nif(args.has('--doctor')){")
+            (source / 'server.mjs').write_text(server, encoding='utf8')
+            active.mkdir(parents=True)
+            for name in files:
+                shutil.copyfile(source / name, active / name)
+            (active / 'server.mjs').write_text(server.replace('BRIDGE_VERSION=80;', 'BRIDGE_VERSION=79;'), encoding='utf8')
+            (active / 'installation-id.txt').write_text('7' * 32)
+            backup.mkdir()
+            (backup / 'prior.txt').write_text('previous backup')
+            startup.parent.mkdir(parents=True)
+            startup.write_text('old launcher')
+            helper.write_text('old helper')
+
+            def run_bat(script, expected):
+                output = base / 'setup-output.txt'
+                with output.open('wb') as stream:
+                    result = subprocess.run([str(system / 'System32/cmd.exe'), '/d', '/c', 'call', str(script)],
+                                            env=env, cwd=base, stdin=subprocess.DEVNULL, stdout=stream,
+                                            stderr=subprocess.STDOUT, timeout=100)
+                details = output.read_text(encoding='utf8', errors='replace')
+                self.assertEqual(result.returncode, expected, details)
+                return details
+
+            def request(target, token=None, body=None, origin=None):
+                with_connection = http.client.HTTPConnection('127.0.0.1', port, timeout=2)
+                headers = {}
+                if token:
+                    headers['Authorization'] = 'Bearer ' + token
+                if origin:
+                    headers['Origin'] = origin
+                if body is not None:
+                    headers['Content-Type'] = 'application/json'
+                try:
+                    with_connection.request('GET' if body is None else 'POST', target,
+                                            None if body is None else json.dumps(body), headers)
+                    response = with_connection.getresponse()
+                    return response.status, json.loads(response.read())
+                finally:
+                    with_connection.close()
+
+            def health(version):
+                status, result = request('/health')
+                self.assertEqual((status, result['version'], result['pairingProtocol']), (200, version, 1))
+                self.assertEqual(result['installationId'], (active / 'installation-id.txt').read_text())
+                return result
+
+            @contextmanager
+            def deny_delete(target, flags=0):
+                kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+                kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                              wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+                kernel.CreateFileW.restype = wintypes.HANDLE
+                kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+                handle = kernel.CreateFileW(str(target), 0x80000000, 3, None, 3, flags, None)
+                if handle == ctypes.c_void_p(-1).value:
+                    raise ctypes.WinError(ctypes.get_last_error())
+                try:
+                    yield
+                finally:
+                    kernel.CloseHandle(handle)
+
+            node = shutil.which('node.exe')
+            self.assertIsNotNone(node)
+            old = subprocess.Popen([node, 'server.mjs'], cwd=active, env=env,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   creationflags=subprocess.CREATE_NO_WINDOW)
+            install = source / 'install_bank_bridge.bat'
+            try:
+                for attempt in range(60):
+                    try:
+                        health(79)
+                        break
+                    except OSError:
+                        if attempt == 59:
+                            raise
+                        time.sleep(.1)
+                # Missing source helpers must abort before shutting down v79.
+                for name in ('launch_hidden.vbs', 'rollback_bank_bridge.bat'):
+                    target = source / name
+                    original = target.read_bytes()
+                    target.unlink()
+                    run_bat(install, 1)
+                    target.write_bytes(original)
+                    health(79)
+                    self.assertIsNone(old.poll())
+
+                # These are actual Windows rename failures after graceful stop.
+                for target, flags in [(startup, 0), (helper, 0), (active, 0x02000000)]:
+                    with deny_delete(target, flags):
+                        result = run_bat(install, 1)
+                        self.assertIn('restored and verified', result)
+                    health(79)
+                    self.assertEqual(startup.read_text(), 'old launcher')
+                    self.assertEqual(helper.read_text(), 'old helper')
+                    self.assertEqual((backup / 'prior.txt').read_text(), 'previous backup')
+
+                # The candidate can pass doctor and fail at actual startup.
+                bad_start = "if(process.argv.length===2)process.exit(91);\n"
+                (source / 'server.mjs').write_text(bad_start + server, encoding='utf8')
+                self.assertIn('restored and verified', run_bat(install, 1))
+                health(79)
+                self.assertEqual(startup.read_text(), 'old launcher')
+                self.assertEqual(helper.read_text(), 'old helper')
+                (source / 'server.mjs').write_text(server, encoding='utf8')
+
+                # An unrelated listener must survive and block replacement.
+                subprocess.run([node, 'server.mjs', '--stop-existing'], cwd=active, env=env,
+                               check=True, capture_output=True, timeout=10)
+                with socket.socket() as foreign:
+                    foreign.bind(('127.0.0.1', port))
+                    foreign.listen()
+                    run_bat(install, 1)
+                    self.assertEqual((active / 'installation-id.txt').read_text(), '7' * 32)
+                    self.assertEqual(startup.read_text(), 'old launcher')
+
+                run_bat(install, 0)
+                installed = health(80)
+                origins = ['https://kupa.bargig-furniture.com', 'https://orders.bargig-furniture.com']
+                admin = (root / 'pairing-v1/admin-token.txt').read_text().strip()
+                keys = []
+                self.assertEqual(request('/pairing/admin', admin, {'action': 'begin'})[0], 200)
+                for origin in origins:
+                    status, issued = request('/pairing/admin', admin, {
+                        'action': 'issue', 'origin': origin, 'permissions': ['bank.read']})
+                    self.assertEqual(status, 200, issued)
+                    status, grant = request('/pairing/exchange', body={'code': issued['code']}, origin=origin)
+                    self.assertEqual(status, 200, grant)
+                    keys.append(grant['token'])
+                self.assertEqual(request('/pairing/admin', admin, {'action': 'finish'})[0], 200)
+                registry = (root / 'pairing-v1/registry.json').read_bytes()
+                for version in (79, 80):
+                    run_bat(helper, 0)
+                    health(version)
+                    self.assertEqual((root / 'pairing-v1/registry.json').read_bytes(), registry)
+                    for origin, key in zip(origins, keys):
+                        self.assertEqual(request('/status', key, origin=origin)[0], 200)
+                self.assertEqual(health(80)['installationId'], installed['installationId'])
+            finally:
+                subprocess.run([node, 'server.mjs', '--stop-existing'], cwd=active, env=env,
+                               capture_output=True, timeout=10)
+                if old.poll() is None:
+                    old.kill()  # Only the owned synthetic test process.
+                old.wait(timeout=10)
 
 
 @unittest.skipUnless(os.name == "nt", "CurrentUser DPAPI vault coverage runs in the required Windows CI job")

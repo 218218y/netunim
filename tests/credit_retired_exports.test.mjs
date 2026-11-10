@@ -22,7 +22,7 @@ test('Credit compatibility files are absent from every current import and the in
           assert.ok(!retired.has(path.posix.basename(target)), name + ' imports retired ' + target);
       }
     }
-  const installer = fs.readFileSync(path.join(bridge, 'install_bank_bridge.bat'), 'utf8');
+  const installer = fs.readFileSync(path.join(bridge, 'runtime-files.txt'), 'utf8');
   for (const name of retired) {
     assert.ok(!installer.includes(name));
     assert.equal(fs.existsSync(path.join(bridge, name)), false);

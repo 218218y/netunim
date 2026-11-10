@@ -13,12 +13,12 @@ if not "%NODERUNTIME:\=%"=="%NODERUNTIME%" exit /b 1
 if not "%NODERUNTIME:/=%"=="%NODERUNTIME%" exit /b 1
 if not "%NODERUNTIME:..=%"=="%NODERUNTIME%" exit /b 1
 if not exist "%APPROOT%\%NODERUNTIME%\node.exe" exit /b 1
-set "PATH=%APPROOT%\%NODERUNTIME%;%PATH%"
+set "NODE=%APPROOT%\%NODERUNTIME%\node.exe"
 
 if "%HIDDEN%"=="1" (
   if not exist "%LOCALAPPDATA%\NetunimKupaBankBridge" mkdir "%LOCALAPPDATA%\NetunimKupaBankBridge" >nul 2>nul
-  node server.mjs >> "%LOCALAPPDATA%\NetunimKupaBankBridge\bridge.log" 2>&1
-  exit /b %ERRORLEVEL%
+  "%NODE%" server.mjs >> "%LOCALAPPDATA%\NetunimKupaBankBridge\bridge.log" 2>&1
+  goto :eof
 )
 
-node server.mjs
+"%NODE%" server.mjs
