@@ -367,13 +367,16 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(tx.error||new Error('storage_cutover_aborted'));
     }))
   }
+  // This store is written only by begin/advance below. The existing decoder
+  // checks the sealed JSON, and phase/identity checks still own replay admission.
+  /** @typedef {import('./storage-journal-db.js').LocalBirthPlan} LocalBirthPlan */
   /** @type {Db['readLocalBirth']} */
-  function readLocalBirth(scope){return readTransition('local-births',scope)}
+  function readLocalBirth(scope){return /** @type {Promise<LocalBirthPlan|null>} */ (readTransition('local-births',scope))}
   /** @type {Db['beginLocalBirth']} */
-  async function beginLocalBirth(scope,record){record=captureStorageJournalPayload(record);return transactStores(['local-births'],'readwrite',(tx,done,fail)=>{
+  async function beginLocalBirth(scope,input){const record=/** @type {typeof input} */ (captureStorageJournalPayload(input));return transactStores(['local-births'],'readwrite',(tx,done,fail)=>{
     const store=tx.objectStore('local-births'),request=store.get(scope);
     request.onsuccess=()=>{try{
-      if(request.result){const result=readJournalObject(request.result);if(result.id!==record.id)throw new Error('storage_local_birth_pending');done(result);return}
+      if(request.result){const result=/** @type {LocalBirthPlan} */ (readJournalObject(request.result));if(result.id!==record.id)throw new Error('storage_local_birth_pending');done(result);return}
       if(record.scope!==scope||record.phase!=='prepared')throw new Error('storage_local_birth_invalid');
       const result=structuredClone(record);store.put(sealStorageRecord(result),scope);done(result);
     }catch(cause){fail(cause)}};
@@ -382,12 +385,12 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
   function advanceLocalBirth(scope,id,fromPhase,toPhase){return transactStores(['local-births'],'readwrite',(tx,done,fail)=>{
     const store=tx.objectStore('local-births'),request=store.get(scope);
     request.onsuccess=()=>{try{
-      if(!request.result)throw new Error('storage_local_birth_missing');const current=readJournalObject(request.result);
+      if(!request.result)throw new Error('storage_local_birth_missing');const current=/** @type {LocalBirthPlan} */ (readJournalObject(request.result));
       if(current.id!==id||current.phase!==fromPhase||current.scope!==scope)throw new Error('storage_local_birth_changed');
-      /** @type {State} */ const result={...current,phase:toPhase,updatedAt:new Date().toISOString()};
+      /** @type {LocalBirthPlan} */ const result={...current,phase:toPhase,updatedAt:new Date().toISOString()};
       // The full source is needed only until both journals and the marker are
       // durable. Retire the duplicate snapshot after completion.
-      if(toPhase==='complete'){delete result.mainState;delete result.sharedState}
+      if(result.phase==='complete'){delete result.mainState;delete result.sharedState}
       store.put(sealStorageRecord(result),scope);done(result);
     }catch(cause){fail(cause)}};
   },'storage_local_birth_aborted')}

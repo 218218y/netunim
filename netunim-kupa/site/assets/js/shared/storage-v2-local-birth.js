@@ -5,8 +5,24 @@ import {storageLocalEngineCacheKey} from './storage-v2-activation-cache.js';
 
 export const storageLocalEngineKey=storageLocalEngineCacheKey;
 
+/**
+ * @typedef {import('./storage-v2-runtime-contracts.js').App} App
+ * @typedef {import('./storage-v2-runtime-contracts.js').RuntimeMethods} MainRuntime
+ * @typedef {ReturnType<typeof import('./shared-checks-v2-runtime.js').createSharedChecksV2Runtime>} SharedRuntime
+ * @typedef {import('./storage-journal-db.js').StorageJournalDb} JournalDb
+ * @typedef {import('./storage-journal-db.js').LocalBirthPlan} LocalBirthPlan
+ * @typedef {import('./storage-json.js').StorageJson} Json
+ * @typedef {import('./storage-json.js').StorageJsonObject} State
+ * @typedef {{app:App,owner:()=>string,storage?:Pick<Storage,'getItem'|'setItem'>}} MarkerScope
+ * @typedef {{mainState:State,sharedState:State,auxiliaryState?:Json}} BirthSource
+ * @typedef {{primary:()=>boolean,main:Pick<MainRuntime,'initializeLocal'|'recover'>,shared:Pick<SharedRuntime,'initializeLocal'|'recover'>,
+ *   db:Pick<JournalDb,'readLocalEngine'|'markLocalEngine'|'readLocalBirth'|'beginLocalBirth'|'advanceLocalBirth'>,
+ *   enableShared:()=>void,readSource:()=>Promise<BirthSource|null>,quiesce:()=>Promise<void>,
+ *   applyAuxiliary:(state:Exclude<Json,null>)=>Promise<void>,verifyAuxiliary:(state:Exclude<Json,null>)=>Promise<boolean>,operationId:()=>string|undefined}} BirthPorts
+ */
+/** @param {Partial<MarkerScope & {db:Pick<JournalDb,'readLocalEngine'>}>} [options] */
 export async function verifyStorageV2LocalEngine({app,owner,db=createStorageJournalDb(),storage=globalThis.localStorage}={}){
-  if(!['orders','kupa'].includes(app)||typeof owner!=='function')throw new Error('storage_local_engine_configuration');
+  if((app!=='orders'&&app!=='kupa')||typeof owner!=='function')throw new Error('storage_local_engine_configuration');
   if(owner()!=='local')return false;
   const scope=`${app}:local`,record=await db.readLocalEngine(app);
   if(owner()!=='local')throw new Error('storage_local_birth_owner_changed');
@@ -21,10 +37,16 @@ export async function verifyStorageV2LocalEngine({app,owner,db=createStorageJour
 
 // This marker describes the local storage engine only. It never fabricates a
 // cloud cursor, and a browser cache alone can never authorize a V2 writer.
-export function createStorageV2LocalBirth({app,owner,primary,main,shared,enableShared=()=>{},readSource,quiesce=async()=>{},applyAuxiliary=async()=>{},verifyAuxiliary=async()=>true,db=createStorageJournalDb(),storage=globalThis.localStorage,operationId=()=>globalThis.crypto?.randomUUID?.()}={}){
-  if(!['orders','kupa'].includes(app)||[owner,primary,main?.initializeLocal,main?.recover,shared?.initializeLocal,shared?.recover,readSource,quiesce,applyAuxiliary,verifyAuxiliary].some(value=>typeof value!=='function'))throw new Error('storage_local_birth_configuration');
+/** @param {Partial<MarkerScope & BirthPorts>} [options] */
+export function createStorageV2LocalBirth({app:site,owner:readOwner,primary,main:mainRuntime,shared:sharedRuntime,enableShared=()=>{},readSource:sourceReader,quiesce=async()=>{},applyAuxiliary=async()=>{},verifyAuxiliary=async()=>true,db=createStorageJournalDb(),storage=globalThis.localStorage,operationId=()=>globalThis.crypto?.randomUUID?.()}={}){
+  if((site!=='orders'&&site!=='kupa')||typeof readOwner!=='function'||typeof primary!=='function'||
+    typeof mainRuntime?.initializeLocal!=='function'||typeof mainRuntime.recover!=='function'||typeof sharedRuntime?.initializeLocal!=='function'||typeof sharedRuntime.recover!=='function'||
+    typeof sourceReader!=='function'||typeof quiesce!=='function'||typeof applyAuxiliary!=='function'||typeof verifyAuxiliary!=='function')throw new Error('storage_local_birth_configuration');
+  const app=site,owner=readOwner,main=mainRuntime,shared=sharedRuntime,readSource=sourceReader;
   const scope=`${app}:local`,key=storageLocalEngineKey(app);
-  let plan=null,running=null,freezing=false;
+  /** @type {LocalBirthPlan|null} */ let plan=null;
+  /** @type {Promise<LocalBirthPlan|{already:true}>|null} */ let running=null;
+  let freezing=false;
   const guard=()=>{if(owner()!=='local'||!primary())throw new Error('storage_local_birth_owner_changed')};
   function cacheMarker(){
     if(!storage)throw new Error('storage_local_engine_cache_failed');
@@ -53,7 +75,7 @@ export function createStorageV2LocalBirth({app,owner,primary,main,shared,enableS
       }
       if(current.phase==='shared-initialized'){
         if(current.auxiliaryState!=null){await applyAuxiliary(current.auxiliaryState);guard();const verified=await verifyAuxiliary(current.auxiliaryState);guard();if(verified!==true)throw new Error('storage_local_birth_auxiliary_unverified')}
-        const mainState=(await main.recover(null))?.state;guard();const sharedState=(await shared.recover())?.state;guard();
+        const mainState=(await main.recover())?.state;guard();const sharedState=(await shared.recover())?.state;guard();
         if(!mainState||!sharedState||!equalSyncJson(mainState,current.mainState)||!equalSyncJson(sharedState,current.sharedState))throw new Error('storage_local_birth_parity_mismatch');
         current=await db.advanceLocalBirth(scope,current.id,'shared-initialized','verified');guard();plan=current;continue;
       }
@@ -78,7 +100,7 @@ export function createStorageV2LocalBirth({app,owner,primary,main,shared,enableS
           if(existing.phase!=='verified')throw new Error('storage_local_birth_marker_phase_mismatch');
           return execute();
         }
-        return {already:true};
+        return {already:/** @type {const} */ (true)};
       }
       if(existing){if(existing.phase==='complete')throw new Error('storage_local_birth_marker_missing');return execute()}
       freezing=true;
@@ -88,7 +110,9 @@ export function createStorageV2LocalBirth({app,owner,primary,main,shared,enableS
         if(!source?.mainState||!source?.sharedState)throw new Error('storage_local_birth_source_missing');
         assertStorageJson(source.mainState);assertStorageJson(source.sharedState);if(source.auxiliaryState!=null)assertStorageJson(source.auxiliaryState);
         const id=String(operationId()||'').trim();if(!id)throw new Error('storage_local_birth_id_unavailable');
-        const now=new Date().toISOString(),record={version:2,scope,app,owner:'local',id,phase:'prepared',mainState:structuredClone(source.mainState),sharedState:structuredClone(source.sharedState),auxiliaryState:source.auxiliaryState==null?null:structuredClone(source.auxiliaryState),createdAt:now,updatedAt:now};
+        const now=new Date().toISOString();
+        /** @type {import('./storage-journal-db.js').PreparedLocalBirth} */
+        const record={version:2,scope,app,owner:'local',id,phase:'prepared',mainState:structuredClone(source.mainState),sharedState:structuredClone(source.sharedState),auxiliaryState:source.auxiliaryState==null?null:structuredClone(source.auxiliaryState),createdAt:now,updatedAt:now};
         plan=await db.beginLocalBirth(scope,record);guard();return execute();
       }finally{freezing=false}
     })().finally(()=>{running=null});return running;

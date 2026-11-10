@@ -92,3 +92,29 @@ existing 15-job CI workflow. Both focused PRs require their full branch checks
 before merging. Once these pass and both repairs reach main, the stopping
 criterion for this hardening round is met; remaining provider/static work needs
 new evidence rather than an automatic continuation of file conversions.
+
+## Follow-up on 10 November 2026
+
+The [Windows investigation](https://github.com/218218y/netunim/actions/runs/42898993905)
+on `e78ef642` recorded 24 successful paired recovery samples across Orders and
+Kupa. Each app exercised graceful exit and hard termination twice at each of
+`prepared`, `shared-applied` and `main-applied`. The historical LevelDB checksum
+failure did not recur in these samples. The workflow retained the isolated
+profiles and evidence. Production recovery behavior and persisted formats are
+unchanged.
+
+Strict checking now covers Account Marker, Local Birth and the Bank Bridge's
+expanded Hapoalim cheque details. Local Birth ports use the existing Main and
+Shared runtime types, and the journal database restricts callers to the existing
+phase transitions. Detached Target still requires separate work on the types of
+historical bootstrap records and current RPC replies.
+
+A read-only catalog and routine-body inventory in Staging and Production found
+the same 23 legacy writer signatures listed in migration `20260925123000`.
+Neither browser role can execute them. `service_role` retains EXECUTE on all
+23. The catalog recorded no dependents, but nine legacy writer names are called
+in routine bodies. They include base Orders, Kupa and Shared writers called by
+internal core routines, plus finance and bank writers reached through internal
+functions used by v6. Both projects expose the twelve v6 writers and retain the
+active read endpoint `list_incomplete_restore_groups_v5`. The inventory did not
+establish external service-role callers, so removal remains deferred.

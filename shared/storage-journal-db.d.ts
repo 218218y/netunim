@@ -6,6 +6,16 @@ import type {StoredStorageOperation} from './storage-operation.js';
 import type {createStorageOwnerTransactions} from './storage-owner-idb.js';
 
 export type State = StorageJsonObject;
+type LocalBirthPhase = 'prepared'|'main-initialized'|'shared-initialized'|'verified'|'complete';
+type LocalBirthHeader = {
+  version:2,scope:string,app:import('./storage-v2-runtime-contracts.js').App,owner:'local',id:string,
+  createdAt:string,updatedAt:string,auxiliaryState?:import('./storage-json.js').StorageJson,
+};
+export type LocalBirthPlan = State & LocalBirthHeader & (
+  {phase:Exclude<LocalBirthPhase,'complete'>,mainState:State,sharedState:State}|{phase:'complete'}
+);
+export type PreparedLocalBirth = LocalBirthPlan & {phase:'prepared',auxiliaryState:import('./storage-json.js').StorageJson};
+type LocalBirthTransition = ['prepared','main-initialized']|['main-initialized','shared-initialized']|['shared-initialized','verified']|['verified','complete'];
 type Checkpoint = SealedStorageRecord<StoredStorageCheckpoint>;
 type Base = SealedStorageRecord<StoredCloudBase>;
 type Flight = SealedStorageRecord<StoredCloudFlight>;
@@ -49,9 +59,9 @@ interface JournalTransactions {
   advanceBootstrapGroup(scope:string,id:import('./storage-json.js').StorageJson,fromPhase:string,toPhase:string,patch?:State): Promise<State>;
   readV2Marker(scope:string): Promise<State|null>;
   markAccountMarker(app:'orders'|'kupa',identity:string): Promise<State|null>;
-  readLocalBirth(scope:string): Promise<State|null>;
-  beginLocalBirth(scope:string,record:State): Promise<State>;
-  advanceLocalBirth(scope:string,id:string,fromPhase:string,toPhase:string): Promise<State>;
+  readLocalBirth(scope:string): Promise<LocalBirthPlan|null>;
+  beginLocalBirth(scope:string,record:PreparedLocalBirth): Promise<LocalBirthPlan>;
+  advanceLocalBirth(scope:string,id:string,...transition:LocalBirthTransition): Promise<LocalBirthPlan>;
   markLocalEngine(app:'orders'|'kupa'): Promise<State|null>;
   readLocalEngine(app:'orders'|'kupa'): Promise<State|null>;
   adoptFencedAccount(app:'orders'|'kupa',identity:string,options:{mainState:State,mainCloudState:State,mainRevision:number,sharedState:State,sharedRevision:number,sourceOwner?:string}): Promise<State|null>;

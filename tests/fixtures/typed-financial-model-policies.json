@@ -2,6 +2,18 @@
   "baseline": "5b2598ba",
   "reason": "Reviewed equivalent typed normalization: explicit guards, tuple records, contextual results and tagged errors. Behavioral and mutation tests are retained.",
   "bankPolicies": {
+    "buildHapoalimAdditionalDetailsUrl": {
+      "before": "c252302489f503612346d6ccf9d989534431bc011ddf3c3751c041663e4be6c6",
+      "after": "6174a18c94e95d05d36ca9cce400dd11ba851fa8fcced48d2106132fdf8a527e"
+    },
+    "mergeHapoalimAdditionalDetails": {
+      "before": "c34c06d83dcdd24a3ce82bac5f07787239e80d7d431d6dbb7833aefcdda2b653",
+      "after": "834444e1f0bdf68554da0f040599a0bbfc98e9e4aa6380c17dfa0929acb89f94"
+    },
+    "normalizeHapoalimAdditionalDetails": {
+      "before": "d19fa95eda65c4950863f1ef85706da0aed14f7b162150eeaeaa260ba6a89c72",
+      "after": "92f3d424bc659dd8f387dc49694ab9ec014efc0a8f1acba9875a3bc4f8ace91b"
+    },
     "object": {
       "before": null,
       "after": "a0d05f610121535f4690f1ea8413cee491daa1223cd733b0db8e468b2335748c"
