@@ -42,6 +42,10 @@ import {createBankDiagnosticRun,finishBankDiagnosticRun,recordBankAccountDiagnos
 const HOST='127.0.0.1';
 const PORT=8765;
 const BRIDGE_VERSION=79;
+// Capture the installer's marker once. Reading it on each request would let
+// an old process at the same path report the newly staged installation.
+const marker=(await fs.readFile(new URL('./installation-id.txt',import.meta.url),'utf8').catch(()=> '')).trim();
+const installationId=/^[a-f0-9]{32}$/.test(marker)?marker:'';
 const BROWSER_IDENTITY_PROBE_URL=`http://${HOST}:${PORT}/health`;
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -171,6 +175,10 @@ if(process.argv[2]==='--pairing'){
   catch { console.error('Pairing failed. Check the command, local approval, Bridge status and exact Origin.'); process.exit(1); }
 }
 if(args.has('--stop-existing')){try{await replacement.stop();process.exit(0)}catch(e){console.error(e?.message||e);process.exit(1)}}
+if(args.has('--check-running')){
+  try{await replacement.check({version:BRIDGE_VERSION,creditContractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,installationId});process.exit(0)}
+  catch(error){console.error(error?.message||error);process.exit(1)}
+}
 if(args.has('--doctor')){
   try{
     const browserPath=await browserLocator.find();
@@ -222,7 +230,7 @@ const routes=createBankBridgeRoutes({version:BRIDGE_VERSION,contractVersion:CRED
   cheques:{read:async key=>{const image=await images.read(key);return image&&images.inRetention(image.eventDate)?image:null}},
   shutdown:{afterResponse:()=>{void shutdown.request()}},
 });
-const handler=createBankBridgeHttpHandler({token,routes,originPolicy,pairing,admission:{assertAccepting:operations.assertAccepting},health:()=>({ok:true,service:'netunim-kupa-bank-bridge',version:BRIDGE_VERSION,creditContractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION})});
+const handler=createBankBridgeHttpHandler({token,routes,originPolicy,pairing,admission:{assertAccepting:operations.assertAccepting},health:()=>({ok:true,service:'netunim-kupa-bank-bridge',version:BRIDGE_VERSION,creditContractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,...(installationId?{installationId}:{})})});
 let pairingReady=false, pairingStartup;
 activeServer=http.createServer((req,res)=>{
   if(pairingReady)return handler(req,res);

@@ -1,5 +1,5 @@
 // @ts-check
-/** @typedef {{response:{ok:boolean},data:{service?:unknown,ok?:unknown,code?:unknown}}} LoopbackResponse
+/** @typedef {{response:{ok:boolean},data:{service?:unknown,ok?:unknown,code?:unknown,version?:unknown,creditContractVersion?:unknown,pairingProtocol?:unknown,installationId?:unknown}}} LoopbackResponse
  * @typedef {{probe:()=>Promise<LoopbackResponse|null>,readToken:(health:LoopbackResponse)=>Promise<string>,
  * shutdown:(token:string)=>Promise<LoopbackResponse>,waitUntilStopped:()=>Promise<boolean>}} ReplacementPorts */
 /**
@@ -10,6 +10,18 @@
  */
 export function createBridgeReplacementCommand({ probe, readToken, shutdown, waitUntilStopped }) {
     const failure = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
+    /** @param {{version:number,creditContractVersion:number,installationId:string}} expected */
+    async function check(expected) {
+        if (!expected.installationId)
+            throw failure('INSTALLATION_ID_MISSING', 'The staged Bank Bridge installation ID is missing or invalid. Rerun the installer.');
+        const health = await probe();
+        const data = health?.data;
+        if (!health?.response.ok || data?.ok !== true || data.service !== 'netunim-kupa-bank-bridge' ||
+            data.version !== expected.version || data.creditContractVersion !== expected.creditContractVersion)
+            throw failure('HEALTHCHECK_FAILED', 'The expected Bank Bridge service/version did not respond on the local port.');
+        if (data.pairingProtocol !== 1 || data.installationId !== expected.installationId)
+            throw failure('INSTALLATION_MISMATCH', 'The running Bank Bridge does not match this installation or lacks scoped pairing. An older instance may still be running.');
+    }
     async function stop() {
         let health;
         try {
@@ -48,5 +60,5 @@ export function createBridgeReplacementCommand({ probe, readToken, shutdown, wai
         if (!stopped)
             throw failure('BRIDGE_SHUTDOWN_PENDING', 'Bank Bridge is still finishing accepted work. Retry the installation after it stops; the process was not force-stopped.');
     }
-    return Object.freeze({ stop });
+    return Object.freeze({ stop, check });
 }

@@ -22,17 +22,18 @@ test('reinstalled legacy config serves every production website while preserving
   await fs.writeFile(runtime.paths.CONFIG_PATH,'\uFEFF'+JSON.stringify(original));
   await fs.writeFile(runtime.paths.TOKEN_PATH,'synthetic-pairing-token\n');
   let entries=0;
+  const installationId='a'.repeat(32);
   const routes=new Map(['POST /documents/warm','GET /documents/pdf-index/status','POST /documents/recent',
     'POST /documents/search','POST /documents/native-preview/hide'].map(key=>[key,{readBody:key.startsWith('POST'),run:async()=>{entries++;return {ok:true}}}]));
   const handler=createDocumentBridgeHttpHandler({loadConfig:runtime.loadConfig,readToken:runtime.ensureToken,routes,
-    health:()=>({ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION}),appendLog:async()=>{}});
+    health:()=>({ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,pairingProtocol:1,installationId}),appendLog:async()=>{}});
   const server=http.createServer((req,res)=>handler(req,res).catch(error=>{res.writeHead(500);res.end(error.message)}));
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve))});
   const port=server.address().port,base=`http://127.0.0.1:${port}`;
   const fail=()=>{throw Error('acceptance must not read token, launch or terminate processes')};
   const replacement=createBridgeReplacementCommand({token:{path:runtime.paths.TOKEN_PATH,read:fail},
-    listener:{port,request:http.request,allowedOrigins:async()=>(await runtime.loadConfig()).allowedOrigins},
+    listener:{port,installationId,request:http.request,allowedOrigins:async()=>(await runtime.loadConfig()).allowedOrigins},
     processes:{bridgeListenerPid:fail,forceStopProcessTree:fail,waitForProcessExit:fail},runtime:{now:Date.now,setTimeout,log:fail}});
   assert.equal((await replacement.checkRunning()).version,BRIDGE_VERSION);assert.equal(entries,0);
   for(const origin of DEFAULT_ALLOWED_ORIGINS){

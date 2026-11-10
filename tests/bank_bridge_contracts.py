@@ -264,7 +264,11 @@ ok('ExpandEnvironmentStrings("%LOCALAPPDATA%")' in launcher and '%~dp0' not in l
 ok('%APPROOT%\\app' in installer and 'app-staging' in installer and 'npm ci' in installer and '--doctor' in installer, 'bank bridge install: runtime is staged and validated in a stable per-user location before activation')
 ok('--stop-existing' in installer and 'POST /shutdown' in http_routes and 'afterResponse:()=>{void shutdown.request()}' in server and 'await replacement.stop()' in server and 'stopVerifiedListener' not in server and 'Stop-Process' not in server, 'bank bridge upgrade: verified replacement requests owned drainage without force-killing accepted work')
 ok('node "%STAGING%\\server.mjs" --stop-existing' in installer and 'move "%APPDIR%" "%APPBACKUP%"' in installer and 'could not be preserved for rollback' in installer and 'rollback_bank_bridge.bat' in installer and 'move "%APPBACKUP%" "%APPDIR%"' in rollback, 'bank bridge upgrade: validated staging preserves the previous runtime and ships a reversible rollback swap')
-ok('const BRIDGE_VERSION=79' in server and 'version:BRIDGE_VERSION' in server and 'Number(j.version)>=79' in installer and 'credit-data-diagnostics.mjs' in installer and 'Number(j.creditContractVersion)!==2' in installer and '/health' in installer, 'financial bridge install: installer verifies Bridge v79 and Credit Connector contract v2 after hidden startup')
+ok('const BRIDGE_VERSION=79' in server and 'version:BRIDGE_VERSION' in server
+   and 'creditContractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,installationId' in server
+   and 'credit-data-diagnostics.mjs' in installer
+   and 'node "%APPDIR%\\server.mjs" --check-running' in installer.split('start "" wscript.exe "%AUTOSTART%"', 1)[1],
+   'financial bridge install: hidden startup is followed by the staged runtime check command')
 credit_connections=(SITE/'assets/js/domains/credit/connection-owner.js').read_text(encoding='utf-8')
 credit_connections_compact=re.sub(r'\s+','',credit_connections)
 credit_composition_compact=re.sub(r'\s+','',credit_composition)

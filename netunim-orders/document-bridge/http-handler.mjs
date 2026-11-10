@@ -33,6 +33,7 @@ function sendBinary(req, res, {buffer, mime, name}, config) {
   res.writeHead(200, {
     'Content-Type': mime, 'Content-Length': String(buffer.length),
     'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(name)}`,
+    'X-Content-Type-Options': 'nosniff',
     ...corsHeaders(req, config),
   });
   res.end(buffer);
