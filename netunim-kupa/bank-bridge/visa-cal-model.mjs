@@ -92,7 +92,11 @@ export function normalizeVisaCalTransaction(transaction = {}) {
     credit = String(transaction.trnTypeCode) === CAL_TRANSACTION_TYPES.credit;
   return normalizeCreditScrapeTransaction({
     identifier: pending ? '' : transaction.trnIntId,
-    type: [CAL_TRANSACTION_TYPES.regular, CAL_TRANSACTION_TYPES.standingOrder].includes(
+    type: [
+      CAL_TRANSACTION_TYPES.regular,
+      CAL_TRANSACTION_TYPES.standingOrder,
+      CAL_TRANSACTION_TYPES.debit,
+    ].includes(
       String(transaction.trnTypeCode)
     )
       ? 'normal'

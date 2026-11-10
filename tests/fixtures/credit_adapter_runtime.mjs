@@ -37,6 +37,8 @@ async function fetchFixture(value) {
             paymentCurrency: 'ILS',
             originalAmount: 25,
             originalCurrency: 'ILS',
+            promotionClub: 'Synthetic club',
+            promotionAmount: -5,
             arn: 'fixture-' + selected,
           },
         ],

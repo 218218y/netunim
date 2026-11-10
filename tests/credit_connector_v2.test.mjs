@@ -123,7 +123,7 @@ let genericOptions=null;
 const maxFixture=fakeMaxScraperFixture({months:{'2026-08':{result:{transactions:[maxFixtureRaw()]}},'2026-09':{result:{transactions:[maxFixtureRaw({id:'max-pending-1',purchaseDate:'2026-09-03T00:00:00',paymentDate:null,amount:120,originalAmount:120,purchaseTime:'05:10'})]}},'2026-10':{result:{transactions:[]}}}});
 const genericAdapter=new MaxAdapter({profile:{profileId:'max-billing',provider:'max',label:'MAX billing',credentials:{username:'u',password:'p'}},companyId:'max',createScraper:options=>{genericOptions=options;return maxFixture.scraper},now:()=>new Date(fixedNow),syncMode:'quick'});
 const genericResult=await genericAdapter.scrape();
-assert.equal(MAX_PROVIDER_SCHEMA_VERSION,'max-netunim-v2+upstream-login-6.10.0');
+assert.equal(MAX_PROVIDER_SCHEMA_VERSION,'max-netunim-v3+promotions-6.13.0+upstream-login-6.10.0');
 assert.equal(genericOptions.outputData?.enableTransactionsFilterByDate,false,'MAX keeps upstream date filtering disabled while Netunim owns the canonical billing-date boundary');
 assert.equal(genericOptions.includeRawTransaction,true,'MAX keeps raw provider rows in-memory only long enough to normalize proven fields and diagnostics');
 assert.equal(maxFixture.calls.initialize,1);assert.equal(maxFixture.calls.login,1);assert.equal(maxFixture.calls.terminate,1,'the local MAX adapter owns exactly one authenticated browser lifecycle');
