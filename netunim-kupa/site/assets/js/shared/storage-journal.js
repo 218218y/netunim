@@ -102,13 +102,18 @@ export function createStorageJournal({owner:configuredOwner,schema:configuredSch
   }catch{/* A committed duplicate is safe; recovery checks its exact identity. */}}
   /** @type {JournalMethods['recover']} */
   async function recover(){const done=beginMeasure('storage:replay');try{
+    // Capture emergency evidence before the asynchronous IDB snapshot. A
+    // commit during load() can retire its emergency copy; reading emergency
+    // afterwards could pair the old IDB head with only a later pending entry
+    // and invent a journal gap. Newer edits belong to a subsequent read;
+    // publication still checks the captured generation and durable head.
+    const records=readEmergency();
     const stored=await db.load(owner);if(!stored.checkpoints)return null;
     const base=readStorageCheckpoint(stored.checkpoints);
     if(base.owner!==owner||stored.metadata?.epoch!==base.epoch)throw new Error('storage_checkpoint_metadata');
     const committedSeq=stored.journal.map(record=>readScopedOperation(record,base.epoch)).reduce((maximum,operation)=>Math.max(maximum,operation.seq),base.seq);
     if(!Number.isSafeInteger(stored.metadata.seq)||committedSeq!==stored.metadata.seq)throw new Error('storage_committed_metadata_mismatch');
     readStorageCloudHead({base:stored.bases,flight:stored.flights,control:stored.controls},{owner,epoch:base.epoch,seq:stored.metadata.seq});
-    const records=readEmergency();
     // A prior epoch is retained for diagnostics, but cannot cross a restore boundary.
     const applicable=records.filter(record=>record.data.epoch===base.epoch).map(record=>sealStorageRecord(readScopedOperation(record,base.epoch)));
     const replay=replayStorageJournal(stored.checkpoints,[...stored.journal,...applicable],schema);

@@ -18,7 +18,20 @@ const model={state:clone(INITIAL_STATE)},session={localGeneration:0,cloudRevisio
 const normalization=createStateNormalization({model,externalWorkbooks:true});
 const project=state=>{const next=app==='kupa'?normalization.prepareKupaCloudState(state):clone(state);delete next.checks;delete next._meta;return next};
 model.state=normalization.normalizeState(model.state);
-const db=createStorageJournalDb(),wrapped={...db},calls=[],statuses=[],recoveryObservations=[];let owner='post-ack-native',loginEpoch=1,onAck=null,onRecovery=null,remoteRow=null;
+const db=createStorageJournalDb(),wrapped={...db},calls=[],statuses=[],recoveryObservations=[];let owner='post-ack-native',loginEpoch=1,onAck=null,onRecovery=null,remoteRow=null,readRace=false,readRaceInjected=false,pendingReadEdit=null;
+wrapped.load=async(...args)=>{
+ const captured=await db.load(...args);
+ if(readRace){
+   readRace=false;readRaceInjected=true;
+   await edit('late-note','committed-during-read');
+   const append=wrapped.append;let release;
+   const gate=new Promise(resolve=>{release=resolve});
+   wrapped.append=async(...values)=>{await gate;return append(...values)};
+   pendingReadEdit=edit('raced-note','pending-during-read');
+   setTimeout(()=>{wrapped.append=append;release()},25);
+ }
+ return captured;
+};
 const originalError=console.error;console.error=(...args)=>{recoveryObservations.push({errors:args.filter(value=>value instanceof Error).map(value=>value.message)});originalError(...args)};
 wrapped.acknowledge=async(...args)=>{await db.acknowledge(...args);const callback=onAck;onAck=null;if(callback)await callback()};
 wrapped.commitCloudRecovery=async(...args)=>{if(onRecovery)await onRecovery();try{return await db.commitCloudRecovery(...args)}catch(error){recoveryObservations.push({casFailure:error.message});throw error}};
@@ -43,7 +56,7 @@ const rpc=async(state,expected,operationId)=>{calls.push({expected,operationId,s
 const ports={getCloudWriteScope:()=>runtime.cloudScope&&({...runtime.cloudScope,accountOwner:owner,loginEpoch}),model,session,files,tab,toast:noop,render:noop,
  refreshStorageV2CloudState:()=>driver.refreshStorageV2CloudState(),materializeStorageV2CloudFlight:args=>driver.materializeStorageV2CloudFlight(args),acknowledgeStorageV2CloudFlight:(...args)=>driver.acknowledgeStorageV2CloudFlight(...args),
  setStorageV2CloudControl:(...args)=>driver.setStorageV2CloudControl(...args),storageV2CommitPromise:()=>runtime.commitPromise,
- readStorageV2CloudRecovery:async(...args)=>{const evidence=await driver.readStorageV2CloudRecovery(...args);const a=project(evidence.replayedPrevious||evidence.state),b=project(model.state);recoveryObservations.push({equal:equalSyncJson(a,b),differences:[...new Set([...Object.keys(a),...Object.keys(b)])].filter(key=>!equalSyncJson(a[key],b[key]))});return evidence},commitStorageV2CloudRecovery:async(...args)=>{const head=await driver.commitStorageV2CloudRecovery(...args);recoveryObservations.push({nativeCommit:true,current:args[1].isCurrent(),generation:session.localGeneration,seq:head.seq,writable:runtime.cloudScope.writable,ownerMatches:head.base.owner===runtime.cloudScope.owner,epochMatches:head.base.epoch===runtime.cloudScope.epoch});return head}};
+ readStorageV2CloudRecovery:async(...args)=>{if(phase==='read-race'&&!readRaceInjected)readRace=true;const evidence=await driver.readStorageV2CloudRecovery(...args);const a=project(evidence.replayedPrevious||evidence.state),b=project(model.state);recoveryObservations.push({equal:equalSyncJson(a,b),differences:[...new Set([...Object.keys(a),...Object.keys(b)])].filter(key=>!equalSyncJson(a[key],b[key]))});return evidence},commitStorageV2CloudRecovery:async(...args)=>{const head=await driver.commitStorageV2CloudRecovery(...args);recoveryObservations.push({nativeCommit:true,current:args[1].isCurrent(),generation:session.localGeneration,seq:head.seq,writable:runtime.cloudScope.writable,ownerMatches:head.base.owner===runtime.cloudScope.owner,epochMatches:head.base.epoch===runtime.cloudScope.epoch});return head}};
 const api=app==='orders'?createSyncDocument({...ports,prepareCloudState:project,composeOrderCloudState:(cloud,current)=>({...clone(cloud),checks:clone(current.checks)}),cloudEnabled:()=>true,cloudHasLocalWork:()=>!!(session.storageV2CloudPending||session.cloudSaveRequested),sameOrderCloudData:(a,b)=>equalSyncJson(project(a),project(b)),applyOrderCloudState:state=>{model.state={...clone(state),checks:clone(model.state.checks)}},rpcSaveV2:rpc,readCloud:async()=>clone(remoteRow),merge3:merger.merge3,setCloud:(...args)=>statuses.push(args),writeStateToFolder:async()=>{},pollSharedChecks:async()=>{},refreshKupaReadout:async()=>false,refreshCloudTimestamp:noop}):createSyncDocument({...ports,
  hideConnectScreen:noop,reportError:noop,checksSession:{},prepareKupaCloudState:project,applyKupaCloudState:normalization.applyKupaCloudState,setSaveStatus:noop,setConnectedStatus:noop,setCloudHeaderStatus:(...args)=>statuses.push(args),listBackups:async()=>[],backupSnapshotToComputer:async()=>{},syncSharedChecksFromCloud:async()=>true,mergeKupaCloudState3Way:merger.mergeKupaCloudState3Way,storageV2CloudOutboxActive:()=>true,assertAccountOwner:()=>true,showSecondaryTabGuard:noop,pollSharedChecks:async()=>{},supaRest:async(_path,args)=>{const body=JSON.parse(args.body),result=await rpc(body.p_state,body.p_expected_revision,body.p_operation_id);return {ok:true,status:200,headers:{get:()=>null},text:async()=>JSON.stringify(result.row)}}});
 """
@@ -131,6 +144,7 @@ if(phase.startsWith('review')){
  if(typingCount!==null)onRecovery=async()=>{recoveryCount++;if(recoveryCount<=2&&typingEdits<typingCount)await new Promise(resolve=>{nextEdit=resolve})};
  if(phase==='owner-loss')onRecovery=async()=>{loginEpoch++};
  const saved=app==='orders'?await api.requestCloudSave(''):await api.persistSupabaseState(project(model.state),'');
+ if(pendingReadEdit)await pendingReadEdit;
  if(typing)await typing;
  const head=await driver.refreshStorageV2CloudState();
  if(typingCount!==null){
@@ -146,7 +160,8 @@ if(phase.startsWith('review')){
    check(!statuses.some(args=>args.includes('synced')),'false synced');
  }else{
    check(saved===true,'benign edit created permanent concurrent-ack '+JSON.stringify({saved,calls:calls.length,seq:head.seq,ackSeq:head.base.ackSeq,controlKind:head.control?.conflict?.kind,recoveryObservations,statuses}));check(!head.control&&!head.pending&&!head.flight,'benign edit left blocked head');check(calls.length===2&&calls[0].operationId!==calls[1].operationId,'ACK was resent or follow-up missing');
-   check(model.state.notes.some(note=>note.id==='late-note'&&note.content==='late-local-value'),'local edit lost');check(model.state.notes.some(note=>note.id==='remote-note'&&note.content==='remote-retained'),'remote edit lost');
+   check(model.state.notes.some(note=>note.id==='late-note'&&note.content===(phase==='read-race'?'committed-during-read':'late-local-value')),'local edit lost');check(model.state.notes.some(note=>note.id==='remote-note'&&note.content==='remote-retained'),'remote edit lost');
+   if(phase==='read-race'){check(readRaceInjected&&head.base.ackSeq===4,'read race not drained');check(remoteRow.state.notes.some(note=>note.id==='raced-note'&&note.content==='pending-during-read'),'pending read edit lost')}
    if(phase==='cas-race')check(recoveryCount===2&&head.base.ackSeq===3,'CAS did not reread');
    if(app==='kupa'){
      const durable=await runtime.recoverReadOnly();
@@ -197,7 +212,7 @@ return {owner,notes:durable.state.notes,cloudHash:expected.cloudHash,seq:head.se
 """
 parser=argparse.ArgumentParser()
 parser.add_argument('--app',choices=('orders','kupa'))
-parser.add_argument('--phase',action='append',choices=('benign','cas-race','conflict','draft','owner-loss','review','review-abort','review-quota','review-ui','typing-0','typing-1','typing-2','typing-5','typing-10','typing-restart'))
+parser.add_argument('--phase',action='append',choices=('benign','cas-race','read-race','conflict','draft','owner-loss','review','review-abort','review-quota','review-ui','typing-0','typing-1','typing-2','typing-5','typing-10','typing-restart'))
 parser.add_argument('--typing-baseline',action='store_true',help='use shared recovery from --typing-baseline-ref in the disposable site')
 parser.add_argument('--typing-baseline-ref',default='93d75389c32df3d8e9c71b3dfe85afc9dae99d1d')
 parser.add_argument('--baseline',action='store_true')
@@ -206,7 +221,7 @@ args=parser.parse_args()
 if args.private_snapshot and (args.app!='orders' or args.phase!=['review']):parser.error('private replay requires --app orders --phase review')
 private=json.loads(args.private_snapshot.read_text(encoding='utf-8')) if args.private_snapshot else None
 for app in (args.app,) if args.app else ('orders','kupa'):
-    for phase in args.phase or (('benign','cas-race','conflict','draft','owner-loss','review','review-abort','review-quota','review-ui','typing-0','typing-1','typing-2','typing-5','typing-10','typing-restart') if app=='orders' else ('benign','cas-race','conflict','draft','owner-loss')):
+    for phase in args.phase or (('benign','cas-race','read-race','conflict','draft','owner-loss','review','review-abort','review-quota','review-ui','typing-0','typing-1','typing-2','typing-5','typing-10','typing-restart') if app=='orders' else ('benign','cas-race','read-race','conflict','draft','owner-loss')):
         setup=SETUP.replace('__APP__',json.dumps(app)).replace('__PHASE__',json.dumps(phase))
         with BrowserSession(ROOT/f'netunim-{app}/site',f'post-ack-{app}-{phase}') as browser:
             if args.typing_baseline:
