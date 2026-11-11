@@ -16,7 +16,8 @@ for(const [name,file] of [['Bank and credit provider policies','bank-provider-po
     // require reported capacity; independently readable ranges survive a
     // temporary server failure. Other provider policies stay immutable.
     assert.equal(fixture.policies.fetchHapoalimAccountSnapshot,'7adfc1e5b8f5082e640270ed1c7756b5ec3de163eec3acba76cf8a154058d263');
-    fixture.policies.fetchHapoalimAccountSnapshot='afb4cf77df480c96d6fa4921c581692308a024da4229bf37d2f3862f8235c585';
+    // Partial coverage warnings now use the same safe public error message.
+    fixture.policies.fetchHapoalimAccountSnapshot='7718afe311cb2a81e9acab2089bf8923b5d1465873f40a971f72b1b8e94ee684';
   }
   assert.deepEqual(providerPolicyHashes(sources(),Object.keys(fixture.policies)),fixture.policies);
 });

@@ -320,7 +320,7 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
             active.mkdir(parents=True)
             for name in files:
                 shutil.copyfile(source / name, active / name)
-            (active / 'server.mjs').write_text(server.replace('BRIDGE_VERSION=81;', 'BRIDGE_VERSION=80;'), encoding='utf8')
+            (active / 'server.mjs').write_text(server.replace('BRIDGE_VERSION=82;', 'BRIDGE_VERSION=81;'), encoding='utf8')
             (active / 'installation-id.txt').write_text('7' * 32)
             backup.mkdir()
             (backup / 'prior.txt').write_text('previous backup')
@@ -385,20 +385,20 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
             try:
                 for attempt in range(60):
                     try:
-                        health(80)
+                        health(81)
                         break
                     except OSError:
                         if attempt == 59:
                             raise
                         time.sleep(.1)
-                # Missing source helpers must abort before shutting down v80.
+                # Missing source helpers must abort before shutting down v81.
                 for name in ('launch_hidden.vbs', 'rollback_bank_bridge.bat'):
                     target = source / name
                     original = target.read_bytes()
                     target.unlink()
                     run_bat(install, 1)
                     target.write_bytes(original)
-                    health(80)
+                    health(81)
                     self.assertIsNone(old.poll())
 
                 # These are actual Windows rename failures after graceful stop.
@@ -406,7 +406,7 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
                     with deny_delete(target, flags):
                         result = run_bat(install, 1)
                         self.assertIn('restored and verified', result)
-                    health(80)
+                    health(81)
                     self.assertEqual(startup.read_text(), 'old launcher')
                     self.assertEqual(helper.read_text(), 'old helper')
                     self.assertEqual((backup / 'prior.txt').read_text(), 'previous backup')
@@ -415,7 +415,7 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
                 bad_start = "if(process.argv.length===2)process.exit(91);\n"
                 (source / 'server.mjs').write_text(bad_start + server, encoding='utf8')
                 self.assertIn('restored and verified', run_bat(install, 1))
-                health(80)
+                health(81)
                 self.assertEqual(startup.read_text(), 'old launcher')
                 self.assertEqual(helper.read_text(), 'old helper')
                 (source / 'server.mjs').write_text(server, encoding='utf8')
@@ -431,7 +431,7 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
                     self.assertEqual(startup.read_text(), 'old launcher')
 
                 run_bat(install, 0)
-                installed = health(81)
+                installed = health(82)
                 origins = ['https://kupa.bargig-furniture.com', 'https://orders.bargig-furniture.com']
                 admin = (root / 'pairing-v1/admin-token.txt').read_text().strip()
                 keys = []
@@ -445,13 +445,13 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
                     keys.append(grant['token'])
                 self.assertEqual(request('/pairing/admin', admin, {'action': 'finish'})[0], 200)
                 registry = (root / 'pairing-v1/registry.json').read_bytes()
-                for version in (80, 81):
+                for version in (81, 82):
                     run_bat(helper, 0)
                     health(version)
                     self.assertEqual((root / 'pairing-v1/registry.json').read_bytes(), registry)
                     for origin, key in zip(origins, keys):
                         self.assertEqual(request('/status', key, origin=origin)[0], 200)
-                self.assertEqual(health(81)['installationId'], installed['installationId'])
+                self.assertEqual(health(82)['installationId'], installed['installationId'])
             finally:
                 subprocess.run([node, 'server.mjs', '--stop-existing'], cwd=active, env=env,
                                capture_output=True, timeout=10)

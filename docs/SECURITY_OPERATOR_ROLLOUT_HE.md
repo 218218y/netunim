@@ -27,12 +27,13 @@ git pull --ff-only origin main
 
 הרץ מתוך הקוד המעודכן:
 
-1. Bank Bridge **81** באמצעות `netunim-kupa\bank-bridge\install_bank_bridge.bat`.
+1. Bank Bridge **82** באמצעות `netunim-kupa\bank-bridge\install_bank_bridge.bat`.
 2. Document Bridge **48** באמצעות `netunim-orders\document-bridge\install_document_bridge.bat`.
 
 Bank Bridge 79 כלל עדכון תלויות. גרסה 80 כוללת גם את תיקוני המיפוי של CAL
 ותיעוד המבצעים בעסקאות MAX. [עדכון התלויות](BANK_DEPENDENCY_SECURITY_20261109.md) · [עדכוני הספקים](CREDIT_PROVIDER_UPDATES_20261110.md)
 גרסה 81 מוסיפה דיווח חי על שלבי הקריאה מהבנק ומחברות האשראי.
+גרסה 82 מסננת פרטי חריגות בהודעות השגיאה ובמצב החיבור.
 
 מתחילים במחשב אחד. רושמים את מזהה ה־commit של חבילת ההתקנה ומודדים בו Baseline
 לפני החלפת המחברים. לאחר ההתקנה בודקים שהאתרים טענו את גרסת ה־Service Worker

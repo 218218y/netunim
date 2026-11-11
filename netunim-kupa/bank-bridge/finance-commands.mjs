@@ -4,6 +4,7 @@ import {
 } from './hapoalim-policy.mjs';
 import { normalizeCreditSyncMode } from './credit-sync-scope.mjs';
 import { buildCreditDataDiagnosticPayload } from './credit-data-diagnostics.mjs';
+import {bankBridgeErrorResponse, bankBridgeCreditErrors} from './wire-errors.mjs';
 function normalizeCreditSyncSelection(value) { return (Array.isArray(value) ? value : []).slice(0, 100).map(row => ({ profileId: String(row?.profileId || '').trim().slice(0, 80), excludedAccounts: [...new Set((Array.isArray(row?.excludedAccounts) ? row.excludedAccounts : []).slice(0, 100).map(account => String(account || '').trim().slice(0, 80)).filter(Boolean))] })).filter(row => row.profileId && row.excludedAccounts.length); }
 // Provider ownership includes vault reads and diagnostic/status publication.
 // HTTP sees only completed public results, never provider or vault internals.
@@ -16,6 +17,9 @@ export function createFinanceCommands({ operations, bank, credit }) {
         }), rawSamples = Array.isArray(result?._dataDiagnostics) ? result._dataDiagnostics : [], publicResult = { ...result };
         onProgress?.('finalizing');
         delete publicResult._dataDiagnostics;
+        publicResult.errors = bankBridgeCreditErrors(publicResult.errors);
+        publicResult.profiles = publicResult.profiles.map(profile => Array.isArray(profile.errors)
+            ? {...profile, errors: bankBridgeCreditErrors(profile.errors)} : profile);
         if (publicResult.profiles.length)
             await credit.writeDataDiagnostic(buildCreditDataDiagnosticPayload({ correlationId: publicResult.correlationId, profiles: publicResult.profiles, rawSamples }));
         await credit.writeMeta({
@@ -45,8 +49,9 @@ export function createFinanceCommands({ operations, bank, credit }) {
             return result;
         }
         catch (e) {
+            const failure = bankBridgeErrorResponse(e);
             await bank.writeMeta({
-                lastError: e?.message || String(e), lastErrorAt: new Date().toISOString(), lastErrorCode: e?.code || 'BRIDGE_ERROR', lastErrorStage: e?.stage || '', lastErrorHttpStatus: Number(e?.httpStatus) || 0, lastWarning: '', lastWarningCode: '', lastWarningStage: '', lastWarningHttpStatus: 0, lastAvailableAccounts: Array.isArray(e?.availableAccounts) ? e.availableAccounts : [], lastAccountRole: e?.accountRole === 'home' ? 'home' : e?.accountRole === 'business' ? 'business' : ''
+                lastError: failure.message, lastErrorAt: new Date().toISOString(), lastErrorCode: failure.code, lastErrorStage: failure.stage, lastErrorHttpStatus: failure.httpStatus, lastWarning: '', lastWarningCode: '', lastWarningStage: '', lastWarningHttpStatus: 0, lastAvailableAccounts: failure.availableAccounts, lastAccountRole: failure.accountRole
             });
             throw e;
         }

@@ -83,17 +83,44 @@ for(const app of ['kupa','orders']){
     assert.equal(f.calls.length,0);assert.equal(f.timers.size,0);
   });
 
-  for(const status of [401,403,500])test(`${app} HTTP ${status} never triggers credit legacy fallback`,async t=>{
+  for(const status of [400,401,403,429,500])test(`${app} HTTP ${status} never triggers credit legacy fallback`,async t=>{
     const f=fixture(app,t);f.reply(()=>new Response('{"message":"rejected","stage":"auth"}',{status}));
     await assert.rejects(f.api.creditStatus(),error=>error.code===`HTTP_${status}`&&error.stage==='auth');
     assert.equal(f.calls.length,1);assert.equal(f.timers.size,0);
   });
 
   test(`${app} credit legacy fallback remains restricted to a missing endpoint`,async t=>{
-    const f=fixture(app,t);f.reply(url=>url.includes('/v2/')?new Response('missing',{status:404}):new Response('{"ok":true,"profiles":[]}'));
+    const f=fixture(app,t);f.reply(url=>url.includes('/v2/')?Response.json({ok:false,code:'NOT_FOUND',message:'נתיב Bank Bridge לא קיים'},{status:404}):new Response('{"ok":true,"profiles":[]}'));
     assert.equal((await f.api.creditStatus()).rollbackMode,true);
     assert.deepEqual(f.calls.map(call=>call.url),['http://127.0.0.1:8765/v2/credit/status','http://127.0.0.1:8765/credit/status']);
     assert.equal(f.timers.size,0);assert.equal(f.cleared.length,2);
+  });
+
+  for(const [status,code] of [[400,'NOT_FOUND'],[400,'HTTP_404'],[404,'NOT_FOUND'],[401,'NOT_FOUND'],[403,'NOT_FOUND'],[429,'NOT_FOUND'],[500,'NOT_FOUND']])
+    test(`${app} credit sync does not replay a business ${status}/${code}`,async t=>{
+      const f=fixture(app,t);f.reply(()=>Response.json({ok:false,code,message:'profile unavailable',stage:'Profile'},{status}));
+      await assert.rejects(f.api.syncCreditCards(),error=>error.code===code);
+      assert.equal(f.calls.length,1);
+    });
+
+  test(`${app} an ambiguous HTML 404 cannot replay credit sync`,async t=>{
+    const f=fixture(app,t);f.reply(()=>new Response('<html>missing upstream</html>',{status:404}));
+    await assert.rejects(f.api.syncCreditCards(),error=>error.code==='HTTP_404');
+    assert.equal(f.calls.length,1);
+  });
+
+  for(const failure of ['network','timeout','stream'])test(`${app} credit sync cannot replay after ${failure}`,async t=>{
+    const f=fixture(app,t);f.reply((_url,options)=>{
+      if(failure==='network')throw new TypeError('offline');
+      if(failure==='timeout')return new Promise((resolve,reject)=>{
+        options.signal.addEventListener('abort',()=>reject(new DOMException('aborted','AbortError')),{once:true});
+        queueMicrotask(()=>[...f.timers.values()][0].callback());
+      });
+      return new Response(JSON.stringify({progress:{stage:'profile'}})+'\n'+JSON.stringify({result:{ok:false,code:'NOT_FOUND',message:'נתיב Bank Bridge לא קיים'}})+'\n',
+        {headers:{'Content-Type':'application/x-ndjson'}});
+    });
+    await assert.rejects(f.api.syncCreditCards({onProgress:()=>{}}));
+    assert.equal(f.calls.length,1);
   });
 
   test(`${app} timeout aborts its own request and clears the owned timer`,async t=>{

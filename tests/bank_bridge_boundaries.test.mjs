@@ -30,8 +30,8 @@ test('Bank HTTP/capability boundaries have explicit dependency and collaborator 
     // Pairing is a single injected authority port. The handler has no registry or platform access.
     ['http-handler',['node:crypto','./wire-errors.mjs','./origin-policy.mjs'],'createBankBridgeHttpHandler',6],
     ['http-routes',[],'createBankBridgeRoutes',8],
-    ['finance-commands',["./hapoalim-policy.mjs","./credit-sync-scope.mjs","./credit-data-diagnostics.mjs"],'createFinanceCommands',3],
-    ['connection-queries',['./connection-commands.mjs'],'createConnectionQueries',3],
+    ['finance-commands',["./hapoalim-policy.mjs","./credit-sync-scope.mjs","./credit-data-diagnostics.mjs","./wire-errors.mjs"],'createFinanceCommands',3],
+    ['connection-queries',['./connection-commands.mjs','./wire-errors.mjs'],'createConnectionQueries',3],
     ['diagnostic-queries',['./credit-data-diagnostics.mjs','./bank-diagnostics.mjs'],'createDiagnosticQueries',2],
   ];
   for(const [name,allowed,factory,maximum] of contracts){

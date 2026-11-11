@@ -48,7 +48,7 @@ test('a streamed credit provider failure retains its error and never retries the
   });
   const progress=[];
   await assert.rejects(client.syncCreditCards({onProgress:event=>progress.push(event)}),
-    error=>error.code==='NOT_FOUND'&&error.stage==='data'&&error.message==='בדיקה');
+    error=>error.code==='BRIDGE_ERROR'&&error.stage==='data'&&!error.message.includes('בדיקה'));
   assert.deepEqual(progress,[{stage:'profile',index:1,total:2}]);
   assert.equal(attempts,1);
 });
@@ -72,7 +72,7 @@ test('not-configured and vault read failure never enter providers or manufacture
 });
 
 test('credit command preserves partial success, exclusion normalization and local-only raw samples',async()=>{
-  const calls=[],profile={profileId:'P',provider:'max',accounts:[],coreComplete:false},issuerError={profileId:'P',code:'PARTIAL',message:'fixture partial'},previous=[{code:'PRIOR'}];
+  const calls=[],profile={profileId:'P',provider:'max',accounts:[],coreComplete:false},issuerError={profileId:'P',code:'PARTIAL',stage:'',httpStatus:0,message:'חלק מנתוני הספק לא התקבלו. יש לבדוק את שלמות הנתונים לפני שימוש בהם.'},previous=[{code:'PRIOR'}];
   const result={contractVersion:2,correlationId:'fixture-correlation',profiles:[profile],errors:[issuerError],syncedAt:null,attemptedCount:1,deferredCount:0,_dataDiagnostics:[{provider:'max',profileId:'P',secretFixture:'raw-local-only'}]};
   const f=configurationHandler({readProfiles:async()=>[{profileId:'P',credentials:{password:'private'}}],providerPorts:{
     readCreditMeta:async()=>({lastErrors:previous}),scrapeAllCreditProfiles:async(profiles,options)=>{calls.push(['scrape',profiles,options]);return result},
@@ -83,7 +83,7 @@ test('credit command preserves partial success, exclusion normalization and loca
 });
 
 for(const attemptedCount of [0,1])test(`credit ${attemptedCount?'failure':'deferral'} publishes metadata with its existing success/error envelope`,async t=>{
-  const error={code:'ISSUER',message:'fixture issuer'},metadata=[];
+  const error={code:'CREDIT_SYNC_FAILED',stage:'',httpStatus:0,message:'סנכרון האשראי נכשל. בדוק את מצב החיבור ואת קוד התקלה.'},metadata=[];
   const f=await httpFixture(t,{providerPorts:{scrapeAllCreditProfiles:async()=>({contractVersion:2,profiles:[],errors:[error],syncedAt:null,attemptedCount,deferredCount:1,correlationId:'fixture'}),writeCreditMeta:async value=>metadata.push(value)}});
   const response=await f.request('/v2/credit/sync',{method:'POST',body:'{}'});
   assert.equal(metadata.length,1);assert.equal(metadata[0].lastSyncAt,undefined);assert.deepEqual(metadata[0].lastErrors,[error]);

@@ -87,6 +87,10 @@ export function createBankBridgeClient({tokenStore,fetchRequest,timers,createAbo
       }
       if(!response.ok||data.ok===false){
         const error=bridgeError(data.message||`Bank Bridge החזיר שגיאה (${response.status})`,data.code||`HTTP_${response.status}`,data.stage||'',data);
+        // Installed older servers use this exact pre-dispatch route response.
+        // A provider's NOT_FOUND or an ambiguous proxy 404 cannot authorize replay.
+        error.routeNotFound=!streamed&&response.status===404&&data.ok===false&&data.code==='NOT_FOUND'&&
+          data.message==='נתיב Bank Bridge לא קיים'&&!data.stage;
         if(streamed)error.streamed=true;
         throw error;
       }
@@ -105,7 +109,7 @@ export function createBankBridgeClient({tokenStore,fetchRequest,timers,createAbo
   }
   async function creditRequest(path,options){
     try{return await request(`/v2/credit${path}`,options)}catch(error){
-      if(error?.streamed||!['HTTP_404','NOT_FOUND'].includes(String(error?.code||'')))throw error;
+      if(error?.streamed||error?.routeNotFound!==true)throw error;
       const legacy=await request(`/credit${path}`,options);return {...legacy,rollbackMode:true};
     }
   }

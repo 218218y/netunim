@@ -1,6 +1,9 @@
 NETUNIM KUPA - BANK HAPOALIM BRIDGE
 ====================================
 
+Bridge v82: Safe public failure messages, including persisted status and partial
+credit errors. Browser clients only retry the legacy Credit endpoint after the
+old server's explicit missing-route response.
 Bridge v81: Live progress for bank account reads and credit profile syncs.
 Re-run install_bank_bridge.bat on each Windows computer to enable this detail.
 
