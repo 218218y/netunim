@@ -2,7 +2,7 @@ import { parse, tokenizer } from 'acorn';
 
 // Reviewed wire change: optional progress frames on the existing refresh
 // requests. Legacy JSON and the fallback boundary are exercised over HTTP.
-export const bankBridgeProgressClientHash='3a1a46bf9c8f2cb34e74824f2aa4a07794e11935134c7f5e2bc0ea91a941e09d';
+export const bankBridgeProgressClientHash='017dc8c7f0a892991c4c7a9aa825b387f96f20342bf37c6b515a0c797e6c4a69';
 
 export function declaration(source, name) {
   const queue = [parse(source, { ecmaVersion: 'latest', sourceType: 'module' })];

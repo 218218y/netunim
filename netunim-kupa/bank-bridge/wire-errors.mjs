@@ -14,6 +14,8 @@ for (const [codes, message] of [
   [['INVALID_JSON'], 'JSON לא תקין'],
   [['MISSING_CREDENTIALS', 'MISSING_CREDIT_CREDENTIALS', 'CREDIT_CREDENTIALS'], 'חסרים פרטי התחברות. יש להשלים אותם בהגדרות החיבור.'],
   [['NOT_CONFIGURED', 'CREDIT_NOT_CONFIGURED'], 'לא נשמר חיבור פעיל. יש להגדיר חיבור לפני הרענון.'],
+  [['NO_BALANCE'], 'לא התקבלה יתרה תקינה לחשבון. בדוק את החשבון באתר הבנק ונסה שוב.'],
+  [['NO_ACCOUNTS'], 'הבנק לא החזיר חשבונות פעילים לחיבור. יש לבדוק את ההרשאות באתר הבנק.'],
   [['ACCOUNT_NOT_FOUND', 'ACCOUNT_SELECTION_FAILED', 'INCOMPLETE_ACCOUNT_SELECTOR'], 'יש לבחור סניף ומספר חשבון מתוך החשבונות הפעילים של הבנק.'],
   [['DUPLICATE_ACCOUNT_ROLE'], 'יש לבחור חשבונות שונים לחשבון העסקי ולחשבון הביתי.'],
   [['INVALID_PASSWORD', 'CREDIT_INVALID_PASSWORD', 'CREDIT_LOGIN_REJECTED'], 'פרטי ההתחברות נדחו. יש לבדוק אותם בהגדרות החיבור.'],
