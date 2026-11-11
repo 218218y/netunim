@@ -21,7 +21,15 @@ export async function recoverPostAckPublication(ports,{previousState,candidateSt
     }
     const generation=ports.generation(),visible=structuredClone(ports.visible());
     let evidence;
-    try{evidence=await ports.read({afterSeq:candidateSeq,previousState})}catch(error){diagnose('journal_read_failed',attempt);throw error}
+    try{evidence=await ports.read({afterSeq:candidateSeq,previousState})}catch(error){
+      if(!ports.isCurrent()){diagnose('scope_lost',attempt);return null}
+      // Emergency persistence may lead the IDB snapshot while typing. This
+      // explicitly uncommitted observation proves neither corruption nor a
+      // business conflict. Re-read within the same bounded recovery lifetime;
+      // a later successful read must still prove replay, base and generation.
+      if(responseProperty(error,'message')==='storage_cloud_recovery_undurable'){diagnose('journal_read_undurable',attempt);continue}
+      diagnose('journal_read_failed',attempt);throw error;
+    }
     if(!ports.isCurrent(evidence.head)){diagnose('scope_lost',attempt);return null}
     if(ports.generation()!==generation){diagnose('read_stale_generation',attempt);continue}
     const head=evidence.head;
