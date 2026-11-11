@@ -7,7 +7,7 @@ import { FINANCE_PUBLICATION_WARNING } from './document-publication.js';
 /** @typedef {import('../../shared/bank-balance-result.js').BankAccountSnapshot} BankAccount */
 /** @typedef {import('./bank-archive-readout.js').ArchiveCandidate<unknown>} ArchiveCandidate */
 /** @typedef {{leaseName:'bank',leaseToken:string,fenceEpoch:number,assertCurrent:SnapshotGuard}&Record<string,unknown>} SnapshotLease */
-/** @typedef {{financeRow:unknown,historyDays:number,lease:SnapshotLease,archiveReady:boolean,archiveVersion:number}} SnapshotRequest */
+/** @typedef {{financeRow:unknown,historyDays:number,lease:SnapshotLease,archiveReady:boolean,archiveVersion:number,onProgress?:import('../../shared/sync-status.js').FinanceSyncProgress}} SnapshotRequest */
 /** @typedef {import('../../shared/bank-archive-policy.js').TransactionCoverage} TransactionCoverage */
 /** @typedef {{kupa:unknown,bankEvents:unknown}} ChecksState */
 /** @typedef {{bank:Record<string,unknown>,snapshotToken:string,snapshotSeq:number}} SnapshotPlan */
@@ -83,7 +83,7 @@ export function createOrdersBankSnapshotPublication({
   }
 
   /** @param {unknown} result @param {SnapshotRequest} options @returns {Promise<SnapshotPublication>} */
-  async function publish(result, { financeRow, historyDays, lease, archiveReady, archiveVersion }) {
+  async function publish(result, { financeRow, historyDays, lease, archiveReady, archiveVersion, onProgress }) {
     const assertLease = lease.assertCurrent;
     /** @type {SnapshotGuard} */
     const assertCurrent = () => {
@@ -116,6 +116,7 @@ export function createOrdersBankSnapshotPublication({
       homeCoverage,
       checksState: checks.read(),
     });
+    onProgress?.('save');
     const saved = await publication.save(bank, snapshotToken, snapshotSeq, lease);
     assertCurrent();
     const readoutVerified = saved.published === true;

@@ -133,7 +133,7 @@ test('Kupa controller delegates archive ownership and preserves local publicatio
     (row) => row.declaration?.id?.name === 'createDomainsBankController'
   ).declaration;
   const fields = factory.params[0].properties.map((row) => row.key.name);
-  assert.equal(fields.length, 13);
+  assert.equal(fields.length, 14);
   assert.ok(fields.includes('archive'));
   for (const old of [
     'readBankTransactions',

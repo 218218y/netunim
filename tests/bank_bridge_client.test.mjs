@@ -140,6 +140,27 @@ for(const app of ['kupa','orders']){
     assert.equal(f.calls.length,1);assert.equal(f.timers.size,0);
   });
 
+  test(`${app} progress-aware requests accept an older Bridge's JSON result`,async t=>{
+    const f=fixture(app,t);
+    f.reply((_url,options)=>{
+      assert.equal(JSON.parse(options.body).streamProgress,true);
+      return new Response('{"ok":true,"balance":42}');
+    });
+    assert.equal((await f.api.fetchBalance({onProgress:()=>assert.fail('no progress in legacy JSON')})).balance,42);
+    assert.equal(f.calls.length,1);
+  });
+
+  test(`${app} a progress-only response is rejected without retrying`,async t=>{
+    const f=fixture(app,t),stages=[];
+    f.reply(()=>new Response('{"progress":{"stage":"profile","index":1,"total":1}}\n',{
+      headers:{'Content-Type':'application/x-ndjson; charset=utf-8'},
+    }));
+    await assert.rejects(f.api.syncCreditCards({onProgress:event=>stages.push(event.stage)}),
+      error=>error.code==='BRIDGE_RESPONSE_INVALID');
+    assert.deepEqual(stages,['profile']);
+    assert.equal(f.calls.length,1);
+  });
+
   test(`${app} provider errors retain safe diagnostic fields`,async t=>{
     const f=fixture(app,t),data={ok:false,code:'ACCOUNT_NOT_FOUND',stage:'account',message:'choose account',httpStatus:403,
       availableAccounts:[{accountNumber:'123'}],accountRole:'home',creditErrors:[{code:'AUTH_REQUIRED'}]};

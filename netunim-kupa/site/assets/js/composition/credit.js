@@ -78,6 +78,7 @@ export function createKupaCreditRuntime({model,ui,platform={}}){
       toast:(...args)=>{if(!disposed)presentation.toast(...args)},
       render:(...args)=>{if(!disposed)presentation.render(...args)},
       renderStatus:(...args)=>{if(!disposed)presentation.renderStatus(...args)},
+      renderProgress:progress=>{if(!disposed)view?.updateSyncProgress(progress)},
       confirmDialog:async(...args)=>!disposed&&await presentation.confirmDialog(...args)&&!disposed,
       publication,creditRefresh,
     });

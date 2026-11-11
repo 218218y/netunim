@@ -8,12 +8,13 @@ function normalizeCreditSyncSelection(value) { return (Array.isArray(value) ? va
 // Provider ownership includes vault reads and diagnostic/status publication.
 // HTTP sees only completed public results, never provider or vault internals.
 export function createFinanceCommands({ operations, bank, credit }) {
-    const syncCredit = body => operations.provider(async () => {
+    const syncCredit = (body, onProgress) => operations.provider(async () => {
         const profiles = await credit.readProfiles(), meta = await credit.readMeta(), syncMode = normalizeCreditSyncMode(body.syncMode), selection = normalizeCreditSyncSelection(body.selection);
         operations.assertAuthorized?.();
         const result = await credit.scrape(profiles, {
-            interactive: !!body.interactive, previousErrors: meta.lastErrors, syncMode, selection
+            interactive: !!body.interactive, previousErrors: meta.lastErrors, syncMode, selection, onProgress
         }), rawSamples = Array.isArray(result?._dataDiagnostics) ? result._dataDiagnostics : [], publicResult = { ...result };
+        onProgress?.('finalizing');
         delete publicResult._dataDiagnostics;
         if (publicResult.profiles.length)
             await credit.writeDataDiagnostic(buildCreditDataDiagnosticPayload({ correlationId: publicResult.correlationId, profiles: publicResult.profiles, rawSamples }));
@@ -28,14 +29,14 @@ export function createFinanceCommands({ operations, bank, credit }) {
         }
         return publicResult;
     });
-    const balance = body => operations.provider(async () => {
+    const balance = (body, onProgress) => operations.provider(async () => {
         const credentials = await bank.readCredentials();
         if (!credentials)
             throw Object.assign(new Error('לא נשמרו פרטי בנק הפועלים ב-Bank Bridge'), { code: 'NOT_CONFIGURED' });
         operations.assertAuthorized?.();
         try {
             const historyDays = Math.min(HAPOALIM_INITIAL_BACKFILL_DAYS, Math.max(HAPOALIM_TRANSACTION_LOOKBACK_DAYS, Number(body.historyDays) || HAPOALIM_TRANSACTION_LOOKBACK_DAYS));
-            const result = await bank.scrape(credentials, { interactive: !!body.interactive, historyDays });
+            const result = await bank.scrape(credentials, { interactive: !!body.interactive, historyDays, onProgress });
             const homeFailure = result.accountFailures?.home || null;
             const warnings = [result.accounts?.business?.transactionWarning ? `עסקי: ${result.accounts.business.transactionWarning}` : '', result.accounts?.home?.transactionWarning ? `ביתי: ${result.accounts.home.transactionWarning}` : '', homeFailure?.message ? `ביתי: ${homeFailure.message}` : ''].filter(Boolean).join(' | ');
             await bank.writeMeta({

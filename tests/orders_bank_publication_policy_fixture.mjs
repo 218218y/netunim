@@ -59,6 +59,7 @@ export function restoreOrdersBankPublication(
     'const businessArchive=verified[0].rows,businessDirect=verified[0].directSnapshot;'
   );
   pipeline = tokens(pipeline)
+    .replace("onProgress?.('save');", '')
     .replace('const {business,home,homeFailure,source}=', 'const {business,home,homeFailure}=')
     // The explicit observation gate is verified separately at the actual owner.
     .replace('readBankSnapshotResult(result)', 'readBankBalanceResult(result)')

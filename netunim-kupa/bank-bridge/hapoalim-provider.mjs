@@ -9,7 +9,7 @@ import { runStage, stageError } from './provider-errors.mjs';
  * @typedef {Record<string,unknown> & {sessionHref?:string}} BankSnapshot
  * @typedef {{browser:{findInstalled:()=>Promise<string>,ensureProfile:()=>Promise<void>,profileDirectory:string,loadScrapers:()=>Promise<{CompanyTypes:{hapoalim:string},createScraper:(options:BankScraperOptions)=>BankScraper}>},
  * session:{decorate:(scraper:BankScraper,options:{interactive:boolean})=>unknown,reuse:(page:unknown)=>Promise<BankReady|null>,ready:(page:unknown)=>Promise<BankReady>,safeUrl:(value:unknown)=>string,failureMessage:(result:unknown)=>[string,string]},
- * accounts:{lookbackDays:number,read:(page:unknown,credentials:BankCredentials,ready:BankReady,historyDays:number,options:{diagnosticRun:BankDiagnostic})=>Promise<BankSnapshot>},
+ * accounts:{lookbackDays:number,read:(page:unknown,credentials:BankCredentials,ready:BankReady,historyDays:number,options:{diagnosticRun:BankDiagnostic,onProgress?:import('./http-routes.mjs').Progress})=>Promise<BankSnapshot>},
  * diagnostics:{create:(options:{bridgeVersion:number})=>BankDiagnostic,finish:(run:BankDiagnostic,options:{failure:unknown})=>unknown,write:(run:BankDiagnostic)=>Promise<void>,report:(label:string,error:unknown)=>void},
  * cache:{cleanup:()=>Promise<void>},metadata:{write:(patch:{sessionUrl:string})=>Promise<void>},version:number}} HapoalimProviderPorts
  */
@@ -32,11 +32,12 @@ export function createHapoalimProvider({ browser, session, accounts, diagnostics
     const fetchSelectedHapoalimSnapshot = accounts.read, HAPOALIM_TRANSACTION_LOOKBACK_DAYS = accounts.lookbackDays;
     const { create: createBankDiagnosticRun, finish: finishBankDiagnosticRun, write: writeBankDiagnostic } = diagnostics;
     const cleanupChequeImageCache = cache.cleanup, writeMeta = metadata.write;
-    /** @param {BankCredentials} credentials @param {{interactive?:boolean,historyDays?:number}} [options] @returns {Promise<Record<string,unknown>>} */
-    async function scrapeHapoalimSnapshot(credentials, { interactive = false, historyDays = HAPOALIM_TRANSACTION_LOOKBACK_DAYS } = {}) {
+    /** @param {BankCredentials} credentials @param {{interactive?:boolean,historyDays?:number,onProgress?:import('./http-routes.mjs').Progress}} [options] @returns {Promise<Record<string,unknown>>} */
+    async function scrapeHapoalimSnapshot(credentials, { interactive = false, historyDays = HAPOALIM_TRANSACTION_LOOKBACK_DAYS, onProgress } = {}) {
         let scraper = /** @type {BankScraper|null} */ (null), success = false, failure = /** @type {unknown} */ (null);
         const diagnosticRun = createBankDiagnosticRun({ bridgeVersion: BRIDGE_VERSION });
         try {
+            onProgress?.('browser');
             try {
                 await cleanupChequeImageCache();
             }
@@ -60,6 +61,7 @@ export function createHapoalimProvider({ browser, session, accounts, diagnostics
             // These awaited callbacks execute after allocation; the nullable outer
             // slot also owns cleanup when allocation or initialization fails.
             await runStage('browser', () => ( /** @type {BankScraper} */(scraper)).initialize(), 'BROWSER_START_FAILED');
+            onProgress?.('session');
             let ready = await tryReuseSavedHapoalimSession(scraper.page);
             if (!ready) {
                 let loginResult;
@@ -76,7 +78,8 @@ export function createHapoalimProvider({ browser, session, accounts, diagnostics
                 }
                 ready = await runStage('session', () => waitForHapoalimSessionReady(( /** @type {BankScraper} */(scraper)).page), 'BANK_SESSION_NOT_READY');
             }
-            const snapshot = await runStage('data', () => fetchSelectedHapoalimSnapshot(( /** @type {BankScraper} */(scraper)).page, credentials, ready, historyDays, { diagnosticRun }), 'BANK_DATA_ERROR');
+            const snapshot = await runStage('data', () => fetchSelectedHapoalimSnapshot(( /** @type {BankScraper} */(scraper)).page, credentials, ready, historyDays, { diagnosticRun, ...(onProgress && { onProgress }) }), 'BANK_DATA_ERROR');
+            onProgress?.('finalizing');
             const sessionUrl = safeHapoalimSessionUrl(snapshot?.sessionHref || ready?.href);
             if (sessionUrl)
                 await writeMeta({ sessionUrl });

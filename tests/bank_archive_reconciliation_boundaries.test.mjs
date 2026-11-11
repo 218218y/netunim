@@ -37,6 +37,7 @@ test('both actual archive consumers preserve their complete provider/publication
   // Compare the unchanged archive policy; actual publication tests separately
   // require explicit observations and prove zero writes on missing evidence.
   const restored = expandOrdersReconciliation(read(op + 'bank-snapshot-publication.js'))
+    .replace("onProgress?.('save');", '')
     .replace('readBankSnapshotResult(result)', 'readBankBalanceResult(result)')
     .replace('source.fetchedAt', 'source.fetchedAt||new Date().toISOString()');
   assert.deepEqual(
@@ -120,7 +121,7 @@ test('compositions join separate archive owners and keep intentional application
   const controller = read(kp + 'controller.js');
   assert.equal(
     declaration(controller, 'createDomainsBankController').params[0].properties.length,
-    13
+    14
   );
   for (const retired of [
     'syncBankTransactionsSnapshot',

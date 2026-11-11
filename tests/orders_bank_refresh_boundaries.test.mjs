@@ -20,7 +20,7 @@ test('Bank characterization rejects changed freshness, interactive/history scope
   for(const [from,to] of [
     ['if(auto&&!automation.due(cloud.lastSyncAt()))return true;','if(auto)return true;'],
     ['historyDays=!auto&&!archiveReady?365:30','historyDays=365'],
-    ['{interactive,historyDays}','{interactive:false,historyDays}'],
+    ['fetchBalance({interactive,historyDays,','fetchBalance({interactive:false,historyDays,'],
     ['financeRow,historyDays,lease,archiveReady,archiveVersion','financeRow,historyDays,lease,archiveReady:false,archiveVersion'],
     ['await leaseSession?.close()','leaseSession?.close()'],
   ]){

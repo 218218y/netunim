@@ -11,11 +11,11 @@ import { bankArchiveAccountId as accountIdOf } from '../../shared/bank-archive-p
 /** @typedef {import('../../shared/bank-archive-reconciliation.js').ArchiveCandidate} Archive */
 /** @typedef {import('./snapshot-policy.js').BankSnapshotPolicy} SnapshotPolicy */
 /** @typedef {Pick<import('./snapshot-policy.js').CandidateRequest,'business'|'home'|'homeFailure'|'fetchedAt'> & {warnings:string[],bridgeStatus:State,assertConnection:Guard}} Published */
-/** @typedef {{interactive?:boolean,auto?:boolean,allowed:()=>boolean,onStarted:()=>undefined,onDenied:()=>undefined,onCloudSaved:(historyDays:number)=>undefined,onPublished:(result:Published)=>undefined,onFailed:(error:unknown,connection:Guard|undefined)=>undefined}} RefreshRequest */
+/** @typedef {{interactive?:boolean,auto?:boolean,allowed:()=>boolean,onProgress?:import('../../shared/sync-status.js').FinanceSyncProgress,onStarted:()=>undefined,onDenied:()=>undefined,onCloudSaved:(historyDays:number)=>undefined,onPublished:(result:Published)=>undefined,onFailed:(error:unknown,connection:Guard|undefined)=>undefined}} RefreshRequest */
 /** @typedef {{
  * authority:{capture:()=>Guard},
  * cloud:{mode:()=>string,refresh:(options:{assertCurrent:Guard})=>Promise<{verified:boolean,state?:State|null}>,currentState:()=>State,lastSyncAt:(state:State)=>unknown,checksHaveLocalWork:()=>boolean},
- * device:{capture:()=>Guard,readStatus:()=>Promise<State>,supported:(status:unknown)=>boolean,fetchBalance:(options:{interactive:boolean,historyDays:number})=>Promise<unknown>},
+ * device:{capture:()=>Guard,readStatus:()=>Promise<State>,supported:(status:unknown)=>boolean,fetchBalance:(options:{interactive:boolean,historyDays:number,onProgress?:(detail:unknown)=>void})=>Promise<unknown>},
  * leases:{commands:{acquire:(name:'bank',token:string,options:{assertCurrent:Guard})=>Session},runtime:{isPending:()=>boolean,drain:()=>Promise<void>,dispose:()=>boolean},createToken:()=>string,reportFailure:(error:unknown)=>undefined},
  * publication:{prepare:(guard:Guard)=>Promise<void>,reconcile:(request:import('../../shared/bank-archive-reconciliation.js').ReconciliationRequest)=>Promise<import('../../shared/bank-archive-reconciliation.js').ArchiveReconciliation>,publishCloud:(bank:Snapshot,candidate:Archive|null,lease:CloudLease)=>Promise<{remoteCommitted:true,readoutVerified:boolean}>,publishLocal:(bank:Snapshot,message:string,guard:Guard)=>Promise<unknown>,readoutWarning:string},
  * policy:SnapshotPolicy,
@@ -118,6 +118,7 @@ export function createKupaBankRefresh({
     auto = false,
     allowed,
     onStarted,
+    onProgress,
     onDenied,
     onCloudSaved,
     onPublished,
@@ -200,8 +201,16 @@ export function createKupaBankRefresh({
         throw new Error(
           'יש להריץ מחדש install_bank_bridge.bat במחשב זה לפני עדכון מול הבנק'
         );
-      const evidence = await device.fetchBalance({ interactive, historyDays });
+      onProgress?.('provider');
+      const evidence = await device.fetchBalance({
+        interactive, historyDays,
+        ...(onProgress && {onProgress: detail => {
+          assertCurrent();
+          onProgress('provider', detail);
+        }}),
+      });
       assertCurrent();
+      onProgress?.('process');
       const {
         source: result,
         business,
@@ -259,6 +268,7 @@ export function createKupaBankRefresh({
           'הצקים השתנו לפני השמירה. יש להמתין לסנכרון ולנסות שוב.'
         );
       const nextBank = policy.build(prepared);
+      onProgress?.('save');
       if (cloud.mode() === 'supabase') {
         const published = await publication.publishCloud(
           nextBank,

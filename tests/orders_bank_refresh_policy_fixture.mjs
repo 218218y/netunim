@@ -1,5 +1,5 @@
 import {readFileSync} from 'node:fs';
-import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
+import {declaration,tokens,omitFinanceProgress} from './bank_policy_ast_fixture.mjs';
 import {restoreCreditRefresh} from './credit_refresh_policy_fixture.mjs';
 const readOwner=()=>readFileSync(new URL('../netunim-orders/site/assets/js/domains/finance/bank-refresh.js',import.meta.url),'utf8');
 
@@ -22,7 +22,7 @@ export function restoreOrdersBankRefresh(controller,{owner=readOwner()}={}){
     .replace(/let lease=([^;]+);let leaseSession=([^;]+);let assertOwner;let assertConnection;/,'let lease=$1,leaseSession=$2,assertOwner,assertConnection;')
     .replace('active();','')
     .replace('assertOwner?.();assertConnection?.();leaseSession?.assertCurrent()','assertOwner();assertConnection();leaseSession?.assertCurrent()');
-  let pipeline=tokens(owner.slice(operation.start,operation.handler.end));
+  let pipeline=omitFinanceProgress(tokens(owner.slice(operation.start,operation.handler.end)));
   const published=callback('onPublished'),first=published.indexOf(';')+1;
   pipeline=pipeline
     .replace('onStarted();',callback('onStarted'))
@@ -37,7 +37,7 @@ export function restoreOrdersBankRefresh(controller,{owner=readOwner()}={}){
     .replaceAll('financeBank(financeRow)?.archiveVersion','financeRow?.state?.bank?.archiveVersion');
   let closing=tokens(owner.slice(operation.finalizer.start+1,operation.finalizer.end-1))
     .replace('leases.reportFailure(error)',"console.error('orders bank sync lease release',error)");
-  let combined=prefix+pipeline+'finally{'+closing+tokens(controller.slice(step.finalizer.start+1,step.finalizer.end-1))+'}';
+  let combined=prefix+pipeline+'finally{'+closing+tokens(controller.slice(step.finalizer.start+1,step.finalizer.end-1)).replace('delete local.bankProgress;','')+'}';
   for(const [from,to] of [
     ['authority.capture()','operationScope.capture()'],['device.capture()','bankConnections.queries.capture()'],
     ['device.readStatus()','bankConnections.queries.readStatus()'],['device.supported(status)','bankConnections.queries.supported(status)'],
@@ -52,6 +52,6 @@ export function restoreOrdersBankRefresh(controller,{owner=readOwner()}={}){
   // heartbeat substitution instead of hiding them in a compact single line.
   combined=combined.replace('return false}if(auto){','return false}\nif(auto){')
     .replace('try{await leaseSession?.close();','try{\n        await leaseSession?.close();');
-  const reconstructed=controller.slice(fn.start,step.start)+combined+'}';
+  const reconstructed=controller.slice(fn.start,step.start).replace("local.bankProgress={phase:'prepare'};",'')+combined+'}';
   return controller.slice(0,fn.start)+reconstructed+controller.slice(fn.end);
 }

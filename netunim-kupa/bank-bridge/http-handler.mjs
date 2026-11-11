@@ -98,16 +98,32 @@ export function createBankBridgeHttpHandler({ token, routes, health, admission, 
               }
               const body = route.readBody ? await readJson(req) : {};
               grant?.assert();
-              const result = await route.run(body);
+              // Stream on the original authorized request. Older clients keep
+              // the existing JSON response and HTTP status codes.
+              const report = route.streamProgress && body?.streamProgress === true
+                ? (stage, index, total) => {
+                    if (res.destroyed || res.writableEnded) return;
+                    try { grant?.assert(); } catch { return; }
+                    if (!res.headersSent)
+                        res.writeHead(200, {...corsHeaders(req,originPolicy),'Content-Type':'application/x-ndjson; charset=utf-8'});
+                    res.write(JSON.stringify({progress:{stage,index,total}})+'\n');
+                  }
+                : undefined;
+              const result = await route.run(body, report);
               grant?.assert();
-              send(req, res, 200, result);
+              if (res.destroyed) return;
+              if (res.headersSent) res.end(JSON.stringify({result})+'\n');
+              else send(req, res, 200, result);
               route.afterResponse?.();
             };
             if (grant) await pairing.run(grant, run);
             else await run();
         }
         catch (error) {
-            send(req, res, error?.status || (error?.code === 'REQUEST_TOO_LARGE' ? 413 : 400), bankBridgeErrorResponse(error));
+            if (res.destroyed || res.writableEnded) return;
+            const result = bankBridgeErrorResponse(error);
+            if (res.headersSent) res.end(JSON.stringify({result})+'\n');
+            else send(req, res, error?.status || (error?.code === 'REQUEST_TOO_LARGE' ? 413 : 400), result);
         }
     }
     return function listener(req, res) {

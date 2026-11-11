@@ -19,15 +19,16 @@ export function createCreditProvider({ sessions, identity, diagnostics }) {
     }
     const scrapeCreditProfile = sessions.scrape, creditDiagnostics = diagnostics;
     function excludedAccountsForProfile(selection, profileId) { return selection.find(row => row.profileId === profileId)?.excludedAccounts || []; }
-    async function scrapeAllCreditProfiles(profiles, { interactive = false, previousErrors = [], syncMode = 'quick', selection = [] } = {}) {
+    async function scrapeAllCreditProfiles(profiles, { interactive = false, previousErrors = [], syncMode = 'quick', selection = [], onProgress } = {}) {
         const enabled = (Array.isArray(profiles) ? profiles : []).filter(p => p?.active !== false && creditProviderSupported(p?.provider));
         if (!enabled.length)
             throw Object.assign(new Error('לא הוגדרו חיבורי חברות אשראי פעילים'), { code: 'CREDIT_NOT_CONFIGURED' });
         const correlationId = randomUUID(), success = [], errors = [], dataDiagnostics = [];
-        let attemptedCount = 0, deferredCount = 0, coreSuccessCount = 0;
+        let attemptedCount = 0, deferredCount = 0, coreSuccessCount = 0, index = 0;
         // Deliberately sequential: two identities can use the same issuer, and isolated sequential sessions avoid cross-login cookie races.
         for (const profile of enabled) {
             const deferred = deferredCreditProfileError(previousErrors, profile);
+            onProgress?.(deferred ? 'deferred' : 'profile', ++index, enabled.length);
             if (deferred) {
                 errors.push(deferred);
                 deferredCount++;

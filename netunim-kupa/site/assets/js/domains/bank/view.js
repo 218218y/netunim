@@ -6,7 +6,7 @@ import {esc} from '../../core/values.js';
 import {money, moneyWithCents} from '../../core/money.js';
 import {readBankMoney} from '../../shared/bank-money-value.js';
 import {dateFmt} from '../../core/dates.js';
-import {syncEventCurrent} from '../../shared/sync-status.js';
+import {financeSyncProgressMeta,financeSyncProgressMarkup,updateFinanceSyncProgress,syncEventCurrent} from '../../shared/sync-status.js';
 import {dateInRange,searchMatch} from '../../core/search.js';
 import {localSearchMarkup} from '../../ui-primitives/local-search.js';
 import {bankTransactionIdentity} from './feed.js';
@@ -63,6 +63,7 @@ function currentBankError(s){if(s?.localSnapshot&&s.localSnapshot.phase!=='savin
 function currentBankWarning(s){return !s?.localSnapshot&&s?.lastWarning&&syncEventCurrent(s.lastScrapeAt,s.sharedLastSyncAt)?s.lastWarning:''}
 function bankSyncHeadlineState(s){
   const lastSync=s?.sharedLastSyncAt,lastFailure=s?.lastErrorAt,error=currentBankError(s),warning=currentBankWarning(s);
+  if(s?.progress&&!s.resultReady)return {tone:'busy',icon:'↻',title:'מסנכרן',meta:financeSyncProgressMeta('bank',s.progress)};
   if(s?.localSnapshot)return {tone:s.localSnapshot.phase==='saving'?'busy':'error',icon:'!',title:s.localSnapshot.phase==='saving'?'ממתין לשמירה':'לא אושר',meta:'צילום זמני'};
   if(s?.busy&&!s?.resultReady)return {tone:'busy',icon:'↻',title:'מסנכרן',meta:'כעת'};
   if(s?.upgradeRequired)return {tone:'error',icon:'!',title:'נדרש עדכון',meta:`Bridge v${String(s.bridgeVersion||'?')}`};
@@ -76,7 +77,7 @@ function bankSyncHeadlineState(s){
 
 function bankSyncHeadlineMarkup(s){
   const state=bankSyncHeadlineState(s);
-  return `<span class="bank-sync-state-icon" aria-hidden="true">${esc(state.icon)}</span><span class="bank-sync-state-copy"><b>${esc(state.title)}</b><small>${esc(state.meta)}</small></span>`;
+  return `<span class="bank-sync-state-icon" aria-hidden="true">${esc(state.icon)}</span><span class="bank-sync-state-copy"><b>${esc(state.title)}</b><small data-sync-progress-meta role="status">${esc(state.meta)}</small></span>`;
 }
 
 function errorStageLabel(stage){
@@ -275,6 +276,7 @@ function renderBankContent(){
     </div>
     <div id="bankSyncPanel" class="bank-sync-settings-body" ${ui.bankSyncOpen?'':'hidden'}>
       <div class="bank-sync-settings-top"><div><b>אפשרויות סינכרון</b><small>פתח אימות רק כשהבנק דורש הזדהות מחדש; פירוט מלא של כשל מופיע כאן.</small></div><div class="bank-sync-panel-actions"><button type="button" class="btn" data-action="import-finance-connections" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>ייבוא בנק + אשראי</button><button type="button" class="btn" data-action="export-bank-cheque-diagnostics" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>ייצוא אבחון בנק (JSON)</button><button type="button" class="btn" data-action="open-bank-auth" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>פתח אימות בבנק</button></div></div>
+      ${financeSyncProgressMarkup('bank',bridgeUi.resultReady?null:bridgeUi.progress)}
       <div id="bankBridgeDiagnostics">${bankBridgeDiagnosticsMarkup(bridgeUi)}</div>
       <div id="bankBridgeStatus" class="bank-sync-status ${bridgeUi.available===false||bridgeUi.lastError?'error':bridgeUi.configured?'ok':''}">${esc(bridgeStatusText(bridgeUi))}</div>
       <div id="bankBridgeAccountChoices">${bankAccountChoicesMarkup(bridgeUi.availableAccounts,bridgeUi.accountSelectionRole)}</div>
@@ -310,5 +312,5 @@ function renderBankContent(){
   ensureBankDisplayArchive().catch(error=>console.error('bank display archive',error));
 }
 
-return {runtime:{dispose(){releasePreview?.();releasePreview=null}},updateBridgePanel,renderBank,openCashflowBreakdown,openBankChequeImage,setBankAccountView,setBankDataView,setBankSearch,setBankDateMode,setBankDateBoundary,toggleBankSyncOptions};
+return {runtime:{dispose(){releasePreview?.();releasePreview=null}},updateSyncProgress:progress=>updateFinanceSyncProgress('bank','bankSyncPanel',progress),updateBridgePanel,renderBank,openCashflowBreakdown,openBankChequeImage,setBankAccountView,setBankDataView,setBankSearch,setBankDateMode,setBankDateBoundary,toggleBankSyncOptions};
 }

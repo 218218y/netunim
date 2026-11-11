@@ -3,7 +3,55 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import {configurationHandler} from './bank_configuration_fixture.mjs';
 import {httpFixture} from './bank_http_fixture.mjs';
+import {createBankBridgeClient} from '../shared/bank-bridge-client.js';
 const gate=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
+
+test('authorized refresh reports real progress before the final result and keeps the legacy JSON contract',async t=>{
+  const held=gate(),reported=gate(),result={fetchedAt:'בדיקה',accounts:{}};
+  const f=await httpFixture(t,{providerPorts:{scrapeHapoalimSnapshot:async(_credentials,{onProgress})=>{
+    onProgress?.('business');
+    await held.promise;
+    return result;
+  }}});
+  const denied=await f.request('/balance',{method:'POST',body:'{"streamProgress":true}',token:'wrong'});
+  assert.equal(denied.status,401);
+  assert.match(denied.headers['content-type'],/^application\/json/);
+  const client=createBankBridgeClient({
+    tokenStore:{get:()=>'fixture-token',set:()=>{}},
+    fetchRequest:(url,options)=>fetch(f.base+new URL(url).pathname,options),
+    timers:{setTimeout:callback=>setTimeout(callback,3000),clearTimeout},
+    createAbortController:()=>new AbortController(),
+  });
+  const request=client.fetchBalance({onProgress:reported.resolve});
+  try{
+    const progress=await Promise.race([reported.promise,request.then(()=>assert.fail('final result preceded progress'))]);
+    assert.deepEqual(progress,{stage:'business'});
+  }finally{held.resolve()}
+  assert.deepEqual(await request,{ok:true,...result});
+  const legacy=await f.request('/balance',{method:'POST',body:'{}'});
+  assert.match(legacy.headers['content-type'],/^application\/json/);
+  assert.deepEqual(legacy.data,{ok:true,...result});
+});
+
+test('a streamed credit provider failure retains its error and never retries the operation',async t=>{
+  let attempts=0;
+  const f=await httpFixture(t,{providerPorts:{scrapeAllCreditProfiles:async(_profiles,{onProgress})=>{
+    attempts++;
+    onProgress?.('profile',1,2);
+    throw Object.assign(new Error('בדיקה'),{code:'NOT_FOUND',stage:'data'});
+  }}});
+  const client=createBankBridgeClient({
+    tokenStore:{get:()=>'fixture-token',set:()=>{}},
+    fetchRequest:(url,options)=>fetch(f.base+new URL(url).pathname,options),
+    timers:globalThis,
+    createAbortController:()=>new AbortController(),
+  });
+  const progress=[];
+  await assert.rejects(client.syncCreditCards({onProgress:event=>progress.push(event)}),
+    error=>error.code==='NOT_FOUND'&&error.stage==='data'&&error.message==='בדיקה');
+  assert.deepEqual(progress,[{stage:'profile',index:1,total:2}]);
+  assert.equal(attempts,1);
+});
 
 test('bank command keeps partial home/transaction warnings and complete business data',async()=>{
   const metadata=[],input=[];

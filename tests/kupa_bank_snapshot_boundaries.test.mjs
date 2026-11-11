@@ -65,8 +65,8 @@ test('Bank controller has snapshot/refresh APIs while the operation requires a r
     (row) => row.declaration?.id?.name === 'createDomainsBankController'
   ).declaration;
   const fields = factory.params[0].properties.map((row) => row.key.name);
-  assert.equal(fields.length, 13);
-  for (const required of ['snapshots', 'bankRefresh'])
+  assert.equal(fields.length, 14);
+  for (const required of ['snapshots', 'bankRefresh', 'renderProgress'])
     assert.ok(fields.includes(required), required);
   for (const old of [
     'saveState',

@@ -40,8 +40,8 @@ test('Kupa Bank characterization rejects changed request scope, backfill, home r
   for (const [file, from, to] of [
     [
       'refresh',
-      '{interactive,historyDays}',
-      '{interactive:false,historyDays:365}'
+      'fetchBalance({interactive,historyDays,',
+      'fetchBalance({interactive:false,historyDays:365,'
     ],
     [
       'refresh',
@@ -115,6 +115,6 @@ test('Kupa Bank operation and pure candidate policy have seven and three APIs wi
   assert.equal(
     declaration(source, 'createDomainsBankController').params[0].properties
       .length,
-    13
+    14
   );
 });

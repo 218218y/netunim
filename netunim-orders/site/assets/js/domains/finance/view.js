@@ -1,3 +1,4 @@
+import {financeSyncProgressMarkup} from '../../shared/sync-status.js';
 import {selectOrdersCreditDetail} from './credit-detail-read-model.js';
 import {creditViewAllowsMonth} from '../../shared/credit-detail-policy.js';
 import {evidenceDate} from '../../shared/observation-time.js';
@@ -76,7 +77,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             `<button type="button" class="btn primary bank-date-apply" data-action="orders-bank-date-apply">החל</button></div></div></details>`);
     }
     function syncHeadlineMarkup(state) {
-        return `<span class="finance-sync-state-icon" aria-hidden="true">${esc(state.icon)}</span><span class="finance-sync-state-copy"><b>${esc(state.title)}</b><small>${esc(state.meta)}</small></span>`;
+        return `<span class="finance-sync-state-icon" aria-hidden="true">${esc(state.icon)}</span><span class="finance-sync-state-copy"><b>${esc(state.title)}</b><small data-sync-progress-meta role="status">${esc(state.meta)}</small></span>`;
     }
     function kupaTabsMarkup(active) {
         return (
@@ -510,7 +511,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
                 `>העתק אבחון טכני בטוח</button><button class="btn" type="button" data-action="export-orders-credit-data-diagnostics" `
             ) +
             (
-                `${s.creditBusy || !s.bridgeTokenConfigured ? 'disabled' : ''}>ייצוא אבחון אשראי</button></div></div>${diagnostics ? `<div class="finance-sync-diagnostics">${diagnostics}</div>` : ''}<div class="credit-sync-settings-grid">` +
+                `${s.creditBusy || !s.bridgeTokenConfigured ? 'disabled' : ''}>ייצוא אבחון אשראי</button></div></div>${financeSyncProgressMarkup('credit',s.creditProgress)}${diagnostics ? `<div class="finance-sync-diagnostics">${diagnostics}</div>` : ''}<div class="credit-sync-settings-grid">` +
                 `<div class="credit-sync-panel"><div class="credit-sync-panel-head"><b>חיבורים במחשב זה</b><span class="credit-profile-actions">`
             ) +
             (
@@ -736,7 +737,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
         isActive,
         bindBankForm: bankConnectionView.bind
     });
-    controller.setFinanceStatusListener?.(section => refreshFinanceStatus(section));
+    controller.setFinanceStatusListener?.(refreshFinanceStatus);
     async function refreshBank(interactive = false) {
         return refreshFinanceOperation('bank', () => controller.refreshBank({ interactive }));
     }

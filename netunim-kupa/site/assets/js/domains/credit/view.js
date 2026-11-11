@@ -1,3 +1,4 @@
+import {financeSyncProgressMarkup,updateFinanceSyncProgress} from '../../shared/sync-status.js';
 import {synchronizedCardKey,rowCardKey,filterMatch,selectKupaCreditDetail} from './detail-read-model.js';
 import {createResultPages} from '../../shared/result-pages.js';
 import {createRevisionSelector} from '../../shared/revision-selector.js';
@@ -315,7 +316,7 @@ function renderCreditContent(){
   `type="button" data-action="refresh-credit-sync-quick" ${syncUi.busy?'disabled':''}>עדכון מהיר</button><button class="btn" type="button" data-action="refresh-credit-sync-recovery" ` +
   `${syncUi.busy?'disabled':''}>שחזור 130 יום</button><button class="btn" type="button" data-action="refresh-credit-sync-interactive" ${syncUi.busy?'disabled':''}>מהיר עם חלון אבחון</button><button class="btn" type="button" data-action="copy-safe-credit-diagnostics" ` +
   `${syncUi.busy?'disabled':''}>העתק אבחון טכני בטוח</button><button class="btn" type="button" data-action="export-credit-data-diagnostics" ${syncUi.busy?'disabled':''}>ייצוא אבחון אשראי</button></div></div>
-          ` +
+          ${financeSyncProgressMarkup('credit',syncUi.progress)}` +
   `${syncDiagnostics?`<div class="credit-sync-diagnostics">${syncDiagnostics}</div>`:''}
           <div class="credit-sync-mode-card"><div><b>מודל נתונים: סנכרון חברות האשראי + תוספות ידניות</b><small>״כלול״ קובע אם הכרטיס מופיע בדוחות האשראי. שיוך ״עסקי״ קובע אם ` +
   `החיובים שלו נכנסים לחישובי הקופה, העו״ש והמאזן; כרטיס ביתי נשאר גלוי בדוחות אך אינו נגרע מהקופה העסקית.</small></div><span class="badge blue">הפרדה מלאה</span></div>
@@ -649,5 +650,5 @@ function pageCreditDetails(name,delta){
     resultPages.focus(name,delta)
   }
 }
-return {pageCreditDetails,renderCredit,renderCreditDetails,setCreditSearch,toggleCreditSyncOptions,creditMonthCard};
+return {pageCreditDetails,updateSyncProgress:progress=>updateFinanceSyncProgress('credit','creditSyncPanel',progress),renderCredit,renderCreditDetails,setCreditSearch,toggleCreditSyncOptions,creditMonthCard};
 }

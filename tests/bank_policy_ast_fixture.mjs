@@ -1,4 +1,9 @@
 import { parse, tokenizer } from 'acorn';
+
+// Reviewed wire change: optional progress frames on the existing refresh
+// requests. Legacy JSON and the fallback boundary are exercised over HTTP.
+export const bankBridgeProgressClientHash='3a1a46bf9c8f2cb34e74824f2aa4a07794e11935134c7f5e2bc0ea91a941e09d';
+
 export function declaration(source, name) {
   const queue = [parse(source, { ecmaVersion: 'latest', sourceType: 'module' })];
   while (queue.length) {
@@ -32,4 +37,18 @@ export function tokens(source) {
     previous = next;
   }
   return out;
+}
+
+// Ignore the additive, read-only progress observer when comparing finance policy
+// against historical ASTs. Provider arguments and authority checks stay in scope.
+export function omitFinanceProgress(source) {
+  const observations=/onProgress\?\.\('(provider|process|save)'\);|,\.\.\.\(onProgress&&\{onProgress:detail=>\{assertCurrent(?:\?\.)?\(\);onProgress\('provider',detail\);?\}\}\)|,\.\.\.\(onProgress&&\{onProgress\}\)/g;
+  const parts=[];
+  let cursor=0;
+  for(const match of source.matchAll(observations)){
+    parts.push(source.slice(cursor,match.index));
+    cursor=match.index+match[0].length;
+  }
+  parts.push(source.slice(cursor));
+  return parts.join('');
 }

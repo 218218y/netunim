@@ -9,6 +9,7 @@ export function createDomainsBankController({
   session,
   toast,
   render,
+  renderProgress=()=>{},
   bridge,
   autoScope,
   operationScope,
@@ -125,6 +126,7 @@ async function refreshBankBalance({
   }
   archive.runtime.pause();
   financialFeedback.busy = true;
+  financialFeedback.progress = {phase:'prepare'};
   financialFeedback.resultReady = false;
   financialFeedback.lastError = '';
   financialFeedback.lastErrorAt = null;
@@ -147,6 +149,10 @@ async function refreshBankBalance({
       auto,
       allowed,
       onStarted: () => render(),
+      onProgress: (phase, detail) => {
+        financialFeedback.progress = {phase, detail};
+        renderProgress(financialFeedback.progress);
+      },
       onDenied: () => {
         financialFeedback.message =
           'סינכרון הבנק כבר מתבצע ממחשב או חלון אחר; לא נפתחה כניסה נוספת לבנק.';
@@ -247,6 +253,7 @@ async function refreshBankBalance({
     });
   } finally {
     financialFeedback.busy = false;
+    delete financialFeedback.progress;
     archive.runtime.resume();
     financialFeedback.resultReady = false;
     render();

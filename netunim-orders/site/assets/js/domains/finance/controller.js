@@ -76,9 +76,9 @@ export function createDomainsFinanceController({
   const captureCreditConnection=connections.queries.capture;
   function captureCreditReset(){try{const assertOwner=operationScope.capture(),assertConnection=captureCreditConnection();return ()=>{assertOwner();assertConnection()}}catch(error){toast(error?.message||String(error));return null}}
   function exportCreditDataDiagnostics(){return local.bankBusy||local.creditBusy?Promise.resolve(false):connections.commands.exportData()}
-  function snapshot(){const kupa=checksSession.kupaCloudReadState&&typeof checksSession.kupaCloudReadState==='object'?clone(checksSession.kupaCloudReadState):null;if(kupa)kupa.checks=clone(getSharedChecks());const rawBank=kupa?.bank||null,bank=rawBank?{...rawBank,feed:displayArchiveFeed('business',rawBank.feed),homeFeed:displayArchiveFeed('home',rawBank.homeFeed)}:null;return {kupa,bank,bankAlertsReady:bankAlertsReady(),creditSync:normalizeCreditSync(kupa?.creditSync),cards:Array.isArray(kupa?.cards)?kupa.cards:[],credits:Array.isArray(kupa?.credits)?kupa.credits:[],bankLastSyncAt:bankLastSyncAt(kupa),creditLastSyncAt:creditLastSyncAt(kupa),...financeAutomation.preferenceState(),bankBusy:local.bankBusy,bankResultReady:local.bankResultReady,creditBusy:local.creditBusy,bankError:local.bankError,creditError:local.creditError,bankErrorAt:local.bankErrorAt,creditErrorAt:local.creditErrorAt,...bankConnectionState(),...creditConnectionState()}}
+  function snapshot(){const kupa=checksSession.kupaCloudReadState&&typeof checksSession.kupaCloudReadState==='object'?clone(checksSession.kupaCloudReadState):null;if(kupa)kupa.checks=clone(getSharedChecks());const rawBank=kupa?.bank||null,bank=rawBank?{...rawBank,feed:displayArchiveFeed('business',rawBank.feed),homeFeed:displayArchiveFeed('home',rawBank.homeFeed)}:null;return {kupa,bank,bankAlertsReady:bankAlertsReady(),creditSync:normalizeCreditSync(kupa?.creditSync),cards:Array.isArray(kupa?.cards)?kupa.cards:[],credits:Array.isArray(kupa?.credits)?kupa.credits:[],bankLastSyncAt:bankLastSyncAt(kupa),creditLastSyncAt:creditLastSyncAt(kupa),...financeAutomation.preferenceState(),...local,...bankConnectionState(),...creditConnectionState()}}
   const readProjection=createRevisionSelector({revision:projectionRevision,select:snapshot,name:'orders-finance'});
-  function readSnapshot(){return {...readProjection(),...financeAutomation.preferenceState(),bankBusy:local.bankBusy,bankResultReady:local.bankResultReady,creditBusy:local.creditBusy,bankError:local.bankError,creditError:local.creditError,bankErrorAt:local.bankErrorAt,creditErrorAt:local.creditErrorAt,...bankConnectionState(),...creditConnectionState()}}
+  function readSnapshot(){return {...readProjection(),...financeAutomation.preferenceState(),...local,...bankConnectionState(),...creditConnectionState()}}
 
   const {saveCashflowMinimum,saveCashflowCheckCutoff}=createCashflowSettingsCommands({mutateKupaCloud,loadSession,toast});
   const {toggleBankTransactionHandled,markBankMorningVerified,acknowledgeMissingBankTransaction,acknowledgePersistentBankAlert}=createBankArchiveCommands({
@@ -99,7 +99,7 @@ export function createDomainsFinanceController({
 
 
   function setFinanceStatusListener(listener){financeStatusListener=typeof listener==='function'?listener:()=>{}}
-  function notifyFinanceStatus(section){try{financeStatusListener(section)}catch(error){console.error('orders finance status listener',error)}}
+  function notifyFinanceStatus(section,progress){try{financeStatusListener(section,progress)}catch(error){console.error('orders finance status listener',error)}}
 
   async function refreshBank({interactive=false,auto=false,isCurrent=()=>true}={}){
     if(local.bankBusy||local.creditBusy)return false;
@@ -107,10 +107,11 @@ export function createDomainsFinanceController({
     if(!financeAutomation.tokenConfigured()){if(!auto)toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge במחשב זה');return false}
     if(auto&&!financeAutomation.markAttempt('bank'))return false;
     archive.runtime.pause();
-    local.bankBusy=true;local.bankResultReady=false;local.bankError='';local.bankErrorAt=null;
+    local.bankBusy=true;local.bankProgress={phase:'prepare'};local.bankResultReady=false;local.bankError='';local.bankErrorAt=null;
     try{
       return await bankRefresh.commands.refresh({interactive,auto,isCurrent,
         onStarted:()=>notifyFinanceStatus('bank'),
+        onProgress:(phase,detail)=>{local.bankProgress={phase,detail};notifyFinanceStatus('bank',local.bankProgress)},
         onDenied:()=>{if(!auto)toast('סינכרון הבנק כבר מתבצע ממחשב או חלון אחר. לא נפתחה כניסה נוספת לבנק.');},
         onPublished:publication=>{
           const readoutVerified=publication.published,homeFailure=publication.homeFailed;
@@ -125,7 +126,7 @@ export function createDomainsFinanceController({
         },
       });
     }finally{
-      local.bankBusy=false;
+      local.bankBusy=false;delete local.bankProgress;
       archive.runtime.resume();
       local.bankResultReady=false;
       notifyFinanceStatus('bank');
@@ -139,9 +140,10 @@ export function createDomainsFinanceController({
     if(!tab.primaryTab||!loadSession()||!effects.isOnline())return false;
     if(!financeAutomation.tokenConfigured()){if(!auto)toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge במחשב זה');return false}
     if(auto&&!financeAutomation.markAttempt('credit'))return false;
-    local.creditBusy=true;local.creditError='';local.creditErrorAt=null;notifyFinanceStatus('credit');
+    local.creditBusy=true;local.creditProgress={phase:'prepare'};local.creditError='';local.creditErrorAt=null;notifyFinanceStatus('credit');
     try{
       return await creditRefresh.commands.refresh({interactive,auto,syncMode,isCurrent,
+        onProgress:(phase,detail)=>{local.creditProgress={phase,detail};notifyFinanceStatus('credit',local.creditProgress)},
         onDenied:()=>{if(!auto)toast('סינכרון אשראי כבר מתבצע ממחשב או חלון אחר. לא נפתחה כניסה נוספת לחברות האשראי.');},
         onDeferred:()=>{local.creditError='';local.creditErrorAt=null;if(!auto)toast('לא נשלחה בקשה חדשה: החיבור מושהה עד מועד ה־403/429 הקודם. גם רענון עם חלון אבחון מכבד את ההשהיה.');},
         onWarning:warning=>{local.creditError=warning;local.creditErrorAt=new Date().toISOString();if(!auto)toast(local.creditError);},
@@ -160,7 +162,7 @@ export function createDomainsFinanceController({
         onFailureFinished:deferredOnly=>{if(!auto)toast(local.creditError||(deferredOnly?'החיבור מושהה עד תום ה־cooldown; לא יישלח ניסיון חדש לפני המועד.':''));},
       });
     }finally{
-      local.creditBusy=false;notifyFinanceStatus('credit');scheduleCreditAuto();
+      local.creditBusy=false;delete local.creditProgress;notifyFinanceStatus('credit');scheduleCreditAuto();
     }
   }
 
