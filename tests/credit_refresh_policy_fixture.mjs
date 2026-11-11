@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { declaration, tokens } from './bank_policy_ast_fixture.mjs';
+import { declaration, tokens, omitFinanceProgress } from './bank_policy_ast_fixture.mjs';
 const read = (site, file) =>
   readFileSync(
     new URL(
@@ -34,7 +34,7 @@ export function restoreCreditRefresh(
   const run = declaration(owner, 'runRefresh'),
     operation = run.body.body.find((n) => n.type === 'TryStatement');
   let prefix = tokens(owner.slice(run.body.start + 1, operation.start));
-  let pipeline = tokens(owner.slice(operation.start, operation.handler.end)).replace(/\((\w+)\)=>/g,'$1=>');
+  let pipeline = omitFinanceProgress(tokens(owner.slice(operation.start, operation.handler.end))).replace(/\((\w+)\)=>/g,'$1=>');
   let closing = tokens(
     owner.slice(operation.finalizer.start + 1, operation.finalizer.end - 1),
   );
@@ -62,15 +62,8 @@ export function restoreCreditRefresh(
       'profiles.map(profile=>profile.profileId)',
       '(status.profiles||[]).map(profile=>profile.profileId)',
     )
-    .replace('readCreditRefreshResult(await device.sync(', 'await device.sync(')
-    .replace(
-      'selection:policy.selection(cloud.readSync())}));',
-      'selection:policy.selection(cloud.readSync())});',
-    )
-    .replace(
-      'selection:policy.selection(selectionSource)}));',
-      'selection:policy.selection(selectionSource)});',
-    )
+    .replace('const evidence=await device.sync(', 'const result=await device.sync(')
+    .replace('const result=readCreditRefreshResult(evidence);', '')
     .replaceAll(
       'assertOwner?.();assertConnection?.()',
       'assertOwner();assertConnection()',
@@ -170,7 +163,9 @@ export function restoreCreditRefresh(
     pipeline +
     'finally{' +
     closing +
-    tokens(controller.slice(step.finalizer.start + 1, step.finalizer.end - 1)) +
+    tokens(controller.slice(step.finalizer.start + 1, step.finalizer.end - 1))
+      .replace('delete local.creditProgress;', '')
+      .replace('delete local.progress;', '') +
     '}';
   for (const [from, to] of [
     [
@@ -237,7 +232,9 @@ export function restoreCreditRefresh(
       'try{await leaseSession?.close()}',
       'try{\n        await leaseSession?.close();}',
     );
-  const reconstructed = controller.slice(fn.start, step.start) + combined + '}';
+  const reconstructed = controller.slice(fn.start, step.start)
+    .replace("local.creditProgress={phase:'prepare'};", '')
+    .replace("local.progress={phase:'prepare'};", '') + combined + '}';
   return (
     controller.slice(0, fn.start) + reconstructed + controller.slice(fn.end)
   );

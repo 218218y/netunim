@@ -7,6 +7,7 @@ import { analyze } from 'eslint-scope';
 import {restoreCreditPublicationAuthority} from './credit_publication_authority_fixture.mjs';
 import {restoreCreditAccountFeed} from './credit_account_authority_fixture.mjs';
 import {restoreFinanceAttemptClock} from './credit_cooldown_policy_fixture.mjs';
+import {bankBridgeProgressClientHash} from './bank_policy_ast_fixture.mjs';
 
 const root = new URL('../', import.meta.url),
   read = (path) => fs.readFileSync(new URL(path, root), 'utf8');
@@ -49,7 +50,8 @@ test('Credit financial controller delegates local connection state/effects with 
     fields = factory(source, 'createDomainsCreditController').params[0].properties.map(
       (row) => row.key.name
     );
-  assert.equal(fields.length, 13);
+  assert.equal(fields.length, 14);
+  assert.ok(fields.includes('renderProgress'));
   assert.ok(fields.includes('creditRefresh'));
   assert.ok(fields.includes('publication'));
   assert.ok(!fields.includes('syncLeases'));
@@ -82,6 +84,7 @@ test('Bridge wire/fallback, issuer merge, Finance publication and credential inp
     if(file.endsWith('/integrations/bank-bridge.js'))source=restoreFinanceAttemptClock(source);
     if(file.endsWith('/credit/publication.js'))source=restoreCreditPublicationAuthority(source);
     if(file.endsWith('/credit/sync-feed.js'))source=restoreCreditAccountFeed(source);
-    assert.equal(createHash('sha256').update(source).digest('hex'), expected, file);
+    assert.equal(createHash('sha256').update(source).digest('hex'),
+      file==='shared/bank-bridge-client.js'?bankBridgeProgressClientHash:expected,file);
   }
 });

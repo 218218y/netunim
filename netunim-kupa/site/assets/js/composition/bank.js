@@ -129,6 +129,7 @@ export function createKupaBankCapability({
     model, session, bridge, operationScope:scope, archive, snapshots, connections,bankRefresh,
     timers:platform.timers ?? globalThis, autoScope:() => disposed ? null : authority.automaticAccess(),
     toast:notify, render,
+    renderProgress:progress=>{if(!disposed)binding?.view.updateSyncProgress(progress)},
     acknowledgeBankTransactionMissing:(...args) => cloud.acknowledgeMissing(...args),
   });
   function enter(method, ...args) {

@@ -31,6 +31,7 @@ function requirePorts(required) {
 }
 /** @typedef {{
  * interactive?:boolean,auto?:boolean,syncMode?:string,allowed:()=>boolean,
+ * onProgress?:import('../../shared/sync-status.js').FinanceSyncProgress,
  * onDenied:()=>undefined,
  * onDeferred:()=>undefined,
  * onPublished:(result:Result,deferredOnly:boolean)=>undefined,
@@ -41,7 +42,7 @@ function requirePorts(required) {
 /** @typedef {{
  * authority:{capture:()=>Guard},
  * cloud:{refresh:(options:{assertCurrent:Guard})=>Promise<{verified:boolean,state?:State|null}>,readSync:()=>unknown},
- * device:{capture:()=>Guard,status:()=>unknown,error:()=>string,supported:(status:unknown)=>boolean,sync:(options:{interactive:boolean,syncMode:string,selection:unknown})=>Promise<unknown>,refreshStatus:()=>Promise<unknown>},
+ * device:{capture:()=>Guard,status:()=>unknown,error:()=>string,supported:(status:unknown)=>boolean,sync:(options:{interactive:boolean,syncMode:string,selection:unknown,onProgress?:(detail:unknown)=>void})=>Promise<unknown>,refreshStatus:()=>Promise<unknown>},
  * leases:CreditLeases,
  * policy:CreditPolicy,
  * publication:{publish:(candidate:State,message:string,lease:Lease|null,assertCurrent:Guard|undefined,assertRetained:Guard|undefined)=>Promise<unknown>},
@@ -91,6 +92,7 @@ export function createKupaCreditRefresh({
     auto = false,
     syncMode = 'forecast',
     allowed,
+    onProgress,
     onDenied,
     onDeferred,
     onPublished,
@@ -170,14 +172,19 @@ export function createKupaCreditRefresh({
         : policy.normalizeMode(syncMode, 'forecast');
       const selectionSource = auto ? autoCreditSync : cloud.readSync();
       if (auto && !allowed()) return false;
-      const result = readCreditRefreshResult(
-        await device.sync({
-          interactive,
-          syncMode: requestedMode,
-          selection: policy.selection(selectionSource)
-        })
-      );
+      onProgress?.('provider');
+      const evidence = await device.sync({
+        interactive,
+        syncMode: requestedMode,
+        selection: policy.selection(selectionSource),
+        ...(onProgress && {onProgress: detail => {
+          assertCurrent?.();
+          onProgress('provider', detail);
+        }}),
+      });
       assertCurrent();
+      onProgress?.('process');
+      const result = readCreditRefreshResult(evidence);
       if (
         Number(result.attemptedCount) === 0 &&
         Number(result.deferredCount) > 0
@@ -189,6 +196,7 @@ export function createKupaCreditRefresh({
       }
       const candidate = policy.merge(cloud.readSync(), result);
       const deferredOnly = creditIssuesDeferred(result.errors || []);
+      onProgress?.('save');
       await publication.publish(
         candidate,
         deferredOnly

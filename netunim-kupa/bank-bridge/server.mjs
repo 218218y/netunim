@@ -41,7 +41,7 @@ import {createBankDiagnosticRun,finishBankDiagnosticRun,recordBankAccountDiagnos
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=80;
+const BRIDGE_VERSION=81;
 // Capture the installer's marker once. Reading it on each request would let
 // an old process at the same path report the newly staged installation.
 const marker=(await fs.readFile(new URL('./installation-id.txt',import.meta.url),'utf8').catch(()=> '')).trim();

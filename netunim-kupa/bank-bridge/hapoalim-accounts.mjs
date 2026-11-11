@@ -238,7 +238,7 @@ export function createHapoalimAccountReader({ session, json, enrichment, diagnos
     credentials,
     ready,
     historyDays = HAPOALIM_TRANSACTION_LOOKBACK_DAYS,
-    { diagnosticRun = null } = {}
+    { diagnosticRun = null, onProgress } = {}
   ) {
     const stableReady = ready?.ready
       ? ready
@@ -283,6 +283,7 @@ export function createHapoalimAccountReader({ session, json, enrichment, diagnos
       );
       homeSelected = null;
     }
+    onProgress?.('business');
     const businessResult = await fetchHapoalimAccountSnapshot(
       page,
       businessSelected,
@@ -292,6 +293,7 @@ export function createHapoalimAccountReader({ session, json, enrichment, diagnos
     );
     let homeResult = null;
     if (homeSelected && !homeFailure) {
+      onProgress?.('home');
       try {
         homeResult = await fetchHapoalimAccountSnapshot(
           page,

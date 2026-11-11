@@ -1,6 +1,9 @@
 NETUNIM KUPA - BANK HAPOALIM BRIDGE
 ====================================
 
+Bridge v81: Live progress for bank account reads and credit profile syncs.
+Re-run install_bank_bridge.bat on each Windows computer to enable this detail.
+
 Bridge v80 (2026-11-10): CAL debit code 41 is classified as normal; MAX club
 promotion details are appended to memos without changing charged amounts.
 Existing login, provider IDs, local adapters and pinned dependencies are retained.

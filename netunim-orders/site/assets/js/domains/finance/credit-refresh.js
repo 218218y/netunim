@@ -33,6 +33,7 @@ function requirePorts(required) {
 /** @typedef {{saved?:boolean,skipped?:boolean,publicationWarning?:string}} Publication */
 /** @typedef {{
  * interactive?:boolean,auto?:boolean,syncMode?:string,isCurrent?:()=>boolean,
+ * onProgress?:import('../../shared/sync-status.js').FinanceSyncProgress,
  * onDenied:()=>undefined,
  * onDeferred:()=>undefined,
  * onWarning:(warning:string)=>undefined,
@@ -45,7 +46,7 @@ function requirePorts(required) {
 /** @typedef {{
  * authority:{capture:()=>Guard},
  * cloud:{refresh:(options:{force:true,renderIfChanged:true,assertCurrent:Guard})=>Promise<boolean>,readSync:()=>unknown},
- * device:{capture:()=>Guard,readStatus:()=>Promise<unknown>,supported:(status:unknown)=>boolean,sync:(options:{interactive:boolean,syncMode:string,selection:unknown})=>Promise<unknown>,refreshStatus:(options:{quiet:true})=>Promise<unknown>,reportFailure:(error:unknown)=>unknown},
+ * device:{capture:()=>Guard,readStatus:()=>Promise<unknown>,supported:(status:unknown)=>boolean,sync:(options:{interactive:boolean,syncMode:string,selection:unknown,onProgress?:(detail:unknown)=>void})=>Promise<unknown>,refreshStatus:(options:{quiet:true})=>Promise<unknown>,reportFailure:(error:unknown)=>unknown},
  * leases:CreditLeases,
  * policy:CreditPolicy,
  * publication:{commit:(mutator:(state:State)=>State|null,lease:Lease|null)=>Promise<Publication>},
@@ -102,6 +103,7 @@ export function createOrdersCreditRefresh({
     auto = false,
     syncMode = 'forecast',
     isCurrent = () => true,
+    onProgress,
     onDenied,
     onDeferred,
     onWarning,
@@ -175,14 +177,19 @@ export function createOrdersCreditRefresh({
           })
         : policy.normalizeMode(syncMode, 'forecast');
       if (auto && (!isCurrent() || !automation.allowed())) return false;
-      const result = readCreditRefreshResult(
-        await device.sync({
-          interactive,
-          syncMode: requestedMode,
-          selection: policy.selection(cloud.readSync())
-        })
-      );
+      onProgress?.('provider');
+      const evidence = await device.sync({
+        interactive,
+        syncMode: requestedMode,
+        selection: policy.selection(cloud.readSync()),
+        ...(onProgress && {onProgress: detail => {
+          assertCurrent();
+          onProgress('provider', detail);
+        }}),
+      });
       assertCurrent();
+      onProgress?.('process');
+      const result = readCreditRefreshResult(evidence);
       if (
         Number(result.attemptedCount) === 0 &&
         Number(result.deferredCount) > 0
@@ -192,6 +199,7 @@ export function createOrdersCreditRefresh({
         onDeferred();
         return true;
       }
+      onProgress?.('save');
       const saved = await publication.commit(finance => {
         if (auto && !automation.due(policy.lastSyncAt(finance.creditSync)))
           return null;

@@ -9,7 +9,7 @@ import {creditCardMappingKey,normalizeCreditSync} from './sync-feed.js';
 
 const CREDIT_AUTO_RETRY_MS=24*60*60*1000;
 
-export function createDomainsCreditController({model,toast,render,renderStatus=render,bridge,preferences,connections,confirmDialog,autoScope,captureOperation:readOperation,timers=globalThis,publication,creditRefresh}){
+export function createDomainsCreditController({model,toast,render,renderStatus=render,renderProgress=()=>{},bridge,preferences,connections,confirmDialog,autoScope,captureOperation:readOperation,timers=globalThis,publication,creditRefresh}){
   if(typeof autoScope!=='function')throw new Error('credit_auto_scope_required');
   if(typeof readOperation!=='function')throw new Error('credit_operation_scope_required');
   if(!preferences||!['read','setEnabled','setMode','markAttempt','reset'].every(key=>typeof preferences[key]==='function'))throw new Error('credit_preferences_port_required');
@@ -99,9 +99,10 @@ export function createDomainsCreditController({model,toast,render,renderStatus=r
     const scope=auto?autoScope():null,allowed=()=>isCurrent()&&automaticAllowed()&&autoScope()===scope;
     if(auto&&!allowed())return false;
     if(local.busy)return;
-    local.busy=true;local.error='';local.errorAt=null;if(auto)renderStatus();else render();
+    local.busy=true;local.progress={phase:'prepare'};local.error='';local.errorAt=null;if(auto)renderStatus();else render();
     try{
       return await creditRefresh.commands.refresh({interactive,auto,syncMode,allowed,
+        onProgress:(phase,detail)=>{local.progress={phase,detail};renderProgress(local.progress)},
         onDenied:()=>{if(!auto)toast('סינכרון אשראי כבר מתבצע ממחשב או חלון אחר. לא נפתחה כניסה נוספת לחברות האשראי.');},
         onDeferred:()=>{local.error='';local.errorAt=null;if(!auto)toast('לא נשלחה בקשה חדשה: החיבור מושהה עד מועד ה־403/429 הקודם. גם רענון עם חלון אבחון מכבד את ההשהיה.');},
         onPublished:(result,deferredOnly)=>{if(!auto)toast(publication.status().publicationWarning||(deferredOnly?'החיבור מושהה עקב 403/429; לא יישלח ניסיון נוסף לפני המועד.':result.errors?.length?`הסנכרון הושלם עם ${result.errors.length} אזהרות`:'נתוני האשראי עודכנו'));},
@@ -110,7 +111,7 @@ export function createDomainsCreditController({model,toast,render,renderStatus=r
         onFailureFinished:deferredOnly=>{if(!auto)toast(deferredOnly?'החיבור מושהה עד תום ה־cooldown; לא יישלח ניסיון חדש לפני המועד.':local.error);},
       });
     }finally{
-      local.busy=false;render();scheduleAuto();
+      local.busy=false;delete local.progress;render();scheduleAuto();
     }
   }
 

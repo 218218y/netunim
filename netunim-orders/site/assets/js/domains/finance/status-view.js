@@ -1,3 +1,4 @@
+import {updateFinanceSyncProgress} from '../../shared/sync-status.js';
 export function createFinanceStatusView({ui,currentSection,snapshot,headerContextMarkup,bankSyncPanelMarkup,creditSyncPanelMarkup,controller,renderKupa,renderedData,bindBankForm,isActive=()=>true}){
   if(typeof bindBankForm!=='function')throw new TypeError('orders_finance_bank_form_binding_required');
   function replacePanel(panel,markup,findNext=()=>document.getElementById(panel.id)){
@@ -11,8 +12,12 @@ export function createFinanceStatusView({ui,currentSection,snapshot,headerContex
     }
     if(focused?.isConnected&&controls.has(key(focused))){focused.focus({preventScroll:true});if(selection!==null&&selection!==undefined)focused.setSelectionRange?.(selection,selectionEnd)}
   }
-  function refreshFinanceStatus(section){
+  function refreshFinanceStatus(section,progress){
     if(!isActive()||ui.currentView!=='kupa'||currentSection()!==section)return;
+    if(progress){
+      updateFinanceSyncProgress(section,section==='bank'?'ordersBankSyncPanel':'ordersCreditSyncPanel',progress);
+      return;
+    }
     const data=snapshot(),command=document.querySelector('[data-finance-command]');
     if(command)replacePanel(command,headerContextMarkup(data),()=>document.querySelector('[data-finance-command]'));
     const panel=document.getElementById(section==='bank'?'ordersBankSyncPanel':'ordersCreditSyncPanel');

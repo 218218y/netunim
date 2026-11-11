@@ -1,6 +1,6 @@
 import {esc} from '../../core/values.js';
 import {CREDIT_PROVIDER_LABELS} from './sync-feed.js';
-import {filterCurrentSyncEvents,syncEventCurrent} from '../../shared/sync-status.js';
+import {financeSyncProgressMeta,filterCurrentSyncEvents,syncEventCurrent} from '../../shared/sync-status.js';
 
 function syncDate(value){if(!value)return 'עדיין לא סונכרן';try{return new Intl.DateTimeFormat('he-IL',{dateStyle:'short',timeStyle:'short'}).format(new Date(value))}catch{return String(value)}}
 function creditErrorRows(syncUi,summary){
@@ -12,7 +12,7 @@ function creditErrorRows(syncUi,summary){
 export function creditSyncHeadlineState(syncUi,summary){
   const errors=creditErrorRows(syncUi,summary),latestError=errors[0]||null,lastSync=summary?.sync?.syncedAt||null;
   const errorAt=syncUi?.errorAt||latestError?.at||null,lastSyncTime=Date.parse(lastSync||'')||0,errorTime=Date.parse(errorAt||'')||0;
-  if(syncUi?.busy)return {tone:'busy',icon:'↻',title:'מסנכרן',meta:'כעת'};
+  if(syncUi?.busy)return {tone:'busy',icon:'↻',title:'מסנכרן',meta:financeSyncProgressMeta('credit',syncUi.progress)};
   if(syncUi?.error&&syncEventCurrent(syncUi.errorAt,lastSync))return {tone:'error',icon:'!',title:'נכשל',meta:errorAt?syncDate(errorAt):'כעת'};
   if(syncUi?.publicationWarning)return {tone:'warn',icon:'!',title:'נשמר בענן',meta:'השמירה הנלווית בבדיקה'};
   if(syncUi?.preferenceWarning)return {tone:'warn',icon:'⏸',title:'עדכון אוטומטי הושהה',meta:'העדפות המחשב דורשות טיפול'};
@@ -23,7 +23,7 @@ export function creditSyncHeadlineState(syncUi,summary){
   if(lastSync)return {tone:'ok',icon:'✓',title:'הצליח',meta:syncDate(lastSync)};
   return {tone:'idle',icon:'•',title:'טרם סונכרן',meta:'מוכן להגדרה'};
 }
-export function creditSyncHeadlineMarkup(state){return `<span class="credit-sync-state-icon" aria-hidden="true">${esc(state.icon)}</span><span class="credit-sync-state-copy"><b>${esc(state.title)}</b><small>${esc(state.meta)}</small></span>`}
+export function creditSyncHeadlineMarkup(state){return `<span class="credit-sync-state-icon" aria-hidden="true">${esc(state.icon)}</span><span class="credit-sync-state-copy"><b>${esc(state.title)}</b><small data-sync-progress-meta role="status">${esc(state.meta)}</small></span>`}
 export function creditSyncDiagnosticsMarkup(syncUi,summary){
   const errors=creditErrorRows(syncUi,summary),rows=[];
   if(syncUi?.preferenceWarning)rows.push(`<div class="credit-sync-detail warn"><b>העדפות העדכון האוטומטי לא אושרו</b><span>${esc(syncUi.preferenceWarning)}</span><small>קוד: ${esc(syncUi.preferenceWarningCode)}</small></div>`);

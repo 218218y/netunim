@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { parse } from 'acorn';
-import { declaration, tokens } from './bank_policy_ast_fixture.mjs';
+import { declaration, tokens, omitFinanceProgress } from './bank_policy_ast_fixture.mjs';
 const read = name =>
   readFileSync(
     new URL(
@@ -105,7 +105,7 @@ export function restoreKupaBankRefresh(
     'const nextBank=' +
     compact(model.slice(returned.argument.start, returned.argument.end)) +
     ';';
-  let pipeline = compact(owner.slice(operation.start, operation.handler.end));
+  let pipeline = omitFinanceProgress(compact(owner.slice(operation.start, operation.handler.end)));
   const prep = declaration(owner, 'runRefresh')
     .body.body.find(n => n.type === 'TryStatement')
     .block.body.find(
@@ -164,7 +164,7 @@ export function restoreKupaBankRefresh(
     closing +
     compact(
       controller.slice(step.finalizer.start + 1, step.finalizer.end - 1)
-    ) +
+    ).replace('delete financialFeedback.progress;', '') +
     '}';
   for (const [from, to] of [
     ['authority.capture()', 'operationScope.capture()'],
@@ -216,7 +216,8 @@ export function restoreKupaBankRefresh(
       'try{await leaseSession?.close()}',
       'try{\n      await leaseSession?.close();}'
     );
-  const reconstructed = controller.slice(fn.start, step.start) + combined + '}';
+  const reconstructed = controller.slice(fn.start, step.start)
+    .replace("financialFeedback.progress = {phase:'prepare'};", '') + combined + '}';
   return (
     controller.slice(0, fn.start) +
     reconstructed +

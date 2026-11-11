@@ -1,0 +1,16 @@
+.finance-sync-progress:empty{display:none}
+.finance-sync-progress ol{
+  display:grid;
+  gap:6px;
+  margin:0 0 12px;
+  padding:10px 32px 10px 12px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:#fff;
+  font-size:13px;
+  color:var(--muted);
+}
+.finance-sync-progress li.done{color:var(--text)}
+.finance-sync-progress li[aria-current="step"]{font-weight:700;color:var(--text)}
+.finance-sync-progress li[aria-current="step"]::marker{color:var(--good,#267a55)}
+.finance-sync-progress li small{display:block;margin-top:3px;font-weight:400;color:var(--muted)}

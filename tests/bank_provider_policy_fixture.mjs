@@ -3,10 +3,16 @@ import {parse} from 'acorn';
 import {createHash} from 'node:crypto';
 
 const expression=source=>parse('const value='+source,{ecmaVersion:'latest',sourceType:'module'}).body[0].declarations[0].init;
-function transport(node){
+function progressObserver(node){
+  if(node.type==='ExpressionStatement')return node.expression.expression?.callee?.name==='onProgress';
+  if(node.type==='Property')return node.shorthand&&node.key.name==='onProgress';
+  return node.type==='SpreadElement'&&node.argument.operator==='&&'&&node.argument.left.name==='onProgress'&&
+    node.argument.right.properties?.length===1&&progressObserver(node.argument.right.properties[0]);
+}
+function transport(node,omitProgress){
   if(!node||typeof node!=='object')return node;
-  if(Array.isArray(node))return node.map(transport);
-  for(const key of Object.keys(node))node[key]=transport(node[key]);
+  if(Array.isArray(node))return node.filter(item=>!omitProgress||!item||!progressObserver(item)).map(item=>transport(item,omitProgress));
+  for(const key of Object.keys(node))node[key]=transport(node[key],omitProgress);
   if(node.type==='MemberExpression'&&!node.computed&&node.object.name==='platform'&&node.property.name==='os')return expression('process.platform');
   const callee=node.type==='CallExpression'?node.callee:null;
   if(callee?.type==='Identifier'&&callee.name==='joinFileAttempts'){node.callee=expression('Promise.all');return node}
@@ -57,7 +63,13 @@ export function providerPolicyHashes(sources,names){
       const statement=node.body.body.find(row=>row.type==='TryStatement');
       statement.finalizer.body=statement.finalizer.body.filter(row=>!(row.type==='ExpressionStatement'&&row.expression.type==='AssignmentExpression'&&row.expression.left.name==='scrapeBusy'));
     }
-    const stable=JSON.stringify(transport(node),(key,value)=>['start','end','raw'].includes(key)?undefined:value);
+    // Profile numbering is only used by the progress observer.
+    if(name==='scrapeAllCreditProfiles'){
+      const counters=node.body.body.find(statement=>statement.declarations?.some(d=>d.id.name==='coreSuccessCount'));
+      if(counters)counters.declarations=counters.declarations.filter(d=>d.id.name!=='index');
+    }
+    const omitProgress=['scrapeHapoalimSnapshot','fetchSelectedHapoalimSnapshot','scrapeAllCreditProfiles'].includes(name);
+    const stable=JSON.stringify(transport(node,omitProgress),(key,value)=>['start','end','raw'].includes(key)?undefined:value);
     out[name]=createHash('sha256').update(stable).digest('hex');
   }
   return out;

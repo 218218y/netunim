@@ -5,11 +5,11 @@ import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
 /** @typedef {import('./bank-snapshot-publication.js').SnapshotPublication} Publication */
 /** @typedef {import('./bank-snapshot-publication.js').SnapshotLease & {acquired:boolean}} BankGrant */
 /** @typedef {{ready:Promise<BankGrant>,assertCurrent:Guard,close:()=>Promise<void>}} BankSession */
-/** @typedef {{interactive?:boolean,auto?:boolean,isCurrent?:()=>boolean,onStarted:()=>undefined,onDenied:()=>undefined,onPublished:(result:Publication)=>undefined,onFailed:(error:unknown,connection:Guard|undefined,schedulerEpoch:number)=>undefined}} RefreshRequest */
+/** @typedef {{interactive?:boolean,auto?:boolean,isCurrent?:()=>boolean,onProgress?:import('../../shared/sync-status.js').FinanceSyncProgress,onStarted:()=>undefined,onDenied:()=>undefined,onPublished:(result:Publication)=>undefined,onFailed:(error:unknown,connection:Guard|undefined,schedulerEpoch:number)=>undefined}} RefreshRequest */
 /** @typedef {{
  * authority:{capture:()=>Guard},
  * cloud:{refresh:(options:{force:true,renderIfChanged:true,assertCurrent:Guard})=>Promise<boolean>,lastSyncAt:()=>unknown,readFinance:(options:{assertCurrent:Guard})=>Promise<unknown>},
- * device:{capture:()=>Guard,readStatus:()=>Promise<Readonly<Record<string,unknown>>>,supported:(status:unknown)=>boolean,fetchBalance:(options:{interactive:boolean,historyDays:number})=>Promise<unknown>,recordScan:(scan:Publication['scan'],guard:Guard)=>undefined},
+ * device:{capture:()=>Guard,readStatus:()=>Promise<Readonly<Record<string,unknown>>>,supported:(status:unknown)=>boolean,fetchBalance:(options:{interactive:boolean,historyDays:number,onProgress?:(detail:unknown)=>void})=>Promise<unknown>,recordScan:(scan:Publication['scan'],guard:Guard)=>undefined},
  * leases:{commands:{acquire:(name:'bank',token:string,options:{assertCurrent:Guard})=>BankSession},runtime:{isPending:()=>boolean,drain:()=>Promise<void>,dispose:()=>boolean},createToken:()=>string,reportFailure:(error:unknown)=>undefined},
  * publication:{prepare:(guard:Guard)=>Promise<void>,publish:(result:unknown,options:import('./bank-snapshot-publication.js').SnapshotRequest)=>Promise<Publication>},
  * automation:{allowed:()=>boolean,currentEpoch:()=>number,due:(stamp:unknown)=>boolean}
@@ -45,7 +45,7 @@ export function createOrdersBankRefresh({authority,cloud,device,leases,publicati
   /** @param {RefreshRequest} request @returns {Promise<boolean>} */
   async function runRefresh({
     interactive = false, auto = false, isCurrent = () => true,
-    onStarted, onDenied, onPublished, onFailed,
+    onStarted, onProgress, onDenied, onPublished, onFailed,
   }) {
     /** @type {BankGrant|null} */ let lease = null;
     /** @type {BankSession|null} */ let leaseSession = null;
@@ -101,10 +101,18 @@ export function createOrdersBankRefresh({authority,cloud,device,leases,publicati
         archiveReady = archiveInitialized && archiveVersion >= 2,
         historyDays = !auto && !archiveReady ? 365 : 30;
       if (auto && (!isCurrent() || !automation.allowed())) return false;
-      const candidate = await device.fetchBalance({ interactive, historyDays });
+      onProgress?.('provider');
+      const candidate = await device.fetchBalance({
+        interactive, historyDays,
+        ...(onProgress && {onProgress: detail => {
+          assertCurrent();
+          onProgress('provider', detail);
+        }}),
+      });
       assertCurrent();
+      onProgress?.('process');
       const result = await publication.publish(candidate, {
-        financeRow, historyDays, lease, archiveReady, archiveVersion,
+        financeRow, historyDays, lease, archiveReady, archiveVersion, ...(onProgress && {onProgress}),
       });
       assertCurrent();
       device.recordScan(result.scan, assertConnection);

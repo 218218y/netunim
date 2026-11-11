@@ -18,6 +18,42 @@ function bridgeError(message,code='BRIDGE_ERROR',stage='',extra={}){
   return error;
 }
 
+function parseRecord(text){
+  let data;
+  try{data=JSON.parse(text)}catch{return null}
+  return data!==null&&typeof data==='object'&&!Array.isArray(data)?data:null;
+}
+
+function invalidResponse(){
+  return bridgeError('Bank Bridge החזיר תשובה לא תקינה','BRIDGE_RESPONSE_INVALID');
+}
+
+async function readProgressResponse(response,onProgress){
+  if(!response.body)throw invalidResponse();
+  const reader=response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let pending='';
+  try{
+    for(;;){
+      const {value,done}=await reader.read();
+      if(done)throw invalidResponse();
+      const lines=value.split('\n');
+      pending+=lines[0];
+      for(let index=1;index<lines.length;index++){
+        const frame=parseRecord(pending);
+        pending=lines[index];
+        if(!frame)throw invalidResponse();
+        if(frame.result&&typeof frame.result.ok==='boolean'&&!Array.isArray(frame.result))return frame.result;
+        if(!frame.progress||typeof frame.progress.stage!=='string')throw invalidResponse();
+        // An observer can retire with its tab or account during the request.
+        try{onProgress(frame.progress)}catch{}
+      }
+    }
+  }finally{
+    await reader.cancel().catch(()=>{});
+    reader.releaseLock();
+  }
+}
+
 // One local protocol implementation. The caller supplies browser/network/token
 // ports; this module has no storage globals, scheduling globals or startup I/O.
 export function createBankBridgeClient({tokenStore,fetchRequest,timers,createAbortController,messages={}}){
@@ -40,16 +76,20 @@ export function createBankBridgeClient({tokenStore,fetchRequest,timers,createAbo
   }
   async function request(path,options){
     return withResponse(path,options,async response=>{
-      const body=await response.text();let data;
-      try{data=JSON.parse(body)}catch{data=null}
-      const valid=data!==null&&typeof data==='object'&&!Array.isArray(data);
-      if(!valid){
+      const streamed=typeof options?.onProgress==='function'&&response.ok&&
+        response.headers?.get('Content-Type')?.split(';')[0].trim()==='application/x-ndjson';
+      let data=streamed?await readProgressResponse(response,options.onProgress):parseRecord(await response.text());
+      if(!data){
         // An unsuccessful HTTP response keeps its transport code even if a
         // proxy supplied HTML. A successful response must satisfy the protocol.
-        if(response.ok)throw bridgeError('Bank Bridge החזיר תשובה לא תקינה','BRIDGE_RESPONSE_INVALID');
+        if(response.ok)throw invalidResponse();
         data={};
       }
-      if(!response.ok||data.ok===false)throw bridgeError(data.message||`Bank Bridge החזיר שגיאה (${response.status})`,data.code||`HTTP_${response.status}`,data.stage||'',data);
+      if(!response.ok||data.ok===false){
+        const error=bridgeError(data.message||`Bank Bridge החזיר שגיאה (${response.status})`,data.code||`HTTP_${response.status}`,data.stage||'',data);
+        if(streamed)error.streamed=true;
+        throw error;
+      }
       return data;
     });
   }
@@ -65,7 +105,7 @@ export function createBankBridgeClient({tokenStore,fetchRequest,timers,createAbo
   }
   async function creditRequest(path,options){
     try{return await request(`/v2/credit${path}`,options)}catch(error){
-      if(!['HTTP_404','NOT_FOUND'].includes(String(error?.code||'')))throw error;
+      if(error?.streamed||!['HTTP_404','NOT_FOUND'].includes(String(error?.code||'')))throw error;
       const legacy=await request(`/credit${path}`,options);return {...legacy,rollbackMode:true};
     }
   }
@@ -74,8 +114,20 @@ export function createBankBridgeClient({tokenStore,fetchRequest,timers,createAbo
     return request('/credentials',{method:'POST',body:{userCode,password,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber},timeoutMs:10000});
   }
   function selectAccount({role='business',branchNumber,accountNumber}){return request('/account-selection',{method:'POST',body:{role,branchNumber,accountNumber},timeoutMs:10000})}
-  function fetchBalance({interactive=false,historyDays=30}={}){return request('/balance',{method:'POST',body:{interactive:!!interactive,historyDays:Math.max(30,Math.min(365,Number(historyDays)||30))},timeoutMs:interactive?INTERACTIVE_BRIDGE_TIMEOUT_MS:240000})}
-  function syncCreditCards({interactive=false,syncMode='quick',selection=[]}={}){const mode=normalizeCreditFetchMode(syncMode);return creditRequest('/sync',{method:'POST',body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]},timeoutMs:INTERACTIVE_BRIDGE_TIMEOUT_MS})}
+  function fetchBalance({interactive=false,historyDays=30,onProgress}={}){
+    const body={interactive:!!interactive,historyDays:Math.max(30,Math.min(365,Number(historyDays)||30))};
+    if(typeof onProgress==='function')body.streamProgress=true;
+    return request('/balance',{method:'POST',body,onProgress,timeoutMs:interactive?INTERACTIVE_BRIDGE_TIMEOUT_MS:240000});
+  }
+  function syncCreditCards({interactive=false,syncMode='quick',selection=[],onProgress}={}){
+    const mode=normalizeCreditFetchMode(syncMode);
+    const options={
+      method:'POST',body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]},
+      onProgress,timeoutMs:INTERACTIVE_BRIDGE_TIMEOUT_MS,
+    };
+    if(typeof onProgress==='function')options.body.streamProgress=true;
+    return creditRequest('/sync',options);
+  }
   return {
     getBridgeToken:()=>tokenStore.get(),setBridgeToken:value=>tokenStore.set(value),
     status:()=>request('/status',{timeoutMs:3500}),
