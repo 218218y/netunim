@@ -4,6 +4,8 @@ import {evidenceTimestamp} from './observation-time.mjs';
 // Native/provider messages can contain paths, credentials and account details.
 // Only product codes and validated fields belong on the browser error contract.
 const messages = new Map();
+const accountSelectionCodes = ['ACCOUNT_NOT_FOUND', 'MULTIPLE_ACCOUNTS', 'AMBIGUOUS_ACCOUNT',
+  'ACCOUNT_SELECTION_FAILED', 'INCOMPLETE_ACCOUNT_SELECTOR'];
 for (const [codes, message] of [
   [['BRIDGE_ERROR', 'BANK_DATA_ERROR', 'SCRAPE_FAILED'], 'קריאת נתוני הבנק נכשלה. בדוק את מצב המחבר ונסה שוב.'],
   [['UNAUTHORIZED', 'BRIDGE_AUTH_REQUIRED'], 'מפתח המחבר שגוי, בוטל או פג. יש לבדוק את ההצמדה במחשב.'],
@@ -16,7 +18,7 @@ for (const [codes, message] of [
   [['NOT_CONFIGURED', 'CREDIT_NOT_CONFIGURED'], 'לא נשמר חיבור פעיל. יש להגדיר חיבור לפני הרענון.'],
   [['NO_BALANCE'], 'לא התקבלה יתרה תקינה לחשבון. בדוק את החשבון באתר הבנק ונסה שוב.'],
   [['NO_ACCOUNTS'], 'הבנק לא החזיר חשבונות פעילים לחיבור. יש לבדוק את ההרשאות באתר הבנק.'],
-  [['ACCOUNT_NOT_FOUND', 'ACCOUNT_SELECTION_FAILED', 'INCOMPLETE_ACCOUNT_SELECTOR'], 'יש לבחור סניף ומספר חשבון מתוך החשבונות הפעילים של הבנק.'],
+  [accountSelectionCodes, 'יש לבחור סניף ומספר חשבון מתוך החשבונות הפעילים של הבנק.'],
   [['DUPLICATE_ACCOUNT_ROLE'], 'יש לבחור חשבונות שונים לחשבון העסקי ולחשבון הביתי.'],
   [['INVALID_PASSWORD', 'CREDIT_INVALID_PASSWORD', 'CREDIT_LOGIN_REJECTED'], 'פרטי ההתחברות נדחו. יש לבדוק אותם בהגדרות החיבור.'],
   [['CHANGE_PASSWORD', 'CREDIT_CHANGE_PASSWORD'], 'הספק דורש החלפת סיסמה באתר שלו לפני המשך הסנכרון.'],
@@ -80,7 +82,7 @@ export function bankBridgeCreditErrors(errors) {
 
 export function bankBridgeErrorResponse(error) {
   const failure = publicFailure(error);
-  const selection = ['ACCOUNT_NOT_FOUND', 'ACCOUNT_SELECTION_FAILED', 'INCOMPLETE_ACCOUNT_SELECTOR'].includes(failure.code);
+  const selection = accountSelectionCodes.includes(failure.code);
   return {ok: false, ...failure,
     availableAccounts: selection ? publicAccountDescriptors(error?.availableAccounts).slice(0, 50) : [],
     accountRole: error?.accountRole === 'home' ? 'home' : error?.accountRole === 'business' ? 'business' : '',

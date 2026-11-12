@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {bankBridgeErrorResponse, bankBridgeCreditErrors} from '../netunim-kupa/bank-bridge/wire-errors.mjs';
 import {httpFixture} from './bank_http_fixture.mjs';
+import {selectAccountDescriptor} from '../netunim-kupa/bank-bridge/hapoalim-account-model.mjs';
 
 const privateText='C:\\Users\\Private Person\\Y-account-123456789.json Y:\\Finance\\invoice-private.docx customer-private password-private';
 const failure=()=>Object.assign(new Error(privateText),{code:'BANK_DATA_ERROR',stage:privateText,httpStatus:503,
@@ -39,6 +40,21 @@ test('account selection retains only the required numeric account descriptors',(
   const result=bankBridgeErrorResponse({...failure(),code:'ACCOUNT_NOT_FOUND',stage:'account',accountRole:'home'});
   assert.deepEqual(result.availableAccounts,[{bankNumber:'12',branchNumber:'001',accountNumber:'123456789',accountId:'001-123456789'}]);
   assert.equal(result.accountRole,'home');assert.ok(!JSON.stringify(result).includes('customer-private'));
+});
+
+test('missing and ambiguous bank selectors keep their account picker through HTTP',async t=>{
+  const accounts=[{branchNumber:'001',accountNumber:'123456789',owner:privateText},
+    {branchNumber:'002',accountNumber:'123456789',owner:privateText}];
+  for(const [selector,code] of [['','MULTIPLE_ACCOUNTS'],['123456789','AMBIGUOUS_ACCOUNT']]){
+    const f=await httpFixture(t,{providerPorts:{scrapeHapoalimSnapshot:async()=>{
+      selectAccountDescriptor(accounts,selector);
+    }}});
+    const {data}=await f.request('/balance',{method:'POST',body:'{}'});
+    assert.equal(data.code,code);
+    assert.equal(data.availableAccounts.length,2);
+    assert.deepEqual(data.availableAccounts.map(row=>row.branchNumber),['001','002']);
+    assert.ok(!JSON.stringify(data).includes('customer-private'));
+  }
 });
 
 test('credit errors retain bounded scheduling evidence and provider identity',()=>{
