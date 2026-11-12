@@ -11,7 +11,7 @@ export function createCreditDiagnosticLog({
   directory,
   bridgeVersion = 0,
   contractVersion = 2,
-  connectorVersion = 'israeli-bank-scrapers-6.10.0',
+  connectorVersion = 'israeli-bank-scrapers-6.13.0',
   maxBytes = CREDIT_DIAGNOSTIC_MAX_BYTES,
   fileCount = CREDIT_DIAGNOSTIC_FILE_COUNT,
   retentionMs = CREDIT_DIAGNOSTIC_RETENTION_MS,
