@@ -9,8 +9,9 @@ const appRoot=path.join(process.env.LOCALAPPDATA||'', 'NetunimKupaBankBridge');
 const runtimeModule=process.env.NETUNIM_CAMOUFOX_MODULE||path.join(appRoot,'app','node_modules','camoufox-js','dist','index.js');
 const browserRoot=process.env.CAMOUFOX_INSTALL_DIR||path.join(appRoot,'camoufox');
 
-try{await fs.access(runtimeModule);await fs.access(browserRoot)}catch{
-  console.log('SKIP Camoufox identity integration: installed Camoufox 0.12.0 runtime/browser not found');
+try{await fs.access(runtimeModule);await fs.access(browserRoot)}catch(error){
+  if(process.env.NETUNIM_REQUIRE_CAMOUFOX==='1')throw error;
+  console.log('SKIP Camoufox identity integration: Camoufox runtime/browser not found');
   process.exit(0);
 }
 
