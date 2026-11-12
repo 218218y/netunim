@@ -73,7 +73,7 @@ test('a provider failure does not write bank status over a rejected concurrent r
     providerPorts:{scrapeHapoalimSnapshot:async()=>{entered.resolve();await held.promise;throw Object.assign(new Error('fixture bank failure'),{code:'BANK_DATA_ERROR',stage:'data',accountRole:'home',httpStatus:503,availableAccounts:[{accountId:7}]})},writeMeta:async()=>{writes++}}});
   const syncing=f.request('/balance');await entered.promise;
   try{const busy=await f.request('/balance');assert.equal(busy.data.code,'SCRAPE_BUSY');assert.equal(writes,0)}finally{held.resolve()}
-  const failed=await syncing;assert.equal(failed.data.code,'BANK_DATA_ERROR');assert.equal(failed.data.accountRole,'home');assert.equal(failed.data.httpStatus,503);assert.deepEqual(failed.data.availableAccounts,[{accountId:7}]);assert.equal(writes,1);
+  const failed=await syncing;assert.equal(failed.data.code,'BANK_DATA_ERROR');assert.equal(failed.data.accountRole,'home');assert.equal(failed.data.httpStatus,503);assert.deepEqual(failed.data.availableAccounts,[]);assert.equal(writes,1);
 });
 
 test('simultaneous business/home selections preserve both roles and secret bytes',async t=>{

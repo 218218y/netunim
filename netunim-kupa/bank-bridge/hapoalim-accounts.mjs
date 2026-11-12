@@ -160,7 +160,7 @@ export function createHapoalimAccountReader({ session, json, enrichment, diagnos
           // independent ranges. Auth, throttling and invalid source evidence
           // still stop the read; no extra requests bypass those failures.
           if (![500,502,503,504].includes(Number(error?.httpStatus))) throw error;
-          coverageWarnings.push(`לא ניתן היה להשלים את סריקת התנועות מ-${isoLocalDate(windowStart)} עד ${isoLocalDate(windowEnd)}: ${error?.message || error}`);
+          coverageWarnings.push(`לא ניתן היה להשלים את סריקת התנועות מ-${isoLocalDate(windowStart)} עד ${isoLocalDate(windowEnd)}. ${safeError(error).message}`);
         }
       }
       const chunkDays = days > HAPOALIM_TRANSACTION_LOOKBACK_DAYS ? 60 : days;

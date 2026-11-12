@@ -11,6 +11,14 @@ test('public status and diagnostic exports match frozen pre-refactor response fi
     readMeta:async()=>structuredClone(inputs.bankMeta),readCreditMeta:async()=>structuredClone(inputs.creditMeta),
     creditDiagnostics:{summary:async()=>[{stage:'fixture'}]},readCreditDataDiagnostic:async()=>structuredClone(inputs.creditData),readBankDiagnostic:async()=>structuredClone(inputs.bankDiagnostic)}});
   for(const [target,expected] of Object.entries(fixture.responses)){
+    // The historical fixture retains financial/status fields. Reviewed public
+    // error messages and structured account choices follow the privacy contract.
+    if(target==='/status'){
+      expected.data.lastError='יש לבחור סניף ומספר חשבון מתוך החשבונות הפעילים של הבנק.';
+      expected.data.lastWarning='חלק מנתוני הספק לא התקבלו. יש לבדוק את שלמות הנתונים לפני שימוש בהם.';
+      expected.data.availableAccounts=[{bankNumber:'12',branchNumber:'002',accountNumber:'000456',accountId:'002-000456'}];
+    }
+    if(target.endsWith('/credit/status'))expected.data.lastErrors=[{code:'BRIDGE_ERROR',stage:'',message:'קריאת נתוני הבנק נכשלה. בדוק את מצב המחבר ונסה שוב.',httpStatus:0}];
     const actual=await f.request(target);assert.equal(actual.status,expected.status,target);assert.deepEqual(actual.data,expected.data,target);
   }
 });
@@ -83,7 +91,7 @@ test('JSON boundary preserves invalid JSON, exact UTF8 byte limit and empty-body
 test('private operation failures preserve the Bank error envelope and role metadata',async t=>{
   const failure=Object.assign(new Error('fixture failure'),{code:'FIXTURE',stage:'account',httpStatus:503,accountRole:'home',availableAccounts:[{branchNumber:'001',accountNumber:'000123'}],creditErrors:[{code:'ISSUER'}]});
   const f=await httpFixture(t,{vault:{readCredentials:async()=>{throw failure}}});
-  const response=await f.request('/status');assert.equal(response.status,400);assert.deepEqual(response.data,{ok:false,code:'FIXTURE',stage:'account',message:'fixture failure',httpStatus:503,availableAccounts:failure.availableAccounts,accountRole:'home',creditErrors:failure.creditErrors});
+  const response=await f.request('/status');assert.equal(response.status,400);assert.deepEqual(response.data,{ok:false,code:'BRIDGE_ERROR',stage:'account',message:'קריאת נתוני הבנק נכשלה. בדוק את מצב המחבר ונסה שוב.',httpStatus:503,availableAccounts:[],accountRole:'home',creditErrors:[{code:'BRIDGE_ERROR',stage:'',message:'קריאת נתוני הבנק נכשלה. בדוק את מצב המחבר ונסה שוב.',httpStatus:0}]});
 });
 
 test('cheque image routes preserve native bytes, private gate, retention and 64-hex IDs',async t=>{
