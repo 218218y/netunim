@@ -495,11 +495,15 @@ PR #1184 invalid-password detection remains in place and the legacy upstream DOM
 Reviewed dependency refresh (2026-11-12)
 ---------------------------------------
 The current locked runtime uses israeli-bank-scrapers 6.13.0, Puppeteer and
-puppeteer-modern 25.16.0, camoufox-js 0.13.0, playwright-core 1.60.0 and
+puppeteer-modern 25.16.0, camoufox-js 0.13.0, playwright-core 1.62.1 and
 fingerprint-generator 2.1.89. Earlier version-specific notes describe
 historical releases. Playwright 1.65.0 is incompatible with camoufox-js 0.13.0's
 declared peer range (<1.63.0), so it is excluded from this update and Dependabot
 must keep that range until the Camoufox compatibility set is reviewed together.
+Playwright 1.62.1 is within that peer range. The security workflow provisions
+a disposable Camoufox browser and requires two real launches with one temporary
+identity, checking that the observable fingerprint remains stable. This probe
+uses about:blank and does not contact a bank or open an installed user profile.
 
 The upstream 6.10.0-to-6.13.0 diff leaves Hapoalim and the shared browser/login
 base unchanged. Netunim still uses its own Hapoalim account/balance/cheque reader,
