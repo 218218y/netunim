@@ -2,9 +2,9 @@
 
 export const CREDIT_CONNECTOR_CONTRACT_VERSION = 2;
 
-export const CREDIT_PROVIDER_SCHEMA_VERSION = 'israeli-bank-scrapers-6.10.0';
+export const CREDIT_PROVIDER_SCHEMA_VERSION = 'israeli-bank-scrapers-6.13.0';
 
-export const MAX_PROVIDER_SCHEMA_VERSION = 'max-netunim-v3+promotions-6.13.0+upstream-login-6.10.0';
+export const MAX_PROVIDER_SCHEMA_VERSION = 'max-netunim-v3+promotions-6.13.0+upstream-login-6.13.0';
 
 export const VISA_CAL_PROVIDER_SCHEMA_VERSION =
   'visa-cal-netunim-v9+pr1202-code41+upstream-6.12.1-balance+pr1184-invalid-password+pr1193-browser-api+authenticated-session-result';

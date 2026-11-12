@@ -8,6 +8,16 @@ import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 const require=createRequire(process.env.NETUNIM_DEPENDENCY_ROOT?pathToFileURL(path.join(process.env.NETUNIM_DEPENDENCY_ROOT,'package.json')):new URL('../netunim-kupa/bank-bridge/package.json',import.meta.url));
 const {createScraper,CompanyTypes}=require('israeli-bank-scrapers');
+const manifest=JSON.parse(await fs.readFile(require.resolve('./package.json'),'utf8'));
+assert.equal(JSON.parse(await fs.readFile(require.resolve('israeli-bank-scrapers/package.json'),'utf8')).version,manifest.dependencies['israeli-bank-scrapers']);
+// Netunim uses the published login/page APIs with its own data readers. Check
+// those actual package boundaries without sending credentials or provider traffic.
+for(const provider of ['hapoalim','visaCal','max']){
+  const instance=createScraper({companyId:CompanyTypes[provider],startDate:new Date()});
+  for(const method of ['initialize','login','terminate'])assert.equal(typeof instance[method],'function',`${provider}.${method}`);
+  if(provider==='visaCal')for(const method of ['getLoginOptions','getCards','getAuthorizationHeader','getXSiteId'])
+    assert.equal(typeof instance[method],'function',`visaCal.${method}`);
+}
 const packageFile=require.resolve('puppeteer/package.json');
 assert.equal(JSON.parse(await fs.readFile(packageFile,'utf8')).version,'25.16.0');
 const modern=await import(pathToFileURL(require.resolve('puppeteer-modern')).href);

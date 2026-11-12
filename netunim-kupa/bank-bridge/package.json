@@ -10,7 +10,7 @@
     "puppeteer": false
   },
   "dependencies": {
-    "israeli-bank-scrapers": "6.10.0",
+    "israeli-bank-scrapers": "6.13.0",
     "puppeteer": "25.16.0",
     "puppeteer-modern": "npm:puppeteer@25.16.0",
     "camoufox-js": "0.13.0",

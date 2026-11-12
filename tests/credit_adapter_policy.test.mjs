@@ -55,7 +55,7 @@ test('credit provider methods, normalization, wire constants and fallback policy
   // Only the debit classifier, promotion memo and their versioned wire metadata
   // change. Keep every other reviewed adapter/login policy under its old digest.
   assert.deepEqual(Object.keys(providerUpdatePolicies).sort(),[
-    'CAL_TRANSACTION_TYPES','MAX_PROVIDER_SCHEMA_VERSION','VISA_CAL_PROVIDER_SCHEMA_VERSION',
+    'CAL_TRANSACTION_TYPES','CREDIT_PROVIDER_SCHEMA_VERSION','MAX_PROVIDER_SCHEMA_VERSION','VISA_CAL_PROVIDER_SCHEMA_VERSION',
     'maxMemo','normalizeVisaCalTransaction',
   ].sort());
   for(const [name,{before,after}] of Object.entries(providerUpdatePolicies)){

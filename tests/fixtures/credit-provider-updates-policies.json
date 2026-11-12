@@ -5,7 +5,7 @@
   },
   "MAX_PROVIDER_SCHEMA_VERSION": {
     "before": "1c213e1a2db5b7e99d4f75bd5b19e639686a73faa68dfa5ca8f0322229c5b804",
-    "after": "04b5df43523442fe5917dc22f8788b6783e4cc2827171a20956fa749c846d12c"
+    "after": "3d3cd471d88f86613a42c624c52638892eeac43b6f721c6d4a951c72998abb62"
   },
   "VISA_CAL_PROVIDER_SCHEMA_VERSION": {
     "before": "5370affe2c82c794f62eb95032b5d7d66b1534ca1802d106759575489c3b03ef",
@@ -18,5 +18,9 @@
   "maxMemo": {
     "before": "a49a8e15c88e0e70f6698ac91bff44f63ae8c976dbea716487950557e92b7dbc",
     "after": "044e620cc0df03b6cef8f13b7033b1125b667e169565c1d4bbbf93e44f8e6f37"
+  },
+  "CREDIT_PROVIDER_SCHEMA_VERSION": {
+    "before": "afcf923a58ab6ab2cca8b3f570cf467b159953e29a7180bc01d25e3b7088d01e",
+    "after": "5077539cd19e9595005d62810874e8ec0ef3e2d7c0ac395c3fe7498910b20c18"
   }
 }

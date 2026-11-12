@@ -492,6 +492,24 @@ v72 does not enlarge the 45-second bound, resubmit credentials or add a speculat
 
 PR #1184 invalid-password detection remains in place and the legacy upstream DOM detector remains authoritative as its fallback. PR #1193 browser-origin API calls are unchanged. On a true timeout, the local diagnostic now stores only a bounded `loginState` category such as `connect-frame`, `session-init-only`, `session-auth-only` or `no-connect-frame`; raw issuer URLs, HTML, credentials and tokens are still excluded. The connector identity is bumped to v8 and both Kupa and Orders require Bridge v72 so a stale v71 process cannot silently keep the older result detector. Re-run `install_bank_bridge.bat` after deployment. No Supabase migration or SQL change is required.
 
+Reviewed dependency refresh (2026-11-12)
+---------------------------------------
+The current locked runtime uses israeli-bank-scrapers 6.13.0, Puppeteer and
+puppeteer-modern 25.16.0, camoufox-js 0.13.0, playwright-core 1.60.0 and
+fingerprint-generator 2.1.89. Earlier version-specific notes describe
+historical releases. Playwright 1.65.0 is incompatible with camoufox-js 0.13.0's
+declared peer range (<1.63.0), so it is excluded from this update and Dependabot
+must keep that range until the Camoufox compatibility set is reviewed together.
+
+The upstream 6.10.0-to-6.13.0 diff leaves Hapoalim and the shared browser/login
+base unchanged. Netunim still uses its own Hapoalim account/balance/cheque reader,
+Visa Cal balance/login/API policies, MAX month/promotion parser and isolated
+Isracard/Amex DigitalV3 connectors with the existing Camoufox fallback. The
+upstream Cal balance and MAX promotion changes do not replace those local
+implementations. Connector diagnostics now report the installed upstream version.
+Re-run install_bank_bridge.bat to stage and doctor-check this dependency set;
+the existing per-user settings, DPAPI vault and browser identity are retained.
+
 Bridge v73 — preserve the complete Chromium → Camoufox failure chain (2026-10-08)
 --------------------------------------------------------------------------------
 When the Isracard-family Chromium primary path is rejected and the Camoufox fallback is also rejected, the fallback error no longer hides the primary failure that caused the fallback. The public error and safe diagnostics retain only the primary browser engine, code, stage and HTTP status; credentials, request bodies, cookies and issuer HTML remain excluded. A dual HTTP 403 now states explicitly that Chrome/Edge was rejected first and Camoufox was rejected afterwards, while the existing engine-scoped Camoufox cooldown remains unchanged. No additional issuer request, credential retry, fingerprint loop or cooldown bypass is introduced.
