@@ -29,8 +29,7 @@ export function genericMonthlyAccount(
     byMonth = new Map(plan.map((entry) => [entry.month, []])),
     pending = [],
     pendingSeen = new Set(),
-    unassigned = [],
-    cutoff = Date.parse(startDate);
+    unassigned = [];
   for (const tx of normalized.txns) {
     // Provider status is authoritative. MAX and Isracard-group DigitalV3 intentionally set
     // processedDate on approvals to the purchase date, so processedDate must never promote
@@ -45,10 +44,10 @@ export function genericMonthlyAccount(
       }
       continue;
     }
-    const billingDate = transactionBillingDate(tx),
-      billingTime = Date.parse(billingDate),
-      key = transactionMonth(tx);
-    if (Number.isFinite(cutoff) && Number.isFinite(billingTime) && billingTime < cutoff) continue;
+    // Membership in the planned calendar months is the only date cutoff.
+    // A rolling-day filter here used to erase the first days of an otherwise
+    // successful historical month, then overwrite Last Known Good on merge.
+    const key = transactionMonth(tx);
     if (byMonth.has(key)) byMonth.get(key).push(tx);
     else if (!key) unassigned.push(tx);
   }

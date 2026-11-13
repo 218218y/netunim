@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {GOOGLE_TEST_SCOPES, oauthFixture, tick} from './google_oauth_fixture.mjs';
+import {GOOGLE_TEST_SCOPES, oauthFixture} from './google_oauth_fixture.mjs';
 
 for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
   const credentials = {access_token:'new-access', refresh_token:'new-refresh', expires_in:3600, scope:GOOGLE_TEST_SCOPES};

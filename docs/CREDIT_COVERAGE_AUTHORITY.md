@@ -9,8 +9,10 @@ The source-grounded regression was a successful `2026-10` month with an omitted
 `transactions` field. With an included card mapping, `readCreditRefreshResult`
 accepted it and both merge owners replaced the known month with zero transactions.
 The same omission in a successful pending component also authorized replacement.
-An explicit empty array remains a valid successful result; failed component reads
-retain the prior data. Both success spellings recognized by the retained reader
+An explicit empty array remains structurally valid; the shared historical-month
+integrity gate now independently refuses removal of retained protected financial
+evidence, even for explicit success or recovery. See `CREDIT_MONTH_INTEGRITY_HE.md`.
+Failed component reads retain the prior data. Both success spellings recognized by the retained reader
 (`fetchStatus: success`, or omitted fetch status with `status: fresh`) are guarded.
 
 Boolean/array amounts can no longer acquire numeric meaning through `Number`.

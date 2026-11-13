@@ -1,4 +1,5 @@
 import {restoreCreditCooldown} from './credit_cooldown_policy_fixture.mjs';
+import {restoreCreditMonthIntegrity} from './credit_month_integrity_policy_fixture.mjs';
 // Project only the separately tested account-authority change out of historical
 // policy comparisons. Keep the immutable baseline hashes and every other byte.
 export function restoreCreditPendingStatus(source){
@@ -7,6 +8,7 @@ export function restoreCreditPendingStatus(source){
 }
 
 export function restoreCreditAccountFeed(source,{orders=false}={}){
+  source=restoreCreditMonthIntegrity(source,orders?'netunim-orders/site/assets/js/domains/finance/credit-feed.js':'netunim-kupa/site/assets/js/domains/credit/sync-feed.js');
   source=restoreCreditCooldown(restoreCreditPendingStatus(source));
   // JSON-safe optional category serialization is covered by credit_storage_json.
   // Project only that exact change out; retain the historical financial hashes.

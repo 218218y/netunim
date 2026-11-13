@@ -1,9 +1,10 @@
+import {mergeCreditMonthSnapshot,CREDIT_HISTORICAL_MONTH_REGRESSION} from '../../shared/credit-month-integrity.js';
 import {creditRetryAfterAt} from '../../shared/credit-cooldown-policy.js';
 import {todayISO} from '../../core/dates.js';
 import {normalizeCreditCardAccountTransitions} from '../../shared/credit-card-account.js';
 import {creditAccountKnownFutureCommitmentData,creditAccountUpcomingChargeData,creditBillingRowsData,creditPendingAuthorizationTotalData} from '../../shared/credit-billing-cycles.js';
 
-import {creditHistoryCutoffMonth,creditCardSortOrder} from '../../shared/credit-history.js';
+import {creditCardSortOrder} from '../../shared/credit-history.js';
 
 export const CREDIT_SYNC_VERSION=4;
 export const CREDIT_CONNECTOR_CONTRACT_VERSION=2;
@@ -135,10 +136,10 @@ function preferredCreditMapping(mappings,profileIds,accountNumber,defaultAccount
   return best?{...best}:null;
 }
 function newerISO(a,b){const aa=iso(a),bb=iso(b);if(!aa)return bb;if(!bb)return aa;return aa>=bb?aa:bb}
-function mergeCreditAccountSnapshot(previous,incoming){
+function mergeCreditAccountSnapshot(previous,incoming,reference=null){
   if(!previous)return normalizeCreditAccount(incoming);
   const old=normalizeCreditAccount(previous),next=normalizeCreditAccount(incoming),monthMap=new Map(old.months.map(slice=>[slice.month,slice]));
-  for(const slice of next.months){const prior=monthMap.get(slice.month);if(slice.fetchStatus==='success')monthMap.set(slice.month,{...slice,status:'fresh'});else if(prior?.fetchedAt)monthMap.set(slice.month,{...prior,status:'stale',fetchStatus:slice.fetchStatus,lastErrorCode:slice.lastErrorCode,lastErrorAt:slice.lastErrorAt});else monthMap.set(slice.month,{...slice,status:'missing'})}
+  for(const slice of next.months)monthMap.set(slice.month,mergeCreditMonthSnapshot(monthMap.get(slice.month),slice,reference));
   const pendingOk=next.pendingStatus==='success',pendingTransactions=pendingOk?next.pendingTransactions:old.pendingTransactions,pendingStatus=pendingOk?'success':next.pendingStatus,pendingFetchedAt=pendingOk?next.pendingFetchedAt:old.pendingFetchedAt,frameOk=next.frameFetchStatus==='success',hadFrame=old.frameFetchedAt||old.balance!==null||old.cardFrame!==null||old.availableCredit!==null;
   return normalizeCreditAccount({...old,...next,balance:frameOk?next.balance:old.balance,balanceDate:frameOk?next.balanceDate:old.balanceDate,cardType:frameOk?(next.cardType||old.cardType):old.cardType,cardFrame:frameOk?next.cardFrame:old.cardFrame,availableCredit:frameOk?next.availableCredit:old.availableCredit,frameStatus:frameOk?'fresh':hadFrame?'stale':'missing',frameFetchStatus:next.frameFetchStatus,frameFetchedAt:frameOk?next.frameFetchedAt:old.frameFetchedAt,frameErrorCode:frameOk?'':next.frameErrorCode,frameErrorAt:frameOk?null:next.frameErrorAt,months:[...monthMap.values()],pendingTransactions,pendingStatus,pendingFetchedAt,pendingErrorCode:pendingOk?'':next.pendingErrorCode,pendingErrorAt:pendingOk?null:next.pendingErrorAt,unassignedTransactions:next.unassignedTransactions.length?next.unassignedTransactions:old.unassignedTransactions});
 }
@@ -158,7 +159,7 @@ function collapseCreditProfileAliases(profiles,mappings){
     for(const profile of ordered){
       syncedAt=newerISO(syncedAt,profile.syncedAt);attemptedAt=newerISO(attemptedAt,profile.attemptedAt);
       if(profile.coreComplete===false)coreComplete=false;else if(coreComplete===null&&profile.coreComplete===true)coreComplete=true;
-      for(const account of profile.accounts)accounts.set(account.accountNumber,mergeCreditAccountSnapshot(accounts.get(account.accountNumber),account));
+      for(const account of profile.accounts)accounts.set(account.accountNumber,mergeCreditAccountSnapshot(accounts.get(account.accountNumber),account,profile.attemptedAt||profile.syncedAt));
     }
     const accountNumbers=new Set(accounts.keys());
     for(const key of Object.keys(mappings))for(const profileId of profileIds){const prefix=`${profileId}:`;if(key.startsWith(prefix))accountNumbers.add(key.slice(prefix.length))}
@@ -236,7 +237,7 @@ export function mergeCreditSyncResult(current,payload={}){
   }).filter(profile=>profile.profileId),successes=[];
   function preserveCoreLastKnownGood(previous,incoming){
     const attempts=new Map(incoming.accounts.map(account=>[account.accountNumber,account]));
-    const accounts=previous.accounts.map(account=>{const attempt=attempts.get(account.accountNumber);if(!attempt)return account;const old=normalizeCreditAccount(account),monthMap=new Map(old.months.map(slice=>[slice.month,slice]));for(const slice of attempt.months){if(slice.fetchStatus==='success')continue;const prior=monthMap.get(slice.month);monthMap.set(slice.month,prior?.fetchedAt?{...prior,status:'stale',fetchStatus:slice.fetchStatus,lastErrorCode:slice.lastErrorCode,lastErrorAt:slice.lastErrorAt}:{...slice,status:'missing'})}const frameFailed=attempt.frameFetchStatus&&attempt.frameFetchStatus!=='success';return normalizeCreditAccount({...old,frameStatus:frameFailed?(old.frameFetchedAt||old.balance!==null||old.cardFrame!==null||old.availableCredit!==null?'stale':'missing'):old.frameStatus,frameFetchStatus:frameFailed?attempt.frameFetchStatus:old.frameFetchStatus,frameErrorCode:frameFailed?attempt.frameErrorCode:old.frameErrorCode,frameErrorAt:frameFailed?attempt.frameErrorAt:old.frameErrorAt,months:[...monthMap.values()]})});
+    const accounts=previous.accounts.map(account=>{const attempt=attempts.get(account.accountNumber);if(!attempt)return account;const old=normalizeCreditAccount(account),monthMap=new Map(old.months.map(slice=>[slice.month,slice]));for(const slice of attempt.months){if(slice.fetchStatus==='success')continue;const prior=monthMap.get(slice.month);monthMap.set(slice.month,prior&&(prior.fetchedAt||prior.transactions.length)?{...prior,status:'stale',fetchStatus:slice.fetchStatus,lastErrorCode:slice.lastErrorCode,lastErrorAt:slice.lastErrorAt}:{...slice,status:'missing'})}const frameFailed=attempt.frameFetchStatus&&attempt.frameFetchStatus!=='success';return normalizeCreditAccount({...old,frameStatus:frameFailed?(old.frameFetchedAt||old.balance!==null||old.cardFrame!==null||old.availableCredit!==null?'stale':'missing'):old.frameStatus,frameFetchStatus:frameFailed?attempt.frameFetchStatus:old.frameFetchStatus,frameErrorCode:frameFailed?attempt.frameErrorCode:old.frameErrorCode,frameErrorAt:frameFailed?attempt.frameErrorAt:old.frameErrorAt,months:[...monthMap.values()]})});
     return normalizeCreditProfile({...previous,attemptedAt:incoming.attemptedAt,coreComplete:false,accounts});
   }
   for(const rawIncoming of rawSuccesses){
@@ -248,14 +249,14 @@ export function mergeCreditSyncResult(current,payload={}){
     successes.push(incoming);
     const previousProfiles=[];for(const profileId of identityIds){const profile=byId.get(profileId);if(profile)previousProfiles.push(profile)}
     let previous=null;
-    for(const profile of previousProfiles){if(!previous){previous=normalizeCreditProfile({...profile,profileId:targetId});continue}const accounts=new Map(previous.accounts.map(account=>[account.accountNumber,account]));for(const account of profile.accounts)accounts.set(account.accountNumber,mergeCreditAccountSnapshot(accounts.get(account.accountNumber),account));previous=normalizeCreditProfile({...previous,profileId:targetId,syncedAt:newerISO(previous.syncedAt,profile.syncedAt),attemptedAt:newerISO(previous.attemptedAt,profile.attemptedAt),accounts:[...accounts.values()]})}
+    for(const profile of previousProfiles){if(!previous){previous=normalizeCreditProfile({...profile,profileId:targetId});continue}const accounts=new Map(previous.accounts.map(account=>[account.accountNumber,account]));for(const account of profile.accounts)accounts.set(account.accountNumber,mergeCreditAccountSnapshot(accounts.get(account.accountNumber),account,profile.attemptedAt||profile.syncedAt));previous=normalizeCreditProfile({...previous,profileId:targetId,syncedAt:newerISO(previous.syncedAt,profile.syncedAt),attemptedAt:newerISO(previous.attemptedAt,profile.attemptedAt),accounts:[...accounts.values()]})}
     const mappingAccountNumbers=new Set([...rawIncoming.accounts,...previousProfiles.flatMap(profile=>profile.accounts)].map(account=>account.accountNumber).filter(Boolean));
     for(const key of Object.keys(mappings))for(const profileId of identityIds){const prefix=`${profileId}:`;if(key.startsWith(prefix))mappingAccountNumbers.add(key.slice(prefix.length))}
     const chosenMappings=new Map();for(const accountNumber of mappingAccountNumbers){const chosen=preferredCreditMapping(mappings,identityIds,accountNumber,rawIncoming.defaultAccount);if(chosen)chosenMappings.set(accountNumber,chosen)}
     for(const profileId of identityIds){if(profileId!==targetId)byId.delete(profileId);const prefix=`${profileId}:`;for(const key of Object.keys(mappings))if(key.startsWith(prefix))delete mappings[key]}
     for(const [accountNumber,mapping] of chosenMappings)mappings[creditCardMappingKey(targetId,accountNumber)]=mapping;
     if(previous&&incoming.coreComplete===false){byId.set(targetId,preserveCoreLastKnownGood(previous,incoming));continue}
-    const accounts=new Map((previous?.accounts||[]).map(account=>[account.accountNumber,account]));for(const account of incoming.accounts)accounts.set(account.accountNumber,mergeCreditAccountSnapshot(accounts.get(account.accountNumber),account));byId.set(targetId,normalizeCreditProfile({...previous,...incoming,syncedAt:incoming.syncedAt||previous?.syncedAt||null,accounts:[...accounts.values()]}));
+    const accounts=new Map((previous?.accounts||[]).map(account=>[account.accountNumber,account]));for(const account of incoming.accounts)accounts.set(account.accountNumber,mergeCreditAccountSnapshot(accounts.get(account.accountNumber),account,newerISO(base.syncedAt,newerISO(payload.syncedAt,incoming.attemptedAt||incoming.syncedAt))));byId.set(targetId,normalizeCreditProfile({...previous,...incoming,syncedAt:incoming.syncedAt||previous?.syncedAt||null,accounts:[...accounts.values()]}));
   }
   for(const profile of successes)for(const account of profile.accounts){const key=creditCardMappingKey(profile.profileId,account.accountNumber);if(!mappings[key])mappings[key]={included:false,hidden:false,account:profile.defaultAccount,cardName:'',manualFrame:null}}
   const errors=(Array.isArray(payload.errors)?payload.errors:[]).map(e=>({
@@ -280,9 +281,26 @@ export function mergeCreditSyncResult(current,payload={}){
       correlationId:text(e?.correlationId||payload.correlationId||'',80),
       diagnosticFingerprint:text(e?.diagnosticFingerprint||'',32)
     }));
-  const cutoff=creditHistoryCutoffMonth(iso(payload.syncedAt));
-  if(cutoff)for(const [id,profile] of byId)byId.set(id,normalizeCreditProfile({...profile,accounts:profile.accounts.map(account=>normalizeCreditAccount({...account,months:account.months.filter(slice=>slice.month>=cutoff),txns:[]}))}));
-  return normalizeCreditSync({...base,contractVersion:payload.contractVersion||base.contractVersion,correlationId:payload.correlationId||base.correlationId,syncedAt:payload.syncedAt?iso(payload.syncedAt):base.syncedAt,profiles:[...byId.values()],errors,cardMappings:mappings});
+  // Ordinary synchronization never deletes retained history. The detail view
+  // independently limits its visible range to twelve previous months.
+  let integrityBlocked=false;
+  for(const [id,profile] of byId){
+    let blocked=false;
+    for(const account of profile.accounts)for(const slice of account.months){
+      if(slice.lastErrorCode!==CREDIT_HISTORICAL_MONTH_REGRESSION)continue;
+      blocked=true;integrityBlocked=true;
+      errors.push({profileId:id,provider:profile.provider,label:profile.label,
+        code:CREDIT_HISTORICAL_MONTH_REGRESSION,stage:'HistoricalMonthIntegrity',
+        component:'core_transactions',severity:'error',month:slice.month,tier:'core',
+        accountSuffix:account.accountNumber.slice(-4),at:slice.lastErrorAt,
+        correlationId:payload.correlationId||'',
+        message:'עדכון חודש אשראי קודם הושהה כי חסרות עסקאות או השתנו נתונים כספיים. הנתונים הקודמים נשמרו; יש להשוות לפירוט החברה ולבצע שחזור מלא.'});
+    }
+    if(blocked)byId.set(id,normalizeCreditProfile({...profile,coreComplete:false,
+      syncedAt:base.profiles.find(row=>row.profileId===id)?.syncedAt||null}));
+  }
+  const acceptedSyncAt=integrityBlocked&&![...byId.values()].some(profile=>profile.coreComplete!==false&&successes.some(row=>row.profileId===profile.profileId))?null:iso(payload.syncedAt);
+  return normalizeCreditSync({...base,contractVersion:payload.contractVersion||base.contractVersion,correlationId:payload.correlationId||base.correlationId,syncedAt:acceptedSyncAt||base.syncedAt,profiles:[...byId.values()],errors,cardMappings:mappings});
 }
 
 export function creditSyncHasData(state){return !!normalizeCreditSync(state?.creditSync).profiles.some(p=>p.accounts.some(a=>a.txns.length||a.balance!==null||a.cardFrame!==null||a.availableCredit!==null))}

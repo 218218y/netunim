@@ -200,10 +200,13 @@ export function createOrdersCreditRefresh({
         return true;
       }
       onProgress?.('save');
+      let publishedIssues = result.errors || [];
       const saved = await publication.commit(finance => {
         if (auto && !automation.due(policy.lastSyncAt(finance.creditSync)))
           return null;
         finance.creditSync = policy.merge(finance.creditSync, result);
+        if(creditRefreshRecord(finance.creditSync)&&Array.isArray(finance.creditSync.errors))
+          publishedIssues=finance.creditSync.errors;
         return finance;
       }, lease);
       await device.refreshStatus({ quiet: true });
@@ -212,8 +215,8 @@ export function createOrdersCreditRefresh({
         onWarning(saved.publicationWarning);
         return true;
       }
-      const deferredOnly = creditIssuesDeferred(result.errors || []);
-      onPublished(saved, result, deferredOnly);
+      const deferredOnly = creditIssuesDeferred(publishedIssues);
+      onPublished(saved, {...result,errors:publishedIssues}, deferredOnly);
       return true;
     } catch (error) {
       try {

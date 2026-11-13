@@ -389,6 +389,7 @@
     "shared/kupa-cashflow.js",
     "shared/finance-derivations.js",
     "shared/credit-history.js",
+    "shared/credit-month-integrity.js",
     "tests/fixtures/checked-kupa-cashflow.mjs",
     "netunim-orders/site/assets/js/sync/remote-adoption.js",
     "netunim-orders/site/assets/js/sync/ack-publication.js",

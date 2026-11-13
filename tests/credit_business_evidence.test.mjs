@@ -4,7 +4,7 @@ import {readCreditRefreshResult} from '../shared/credit-refresh-result.js';
 import {mergeCreditSyncResult as kupaMerge} from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
 import {mergeCreditSyncResult as ordersMerge} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {normalizeCreditScrapeTransaction,normalizeCreditScrapeAccount} from '../netunim-kupa/bank-bridge/credit-transaction-model.mjs';
-const tx={id:'T',status:'completed',chargedAmount:-120,processedDate:'2026-10-01T00:00:00Z'};
+const tx={id:'T',status:'completed',chargedAmount:-120,processedDate:'2026-10-20T00:00:00Z'};
 const month={month:'2026-10',tier:'core',fetchStatus:'success',fetchedAt:'2026-10-16T09:00:00Z',transactions:[tx]};
 const result=account=>({contractVersion:2,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'C',...account}]}]});
 const rejected=value=>assert.throws(()=>readCreditRefreshResult(value),{code:'CREDIT_REFRESH_RESULT_INVALID'});
