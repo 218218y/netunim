@@ -33,14 +33,18 @@ function addMonths(value, count) {
 export function creditRecoveryStartDate(now = new Date()) {
   const d = new Date(now);
   d.setUTCDate(d.getUTCDate() - CREDIT_HISTORY_DAYS);
-  return d;
+  // A successful month replaces its entire retained snapshot. Never start the
+  // oldest requested month partway through its billing period.
+  return monthStart(d);
 }
 
 /** @param {Date} [now] */
 export function creditRecentStartDate(now = new Date()) {
   const d = new Date(now);
   d.setUTCDate(d.getUTCDate() - CREDIT_RECENT_HISTORY_DAYS);
-  return d;
+  // Daily/forecast refreshes must fetch the full first calendar month; a
+  // rolling day cutoff would erase older rows in that month on every refresh.
+  return monthStart(d);
 }
 
 /** @param {{startDate?:Date|string|number,futureMonths?:number,now?:Date}} [options] @returns {Pick<import('./credit-model-contracts.js').CreditMonthSlice,'month'|'tier'>[]} */

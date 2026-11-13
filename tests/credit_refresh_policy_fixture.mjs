@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import {restoreCreditMonthIntegrity} from './credit_month_integrity_policy_fixture.mjs';
 import { declaration, tokens, omitFinanceProgress } from './bank_policy_ast_fixture.mjs';
 const read = (site, file) =>
   readFileSync(
@@ -17,6 +18,7 @@ export function restoreCreditRefresh(
   site,
   { owner = read(site, site === 'orders' ? 'credit-refresh' : 'refresh') } = {},
 ) {
+  owner=restoreCreditMonthIntegrity(owner.replaceAll('\r\n','\n'),site==='orders'?'netunim-orders/site/assets/js/domains/finance/credit-refresh.js':'netunim-kupa/site/assets/js/domains/credit/refresh.js');
   const name = site === 'orders' ? 'refreshCredit' : 'refreshCreditSync',
     fn = declaration(controller, name),
     step = fn.body.body.find((n) => n.type === 'TryStatement');

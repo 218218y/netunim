@@ -21,8 +21,8 @@ test('Credit operation bodies reject fabricated publication, deferred guards and
  for(const file of ['netunim-orders/site/assets/js/domains/finance/credit-refresh.js','netunim-kupa/site/assets/js/domains/credit/refresh.js']){
   const source=path.join(root,file),original=readFileSync(source,'utf8');
   const cases=[['assertCurrent: () => {','assertCurrent: async () => {'],['await Promise.all([work.drain(), leases.runtime.drain()]);','return true;']];
-  if(file.includes('orders'))cases.push(['onPublished(saved, result, deferredOnly);','onPublished({publicationWarning:true}, result, deferredOnly);']);
-  else cases.push(['onPublished(result, deferredOnly);',"onPublished({profiles:[],attemptedCount:'0'}, deferredOnly);"]);
+  if(file.includes('orders'))cases.push(['onPublished(saved, {...result,errors:publishedIssues}, deferredOnly);','onPublished({publicationWarning:true}, {...result,errors:publishedIssues}, deferredOnly);']);
+  else cases.push(['onPublished(published, deferredOnly);',"onPublished({profiles:[],attemptedCount:'0'}, deferredOnly);"]);
   for(const [from,to] of cases){
    const changed=original.replace(from,to);assert.notEqual(changed,original,from);
    const diagnostics=check(new Map([[source,changed]]));

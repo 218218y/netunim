@@ -101,9 +101,9 @@ for(const [name,file,guard,raw] of [
   for(const merge of merges)assert.equal(merge({cardMappings:{'P:C':{included:true}}},decoder.readCreditRefreshResult(raw)).profiles[0].accounts[0].balance,999);
 });
 
-test('removing the monthly fetch-status guard restores successful empty replacement',async()=>{
+test('removing the monthly fetch-status guard restores empty replacement within an open month',async()=>{
   const guard="optionalEnum(month.fetchStatus,['success','provider_error','schema_error','network_error']);";
-  const raw=response({...account,months:[{month:'2026-10',fetchStatus:['success']}]});
+  const raw=response({...account,months:[{month:'2026-10',fetchStatus:['success'],fetchedAt:'2026-10-16T09:00:00Z'}]});
   assert.throws(()=>readCreditRefreshResult(raw),{code:'CREDIT_REFRESH_RESULT_INVALID'});
   const decoder=await withEvidence(decoderFile,data(remove(read(evidenceFile),guard)));
   for(const merge of merges){

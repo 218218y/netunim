@@ -67,9 +67,9 @@ assert.equal(plan.at(-1).month,'2027-09','the connector keeps the full +12-month
 assert.equal(plan.find(row=>row.month==='2026-10').tier,'core','the nearest future month is part of required core coverage');
 assert.equal(plan.find(row=>row.month==='2026-11').tier,'forecast','later issuer months are forecast enrichment');
 const quickScope=creditSyncScope({syncMode:'quick',now:fixedNow}),forecastScope=creditSyncScope({syncMode:'forecast',now:fixedNow}),recoveryScope=creditSyncScope({syncMode:'recovery',now:fixedNow});
-assert.equal(quickScope.startDate.toISOString().slice(0,10),'2026-08-04','quick scope reaches 30 days back');assert.equal(quickScope.futureMonths,1,'quick scope reaches one month forward');
-assert.equal(forecastScope.startDate.toISOString().slice(0,10),'2026-08-04','forecast scope also rechecks the recent 30 days');assert.equal(forecastScope.futureMonths,12,'forecast scope reaches twelve months forward');
-assert.equal(recoveryScope.startDate.toISOString().slice(0,10),'2026-04-26','recovery scope preserves the 130-day history window');assert.equal(recoveryScope.futureMonths,12,'recovery also rebuilds the twelve-month forecast');
+assert.equal(quickScope.startDate.toISOString().slice(0,10),'2026-08-01','quick scope covers the entire first calendar month within the 30-day lookback');assert.equal(quickScope.futureMonths,1,'quick scope reaches one month forward');
+assert.equal(forecastScope.startDate.toISOString().slice(0,10),'2026-08-01','forecast scope covers the entire first calendar month within the 30-day lookback');assert.equal(forecastScope.futureMonths,12,'forecast scope reaches twelve months forward');
+assert.equal(recoveryScope.startDate.toISOString().slice(0,10),'2026-04-01','recovery scope covers the full first calendar month within the 130-day lookback');assert.equal(recoveryScope.futureMonths,12,'recovery also rebuilds the twelve-month forecast');
 assert.equal(creditSyncScope({syncMode:'daily',now:fixedNow}).syncMode,'quick','legacy daily requests remain backwards compatible');assert.equal(creditSyncScope({syncMode:'full',now:fixedNow}).syncMode,'recovery','legacy full requests keep their old heavy recovery meaning');
 
 const encodedDigitalCards=JSON.stringify([{cardSuffix:'7392',companyCode:'11',isActive:true,isBlock:false},{cardSuffix:'6774',companyCode:'77',isActive:true,isBlock:false}]);

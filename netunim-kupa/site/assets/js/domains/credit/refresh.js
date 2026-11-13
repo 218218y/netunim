@@ -195,13 +195,14 @@ export function createKupaCreditRefresh({
         return true;
       }
       const candidate = policy.merge(cloud.readSync(), result);
-      const deferredOnly = creditIssuesDeferred(result.errors || []);
+      const published = {...result, errors: Array.isArray(candidate.errors)?candidate.errors:result.errors||[]};
+      const deferredOnly = creditIssuesDeferred(published.errors || []);
       onProgress?.('save');
       await publication.publish(
         candidate,
         deferredOnly
           ? 'סנכרון האשראי הושהה ו־Last Known Good נשמר'
-          : result.errors?.length
+          : published.errors?.length
             ? 'האשראי עודכן עם אזהרות ונשמר מחוץ לגיבויי הקופה'
             : 'האשראי עודכן ונשמר מחוץ לגיבויי הקופה',
         lease,
@@ -210,7 +211,7 @@ export function createKupaCreditRefresh({
       );
       await device.refreshStatus();
       assertCurrent();
-      onPublished(result, deferredOnly);
+      onPublished(published, deferredOnly);
     } catch (e) {
       if (!work.isActive()) return false;
       try {

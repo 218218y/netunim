@@ -1,5 +1,5 @@
-// Retention is independent of the connector's fetch window: accumulate existing
-// months through ordinary syncs without asking the issuer for older history.
+// The detail display window is independent of both stored history and the
+// connector fetch window. Ordinary syncs never prune retained monthly evidence.
 /** @typedef {Partial<Pick<import('./credit-calculation-contracts.js').BillingRow,'creditAccountKey'|'card'>>} SortRow */
 export const CREDIT_DETAIL_HISTORY_MONTHS=12;
 

@@ -40,6 +40,7 @@ const fixture = JSON.parse(
 );
 const httpReceiptPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/credit-http-receipt-policies.json',import.meta.url),'utf8'));
 const providerUpdatePolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/credit-provider-updates-policies.json',import.meta.url),'utf8'));
+const monthIntegrityPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/credit-month-integrity-policies.json',import.meta.url),'utf8'));
 
 test('credit provider methods, normalization, wire constants and fallback policy match the reviewed baseline', () => {
   const active = { ...fixture.policies };
@@ -59,6 +60,15 @@ test('credit provider methods, normalization, wire constants and fallback policy
     'maxMemo','normalizeVisaCalTransaction',
   ].sort());
   for(const [name,{before,after}] of Object.entries(providerUpdatePolicies)){
+    assert.equal(reviewed[name],before,name);
+    reviewed[name]=after;
+  }
+  // Reviewed correction: daily/recovery scopes cover complete billing months,
+  // and generic projections must not silently truncate their first month.
+  assert.deepEqual(Object.keys(monthIntegrityPolicies).sort(),[
+    'creditRecoveryStartDate','creditRecentStartDate','genericMonthlyAccount',
+  ].sort());
+  for(const [name,{before,after}] of Object.entries(monthIntegrityPolicies)){
     assert.equal(reviewed[name],before,name);
     reviewed[name]=after;
   }

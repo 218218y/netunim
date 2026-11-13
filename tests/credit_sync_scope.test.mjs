@@ -19,7 +19,9 @@ test('credit scope normalizes historical inputs, captures the date and keeps the
     const scope = creditSyncScope({ syncMode: input, now });
     assert.equal(scope.syncMode, mode);
     assert.equal(scope.futureMonths, future);
-    assert.equal(scope.startDate.getTime(), stamp - days * 86400000);
+    const windowStart = new Date(stamp - days * 86400000);
+    const alignedMonthStart = new Date(Date.UTC(windowStart.getUTCFullYear(), windowStart.getUTCMonth(), 1));
+    assert.equal(scope.startDate.getTime(), alignedMonthStart.getTime());
     assert.equal(now.getTime(), stamp);
     assert.equal(normalizeCreditSyncMode(input), mode);
     const plan = buildCreditMonthPlan({ ...scope, now });
