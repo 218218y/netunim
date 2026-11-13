@@ -237,7 +237,11 @@ export function mergeCreditSyncResult(current,payload={}){
   }).filter(profile=>profile.profileId),successes=[];
   function preserveCoreLastKnownGood(previous,incoming){
     const attempts=new Map(incoming.accounts.map(account=>[account.accountNumber,account]));
-    const accounts=previous.accounts.map(account=>{const attempt=attempts.get(account.accountNumber);if(!attempt)return account;const old=normalizeCreditAccount(account),monthMap=new Map(old.months.map(slice=>[slice.month,slice]));for(const slice of attempt.months){if(slice.fetchStatus==='success')continue;const prior=monthMap.get(slice.month);monthMap.set(slice.month,prior&&(prior.fetchedAt||prior.transactions.length)?{...prior,status:'stale',fetchStatus:slice.fetchStatus,lastErrorCode:slice.lastErrorCode,lastErrorAt:slice.lastErrorAt}:{...slice,status:'missing'})}const frameFailed=attempt.frameFetchStatus&&attempt.frameFetchStatus!=='success';return normalizeCreditAccount({...old,frameStatus:frameFailed?(old.frameFetchedAt||old.balance!==null||old.cardFrame!==null||old.availableCredit!==null?'stale':'missing'):old.frameStatus,frameFetchStatus:frameFailed?attempt.frameFetchStatus:old.frameFetchStatus,frameErrorCode:frameFailed?attempt.frameErrorCode:old.frameErrorCode,frameErrorAt:frameFailed?attempt.frameErrorAt:old.frameErrorAt,months:[...monthMap.values()]})});
+    const accounts=previous.accounts.map(account=>{
+      const attempt=attempts.get(account.accountNumber);if(!attempt)return account;
+      const old=normalizeCreditAccount(account),monthMap=new Map(old.months.map(slice=>[slice.month,slice]));for(const slice of attempt.months){if(slice.fetchStatus==='success')continue;const prior=monthMap.get(slice.month);monthMap.set(slice.month,prior&&(prior.fetchedAt||prior.transactions.length)?{...prior,status:'stale',fetchStatus:slice.fetchStatus,lastErrorCode:slice.lastErrorCode,lastErrorAt:slice.lastErrorAt}:{...slice,status:'missing'})}
+      const frameFailed=attempt.frameFetchStatus&&attempt.frameFetchStatus!=='success';return normalizeCreditAccount({...old,frameStatus:frameFailed?(old.frameFetchedAt||old.balance!==null||old.cardFrame!==null||old.availableCredit!==null?'stale':'missing'):old.frameStatus,frameFetchStatus:frameFailed?attempt.frameFetchStatus:old.frameFetchStatus,frameErrorCode:frameFailed?attempt.frameErrorCode:old.frameErrorCode,frameErrorAt:frameFailed?attempt.frameErrorAt:old.frameErrorAt,months:[...monthMap.values()]})
+    });
     return normalizeCreditProfile({...previous,attemptedAt:incoming.attemptedAt,coreComplete:false,accounts});
   }
   for(const rawIncoming of rawSuccesses){
@@ -249,14 +253,20 @@ export function mergeCreditSyncResult(current,payload={}){
     successes.push(incoming);
     const previousProfiles=[];for(const profileId of identityIds){const profile=byId.get(profileId);if(profile)previousProfiles.push(profile)}
     let previous=null;
-    for(const profile of previousProfiles){if(!previous){previous=normalizeCreditProfile({...profile,profileId:targetId});continue}const accounts=new Map(previous.accounts.map(account=>[account.accountNumber,account]));for(const account of profile.accounts)accounts.set(account.accountNumber,mergeCreditAccountSnapshot(accounts.get(account.accountNumber),account,profile.attemptedAt||profile.syncedAt));previous=normalizeCreditProfile({...previous,profileId:targetId,syncedAt:newerISO(previous.syncedAt,profile.syncedAt),attemptedAt:newerISO(previous.attemptedAt,profile.attemptedAt),accounts:[...accounts.values()]})}
+    for(const profile of previousProfiles){
+      if(!previous){previous=normalizeCreditProfile({...profile,profileId:targetId});continue}const accounts=new Map(previous.accounts.map(account=>[account.accountNumber,account]));for(const account of profile.accounts)accounts.set(account.accountNumber,mergeCreditAccountSnapshot(accounts.get(account.accountNumber),account,profile.attemptedAt||profile.syncedAt));previous=normalizeCreditProfile({...previous,profileId:targetId,syncedAt:newerISO(previous.syncedAt,profile.syncedAt),attemptedAt:newerISO(previous.attemptedAt,profile.attemptedAt),accounts:[...accounts.values()]})
+    }
     const mappingAccountNumbers=new Set([...rawIncoming.accounts,...previousProfiles.flatMap(profile=>profile.accounts)].map(account=>account.accountNumber).filter(Boolean));
     for(const key of Object.keys(mappings))for(const profileId of identityIds){const prefix=`${profileId}:`;if(key.startsWith(prefix))mappingAccountNumbers.add(key.slice(prefix.length))}
     const chosenMappings=new Map();for(const accountNumber of mappingAccountNumbers){const chosen=preferredCreditMapping(mappings,identityIds,accountNumber,rawIncoming.defaultAccount);if(chosen)chosenMappings.set(accountNumber,chosen)}
     for(const profileId of identityIds){if(profileId!==targetId)byId.delete(profileId);const prefix=`${profileId}:`;for(const key of Object.keys(mappings))if(key.startsWith(prefix))delete mappings[key]}
     for(const [accountNumber,mapping] of chosenMappings)mappings[creditCardMappingKey(targetId,accountNumber)]=mapping;
     if(previous&&incoming.coreComplete===false){byId.set(targetId,preserveCoreLastKnownGood(previous,incoming));continue}
-    const accounts=new Map((previous?.accounts||[]).map(account=>[account.accountNumber,account]));for(const account of incoming.accounts)accounts.set(account.accountNumber,mergeCreditAccountSnapshot(accounts.get(account.accountNumber),account,newerISO(base.syncedAt,newerISO(payload.syncedAt,incoming.attemptedAt||incoming.syncedAt))));byId.set(targetId,normalizeCreditProfile({...previous,...incoming,syncedAt:incoming.syncedAt||previous?.syncedAt||null,accounts:[...accounts.values()]}));
+    const accounts=new Map((previous?.accounts||[]).map(account=>[account.accountNumber,account]));
+    const reference=newerISO(base.syncedAt,newerISO(payload.syncedAt,incoming.attemptedAt||incoming.syncedAt));
+    for(const account of incoming.accounts)
+      accounts.set(account.accountNumber,mergeCreditAccountSnapshot(accounts.get(account.accountNumber),account,reference));
+    byId.set(targetId,normalizeCreditProfile({...previous,...incoming,syncedAt:incoming.syncedAt||previous?.syncedAt||null,accounts:[...accounts.values()]}));
   }
   for(const profile of successes)for(const account of profile.accounts){const key=creditCardMappingKey(profile.profileId,account.accountNumber);if(!mappings[key])mappings[key]={included:false,hidden:false,account:profile.defaultAccount,cardName:'',manualFrame:null}}
   const errors=(Array.isArray(payload.errors)?payload.errors:[]).map(e=>({

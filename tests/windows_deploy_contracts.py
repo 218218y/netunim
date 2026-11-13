@@ -320,7 +320,7 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
             active.mkdir(parents=True)
             for name in files:
                 shutil.copyfile(source / name, active / name)
-            (active / 'server.mjs').write_text(server.replace('BRIDGE_VERSION=82;', 'BRIDGE_VERSION=81;'), encoding='utf8')
+            (active / 'server.mjs').write_text(server.replace('BRIDGE_VERSION=83;', 'BRIDGE_VERSION=81;'), encoding='utf8')
             (active / 'installation-id.txt').write_text('7' * 32)
             backup.mkdir()
             (backup / 'prior.txt').write_text('previous backup')
@@ -431,7 +431,7 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
                     self.assertEqual(startup.read_text(), 'old launcher')
 
                 run_bat(install, 0)
-                installed = health(82)
+                installed = health(83)
                 origins = ['https://kupa.bargig-furniture.com', 'https://orders.bargig-furniture.com']
                 admin = (root / 'pairing-v1/admin-token.txt').read_text().strip()
                 keys = []
@@ -445,13 +445,13 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
                     keys.append(grant['token'])
                 self.assertEqual(request('/pairing/admin', admin, {'action': 'finish'})[0], 200)
                 registry = (root / 'pairing-v1/registry.json').read_bytes()
-                for version in (81, 82):
+                for version in (81, 83):
                     run_bat(helper, 0)
                     health(version)
                     self.assertEqual((root / 'pairing-v1/registry.json').read_bytes(), registry)
                     for origin, key in zip(origins, keys):
                         self.assertEqual(request('/status', key, origin=origin)[0], 200)
-                self.assertEqual(health(82)['installationId'], installed['installationId'])
+                self.assertEqual(health(83)['installationId'], installed['installationId'])
             finally:
                 subprocess.run([node, 'server.mjs', '--stop-existing'], cwd=active, env=env,
                                capture_output=True, timeout=10)

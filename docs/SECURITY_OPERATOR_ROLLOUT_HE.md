@@ -29,7 +29,7 @@ git pull --ff-only origin main
 
 הרץ מתוך הקוד המעודכן:
 
-1. Bank Bridge **82** באמצעות `netunim-kupa\bank-bridge\install_bank_bridge.bat`.
+1. Bank Bridge **83** באמצעות `netunim-kupa\bank-bridge\install_bank_bridge.bat`.
 2. Document Bridge **48** באמצעות `netunim-orders\document-bridge\install_document_bridge.bat`.
 
 Bank Bridge 79 כלל עדכון תלויות. גרסה 80 כוללת גם את תיקוני המיפוי של CAL

@@ -1,6 +1,9 @@
 NETUNIM KUPA - BANK HAPOALIM BRIDGE
 ====================================
 
+Bridge v83: Credit fetch scopes cover full months; historical and elapsed billing
+rows are protected by both sites. See docs/CREDIT_MONTH_INTEGRITY_HE.md.
+
 Bridge v82: Safe public failure messages, including persisted status and partial
 credit errors. Browser clients only retry the legacy Credit endpoint after the
 old server's explicit missing-route response.
