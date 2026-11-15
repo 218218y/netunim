@@ -148,7 +148,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
                 `${active === 'home' ? 'active' : ''}" data-action="set-orders-bank-account-view" data-click-arg0="home">חשבון ביתי</button>`
             ) +
             (
-                `</span><input class="finance-search bank-search" type="search" value="${esc(ui.bankSearchValue || '')}" placeholder="חיפוש בתנועות המוצגות…" aria-label="חיפוש בתנועות הבנק המוצגות" data-input="orders-bank-search">${amountRangeMarkup({from:ui.bankAmountFrom,to:ui.bankAmountTo,action:'orders-bank-amount',escapeHtml:esc})}</div>` +
+                `</span><input class="finance-search bank-search" type="search" value="${esc(ui.bankSearchValue || '')}" placeholder="חיפוש בתנועות המוצגות…" aria-label="חיפוש בתנועות הבנק המוצגות" data-input="orders-bank-search">${amountRangeMarkup({from:ui.bankAmountFrom,to:ui.bankAmountTo,fromAction:'orders-bank-amount-from',toAction:'orders-bank-amount-to',escapeHtml:esc})}</div>` +
                 `<div class="finance-sync-quick-actions"><button type="button" class="finance-sync-toggle ${headline.tone} ${open ? 'open' : ''}`
             ) +
             (
@@ -459,7 +459,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
         const headline = creditHeadlineState(s), open = ui.creditSyncOpen === true;
         return (`<section class="finance-sync-section finance-command-section" data-finance-command><div class="finance-command-row"><div class="finance-view-tools credit-view-tools"><input class="finance-search credit-search" type="search" value="${esc(ui.creditSearchValue || '')}` +
             (
-                `" placeholder="חיפוש בעסקאות ותשלומים…" aria-label="חיפוש בעסקאות ותשלומי האשראי המוצגים" data-input="orders-credit-search">${amountRangeMarkup({from:ui.creditAmountFrom,to:ui.creditAmountTo,action:'orders-credit-amount',escapeHtml:esc})}</div><div class="finance-sync-quick-actions"><button type="button" class="finance-sync-toggle ${headline.tone} ` +
+                `" placeholder="חיפוש בעסקאות ותשלומים…" aria-label="חיפוש בעסקאות ותשלומי האשראי המוצגים" data-input="orders-credit-search">${amountRangeMarkup({from:ui.creditAmountFrom,to:ui.creditAmountTo,fromAction:'orders-credit-amount-from',toAction:'orders-credit-amount-to',escapeHtml:esc})}</div><div class="finance-sync-quick-actions"><button type="button" class="finance-sync-toggle ${headline.tone} ` +
                 `${open ? 'open' : ''}" data-action="toggle-orders-credit-sync-options" aria-expanded="${open}`
             ) +
             (

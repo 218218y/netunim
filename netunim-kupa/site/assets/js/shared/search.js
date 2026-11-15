@@ -61,7 +61,7 @@ export function amountRangeMatch(value,from='',to=''){
   return (low===null||cents>=Math.round(low*100))&&(high===null||cents<=Math.round(high*100));
 }
 
-export function amountRangeMarkup({from='',to='',action,escapeHtml}){
-  const input=(side,value,label)=>`<label>${label}<input type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(value??''))}" aria-label="סכום ${label} בשקלים" data-change="${escapeHtml(action+'-'+side)}"></label>`;
+export function amountRangeMarkup({from='',to='',action='',fromAction=action+'-from',toAction=action+'-to',escapeHtml}){
+  const input=(side,value,label)=>`<label>${label}<input type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(value??''))}" aria-label="סכום ${label} בשקלים" data-change="${escapeHtml(side==='from'?fromAction:toAction)}"></label>`;
   return `<span class="movement-amount-range" role="group" aria-label="טווח סכום בשקלים ללא סימן"><small>סכום ₪</small>${input('from',from,'מ־')}${input('to',to,'עד')}</span>`;
 }

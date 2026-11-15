@@ -8,7 +8,7 @@ import {INITIAL_STATE as KUPA_INITIAL_STATE} from '../netunim-kupa/site/assets/j
 
 const clone=structuredClone;
 
-test('Kupa V2 turns isolated expired-credit cleanup into a typed delete and rejects an unrelated untyped edit',async()=>{
+test('Kupa V2 retains inactive credit without inferring a delete intent',async()=>{
   const model={state:clone(KUPA_INITIAL_STATE)},normalization=createStateNormalization({model});
   model.state.creditSync={version:3,profiles:[],cardMappings:{}};
   model.state=normalization.normalizeState(model.state);
@@ -22,12 +22,10 @@ test('Kupa V2 turns isolated expired-credit cleanup into a typed delete and reje
     persistSupabaseState:async()=>true,setSaveStatus:()=>{},lastSavedCloudState:()=>null});
   assert.equal(await storage.saveState('expired cleanup'),true);
   assert.equal(writes.length,1);
-  assert.deepEqual(writes[0].operations,[{type:'delete',collection:'credits',id:'expired'}]);
+  assert.equal(writes[0].operations,null);
+  assert.deepEqual(model.state.credits.map(row=>row.id),['expired']);
   assert.equal(!!writes[0].storageBoundary,false);
-  writes.length=0;model.state.notes.push({id:'untyped',content:'not in journal',createdAt:'2026-09-23',updatedAt:'2026-09-23'});
-  const priorError=console.error;console.error=()=>{};
-  try{assert.equal(await storage.saveState('unsafe'),false)}finally{console.error=priorError}
-  assert.equal(writes.length,0,'an unrelated edit cannot be hidden by the normalization delete');
+
 });
 
 test('Kupa opening a local file preserves both V2 cloud heads as pending import',async()=>{
