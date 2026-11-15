@@ -2,6 +2,7 @@ from browser_harness import BrowserSession, ROOT
 
 for app in ('kupa', 'orders'):
     with BrowserSession(ROOT / f'netunim-{app}/site', app+'-amount-range') as browser:
+        browser.call('Emulation.setDeviceMetricsOverride', {'width':390,'height':900,'deviceScaleFactor':1,'mobile':False})
         for kind in ('bank', 'credit'):
             setup = ("state=normalizeState(fixture);domainRevisions.touchAll();ui.currentPage='"+kind+"';ui.expensesTab='credit';"+
                      ("bank.presentation.renderBank();" if kind == 'bank' else "credit.renderCredit();")) if app == 'kupa' else (
