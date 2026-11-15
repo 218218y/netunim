@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createCloudTransport as kupa} from '../netunim-kupa/site/assets/js/cloud/transport.js';
 import {createCloudTransport as orders} from '../netunim-orders/site/assets/js/cloud/transport.js';
 import {createCreditPublication} from '../netunim-kupa/site/assets/js/domains/credit/publication.js';
+import {createCreditSettingsCommands} from '../netunim-orders/site/assets/js/domains/finance/credit-settings-commands.js';
 for(const [name,create] of [['kupa',kupa],['orders',orders]])test(name+' confirmed resets use the backed-up RPC; normal sync cannot acquire reset authority',async()=>{
   const calls=[],send=async(path,options)=>{calls.push({path,body:JSON.parse(options.body)});return new Response('[]')};
   const api=create({supaRest:send,supaFetch:send}),state={creditSync:{version:4,profiles:[]}},lease={leaseName:'credit',leaseToken:'token',fenceEpoch:7};
@@ -20,4 +21,12 @@ test('publication forwards explicit reset intent while ordinary settings remain 
   await api.commit(state=>state,'normal',null,guard,guard);
   await api.commit(state=>state,'reset',null,guard,guard,true);
   assert.equal(options[0].creditReset,undefined);assert.equal(options[1].creditReset,true);
+});
+test('Orders explicit reset command carries reset authority through its Finance command port',async()=>{
+  const scopes=[],guard=()=>{};
+  const api=createCreditSettingsCommands({local:{},operationScope:{capture:()=>guard},
+    connections:{queries:{supported:()=>true,refreshStatus:async()=>({}),capture:()=>guard,snapshot:()=>({status:{}})},commands:{resetProfiles:async()=>{}}},
+    mutateFinanceCloud:async(mutate,lease,options)=>{mutate({});scopes.push(options);return {}},
+    automation:{setCreditAutoEnabled:guard,setCreditAutoMode:guard,scheduleCreditAuto:guard,preferenceState:()=>({})},toast:guard});
+  assert.equal(await api.resetCreditSync(),true);assert.equal(scopes[0].creditReset,true);
 });

@@ -22,5 +22,11 @@
       "before": "        });\n      const result = await runBusyCloudWriteWithPolicy(() =>\n",
       "after": "        });\n      if(creditReset)audit.creditReset=true;\n      const result = await runBusyCloudWriteWithPolicy(() =>\n"
     }
+  ],
+  "netunim-orders/site/assets/js/domains/finance/credit-settings-commands.js": [
+    {
+      "before": "const saved=await mutateFinanceCloud(finance=>{finance.creditSync=normalizeCreditSync({});return finance},null,{assertCurrent});assertCurrent();",
+      "after": "const saved=await mutateFinanceCloud(finance=>{finance.creditSync=normalizeCreditSync({});return finance},null,{assertCurrent,creditReset:true});assertCurrent();"
+    }
   ]
 }
