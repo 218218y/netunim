@@ -61,7 +61,27 @@ export function amountRangeMatch(value,from='',to=''){
   return (low===null||cents>=Math.round(low*100))&&(high===null||cents<=Math.round(high*100));
 }
 
-export function amountRangeMarkup({from='',to='',action='',fromAction=action+'-from',toAction=action+'-to',escapeHtml}){
+export function amountRangeMarkup({from='',to='',action='',fromAction=action+'-from',toAction=action+'-to',searchMarkup='',className='',escapeHtml}){
+  const id='advanced-'+fromAction,anchor='--'+id,active=String(from||to).trim()!=='';
   const input=(side,value,label)=>`<label>${label}<input type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(value??''))}" aria-label="סכום ${label} בשקלים" data-change="${escapeHtml(side==='from'?fromAction:toAction)}"></label>`;
-  return `<span class="movement-amount-range" role="group" aria-label="טווח סכום בשקלים ללא סימן"><small>סכום ₪</small>${input('from',from,'מ־')}${input('to',to,'עד')}</span>`;
+  const toggle=`<button type="button" class="movement-advanced-toggle ${active?'active':''}" popovertarget="${escapeHtml(id)}" style="anchor-name:${escapeHtml(anchor)}" aria-label="חיפוש מתקדם לפי סכום" title="חיפוש מתקדם לפי סכום">`+
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4"/></svg></button>';
+  const panel=`<div id="${escapeHtml(id)}" popover class="movement-advanced-panel" style="position-anchor:${escapeHtml(anchor)}"><strong>חיפוש מתקדם</strong>`+
+    `<div class="movement-amount-range" role="group" aria-label="טווח סכום בשקלים ללא סימן">${input('from',from,'מ־')}${input('to',to,'עד')}</div>`+
+    '<small>סכומים בשקלים, ללא סימן. שדה ריק אינו מגביל.</small></div>';
+  return `<div class="movement-search ${escapeHtml(className)}">${searchMarkup}${toggle}${panel}</div>`;
+}
+
+// Keep the native popover and keyboard focus across a domain table redraw.
+export async function refreshAmountRange(element,render){
+  const panel=element.closest('[popover]'),id=panel?.id,action=element.dataset.change;
+  const opened=panel?.matches(':popover-open');
+  await render();
+  const current=id?element.ownerDocument.getElementById(id):null;
+  if(opened&&current&&!current.matches(':popover-open'))current.showPopover();
+  if(current){
+    const inputs=[...current.querySelectorAll('input')];
+    current.closest('.movement-search')?.querySelector('.movement-advanced-toggle')?.classList.toggle('active',inputs.some(input=>input.value!==''));
+    if(!element.isConnected)inputs.find(input=>input.dataset.change===action)?.focus();
+  }
 }

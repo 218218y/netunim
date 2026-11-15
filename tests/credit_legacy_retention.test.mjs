@@ -6,12 +6,12 @@ import {creditBillingRowsData} from '../shared/credit-billing-cycles.js';
 const record={id:'original',card:'Old card',firstChargeDate:'2024-01-10',totalAmount:100,installments:1,active:false};
 function normalizer(){return createStateNormalization({model:{},policies:{normalizeBankFeed:value=>value,
   normalizeCreditSync,inactiveCreditExpired:()=>true}})}
-test('old and unversioned backups retain original manual IDs in a visible non-contributing archive',()=>{
+test('old and unversioned backups retain original manual IDs without inferring archive authority from a version',()=>{
   for(const version of [undefined,1,2]){
     const value=normalizer().normalizeState({credits:[record],creditSync:{version}});
     assert.equal(value.credits[0].id,'original');assert.equal(value.credits[0].totalAmount,100);
-    assert.equal(value.credits[0].archived,true);
-    assert.equal(creditBillingRowsData(value,{asOf:'2026-11-15'}).filter(row=>row.source==='manual').length,0);
+    assert.notEqual(value.credits[0].archived,true);
+    assert.equal(creditBillingRowsData(value,{asOf:'2026-11-15'}).filter(row=>row.source==='manual').length,1);
     assert.deepEqual(normalizer().normalizeState(JSON.parse(JSON.stringify(value))).credits,value.credits);
   }
 });

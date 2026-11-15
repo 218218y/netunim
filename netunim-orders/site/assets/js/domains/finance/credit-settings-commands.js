@@ -26,9 +26,11 @@ const financeAutomation=automation;
       const assertOwner=operationScope.capture(),assertConnection=connections.queries.capture(),assertCurrent=()=>{assertOwner();assertConnection()},status=connections.queries.snapshot().status||await refreshCreditBridgeStatus({quiet:true});
       assertCurrent();if(!status)throw new Error(connections.queries.snapshot().bridgeError||'Bank Bridge אינו זמין');
       if(!supportedCreditBridge(status))throw new Error('יש לשדרג את Bank Bridge לפני איפוס מלא של סנכרון האשראי');
-      await connections.commands.resetProfiles();assertCurrent();
-      const saved=await mutateFinanceCloud(finance=>{finance.creditSync=normalizeCreditSync({});return finance},null,{assertCurrent,creditReset:true});assertCurrent();
       setCreditAutoEnabled(false);setCreditAutoMode('smart');
+      const saved=await mutateFinanceCloud(finance=>{finance.creditSync=normalizeCreditSync({});return finance},null,{assertCurrent,creditReset:true});assertCurrent();
+      local.creditResetPending=true;
+      if(saved.saved!==true||saved.published!==true)throw new Error(saved.publicationWarning||'איפוס הענן טרם אומת. החיבורים המקומיים נשמרו; יש לנסות שוב להשלמה.');
+      assertCurrent();await connections.commands.resetProfiles();assertCurrent();local.creditResetPending=false;
       local.creditError=saved.publicationWarning||'';local.creditErrorAt=local.creditError?new Date().toISOString():null;
       toast(local.creditError||financeAutomation.preferenceState().creditAutomationWarning||'סנכרון האשראי אופס והחיבורים המקומיים נמחקו');return true;
     }catch(error){local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();toast(local.creditError);return false}

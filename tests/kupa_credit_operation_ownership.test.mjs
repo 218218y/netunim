@@ -154,12 +154,14 @@ test('credit reset confirmation remains bound to the account that opened it',asy
   const api=f.create(),pending=api.resetCreditSync();await opened.promise;f.change();confirmation.resolve(true);await pending;
   assert.equal(resets,0);assert.equal(f.counts().patches,0);assert.deepEqual(f.model.state,f.before);api.stopAutoSync();
 });
-test('credit logout during local profile reset cannot clear the former account finance data',async t=>{
-  const f=fixture(t),reset=deferred(),entered=deferred();f.ports.confirmDialog=async()=>true;f.ports.bridge.resetCreditProfiles=()=>{entered.resolve();return reset.promise};
-  f.model.state.creditSync=structuredClone(result);const before=structuredClone(f.model.state);
-  const api=f.create(),pending=api.resetCreditSync();await entered.promise;f.logout();reset.resolve();await pending;
-  assert.equal(f.counts().patches,0);assert.equal(f.counts().saves,0);assert.deepEqual(f.model.state,before);api.stopAutoSync();
+test('credit logout during local cleanup cannot mutate an already confirmed reset',async t=>{
+  const f=fixture(t),reset=deferred(),entered=deferred();f.ports.confirmDialog=async()=>true;f.ports.saveState=async()=>true;
+  f.ports.bridge.resetCreditProfiles=()=>{entered.resolve();return reset.promise};
+  f.model.state.creditSync=structuredClone(result);
+  const api=f.create(),pending=api.resetCreditSync();await entered.promise;const confirmed=structuredClone(f.model.state);f.logout();reset.resolve();await pending;
+  assert.equal(f.counts().patches,1);assert.deepEqual(f.model.state,confirmed);assert.deepEqual(confirmed.creditSync.profiles,[]);api.stopAutoSync();
 });
+
 test('credit reset keeps prior financial data when cloud confirmation fails',async t=>{
   const f=fixture(t);f.ports.confirmDialog=async()=>true;f.ports.bridge.resetCreditProfiles=async()=>{};f.ports.saveFinancePatch=async()=>{throw new Error('fixture reset offline')};
   f.model.state.creditSync=structuredClone(result);const before=structuredClone(f.model.state);const api=f.create();await api.resetCreditSync();

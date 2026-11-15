@@ -47,9 +47,9 @@ FLOW = r"""(async()=>{
  if(action==='settings')check(result===true,'a confirmed settings commit was reported as failed');
  check(commits===1&&followups===1,'unexpected commit/follow-up count');
  check(JSON.stringify(await db.load(identity))===durableBefore,'injected follow-up failure changed durable Main records');
- const warning=credit.queries.uiState();check(warning.publicationWarning&&warning.error==='','ancillary failure masqueraded as a provider/commit failure');
+ const warning=credit.queries.uiState();check(warning.publicationWarning&&(action==='reset'?warning.error.includes('איפוס'):warning.error===''),'incorrect confirmed write / pending reset status');
  check(JSON.stringify(state.creditSync)===JSON.stringify(finance.creditSync),'confirmed credit result not published');
- check(document.getElementById('creditSyncToggle')?.classList.contains('warn'),'Credit headline claimed ordinary success');
+ check(document.getElementById('creditSyncToggle')?.classList.contains(action==='reset'?'error':'warn'),'Credit headline claimed ordinary success');
  check(document.querySelector('[data-action="retry-credit-publication"]'),'missing recovery action');
  unavailable=true;const before=JSON.stringify(state.creditSync);check(await credit.commands.retryCreditPublication()===false,'unavailable read confirmed recovery');
  check(JSON.stringify(state.creditSync)===before&&credit.queries.uiState().publicationWarning,'unverified read discarded the last confirmed result');
@@ -58,7 +58,7 @@ FLOW = r"""(async()=>{
  const head=await mainStorageV2.cloudState();
  check(completed===true,'real local follow-up did not complete: '+JSON.stringify({localResult,messages,warning:credit.queries.uiState().publicationWarningCode,main:mainStorageV2.diagnostics,cloudConflict:session.cloudConflictPending,revision:session.dbRevision,head:{seq:head.seq,baseRevision:head.base.revision,ackSeq:head.base.ackSeq,pending:head.pending,flight:!!head.flight,control:head.control},saveStatus:document.getElementById('saveIndicator')?.textContent}));await mainStorageV2.commitPromise;
  check(reads>beforeReads,'recovery did not re-read the authoritative Finance document');
- check(commits===1&&providerRuns===(action==='refresh'?1:0)&&resets===(action==='reset'?1:0),'recovery repeated a provider or remote effect');
+ check(commits===1&&providerRuns===(action==='refresh'?1:0)&&resets===0,'recovery repeated a provider or remote effect');
  check(!credit.queries.uiState().publicationWarning,'completed follow-up retained the warning');
  check(!document.querySelector('[data-action="retry-credit-publication"]'),'completed recovery left a stale action');
  const recovered=await mainStorageV2.recoverReadOnly();check(recovered.state.notes.find(row=>row.id===note.id)?.content===note.content,'note identity/content lost');

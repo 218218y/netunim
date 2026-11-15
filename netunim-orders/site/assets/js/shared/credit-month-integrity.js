@@ -68,8 +68,16 @@ function sameUnassignedEvidence(old,next){
 export function reconcileUnassignedCredit(previous,incoming,months,reference){
   const candidates=[...incoming.map(tx=>({tx,month:''})),
     ...months.flatMap(month=>month.transactions.map(tx=>({tx,month:month.month})))];
-  const consumed=new Set(),transfers=[];
+  if(incoming.some(source=>months.some(month=>month.transactions.some(tx=>sameUnassignedEvidence(source,tx)))))
+    return {blocked:true,transactions:previous,transfers:[]};
+  const consumed=new Set(),transfers=[],remaining=[];
+  // Reserve unchanged financial evidence first, including repeated issuer IDs.
+  // A retained occurrence cannot also authorize another source's transfer.
   for(const old of previous){
+    const index=candidates.findIndex((row,index)=>!row.month&&!consumed.has(index)&&financialKey(old)===financialKey(row.tx));
+    if(index>=0)consumed.add(index);else remaining.push(old);
+  }
+  for(const old of remaining){
     const matches=candidates.map((row,index)=>({row,index})).filter(({row,index})=>
       !consumed.has(index)&&(old.id?(!row.month&&financialKey(old)===financialKey(row.tx)||sameUnassignedEvidence(old,row.tx)):!row.month&&financialKey(old)===financialKey(row.tx)));
     if(!matches.length||old.id&&matches.length!==1)return {blocked:true,transactions:previous,transfers:[]};

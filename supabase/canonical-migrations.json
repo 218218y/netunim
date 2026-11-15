@@ -227,6 +227,10 @@
     {
       "version": "20261115160000",
       "name": "finance_credit_history"
+    },
+    {
+      "version": "20261115183000",
+      "name": "credit_reconciliation_followup"
     }
   ]
 }

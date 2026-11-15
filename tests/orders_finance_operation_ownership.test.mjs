@@ -157,7 +157,7 @@ test('Orders archive reads and memoized projection do not reuse another login ca
 });
 
 for(const method of ['saveCreditCardOrder','setCreditCardMapping','acknowledgeCreditSettlementWarning','saveCashflowMinimum','resetCreditSync','toggleBankTransactionHandled','acknowledgeMissingBankTransaction','acknowledgePersistentBankAlert'])test(`Orders ${method} cannot publish after login changes while awaiting its port`,async t=>{
-  const phase={saveCreditCardOrder:'finance-read',setCreditCardMapping:'finance-read',acknowledgeCreditSettlementWarning:'finance-read',saveCashflowMinimum:'kupa-read',resetCreditSync:'reset',toggleBankTransactionHandled:'handled',acknowledgeMissingBankTransaction:'missing',acknowledgePersistentBankAlert:'alert'}[method];
+  const phase={saveCreditCardOrder:'finance-read',setCreditCardMapping:'finance-read',acknowledgeCreditSettlementWarning:'finance-read',saveCashflowMinimum:'kupa-read',resetCreditSync:'finance-read',toggleBankTransactionHandled:'handled',acknowledgeMissingBankTransaction:'missing',acknowledgePersistentBankAlert:'alert'}[method];
   const args={saveCreditCardOrder:[[]],setCreditCardMapping:['P','card','included',true],acknowledgeCreditSettlementWarning:['credit_settlement_unmatched:1'],saveCashflowMinimum:['business',500],resetCreditSync:[],toggleBankTransactionHandled:[1,true],acknowledgeMissingBankTransaction:[1],acknowledgePersistentBankAlert:[1,'returned_cheque']}[method];
   const f=fixture(t,{hold:phase}),api=f.create(),pending=api[method](...args).catch(error=>{assert.equal(error.code,'FINANCE_OPERATION_SCOPE_CHANGED');return false});await f.entered.promise;f.relogin();f.release.resolve();
   assert.equal(await pending,false);assert.deepEqual(f.checksSession,f.before);assert.equal(f.counts['finance-save']||0,0);assert.equal(f.counts['kupa-save']||0,0);api.stopAutoSync?.();
@@ -249,7 +249,7 @@ test('Orders rejected deferred diagnostics save cannot report successful Credit 
 
 test('Orders Credit reset preserves the warning when committed reset cannot refresh its readout',async t=>{
   const f=fixture(t);f.ports.bridge.setCreditAutoEnabled=()=>{};f.ports.bridge.setCreditAutoMode=()=>{};f.ports.refreshKupaReadout=async()=>false;const api=f.create();
-  assert.equal(await api.resetCreditSync(),true);assert.match(api.snapshot().creditError,/רענון התצוגה.*לא אומת/);api.stopAutoSync();
+  assert.equal(await api.resetCreditSync(),false);assert.equal(f.counts.reset||0,0);assert.match(api.snapshot().creditError,/רענון התצוגה.*לא אומת/);api.stopAutoSync();
 });
 
 test('Orders deferred diagnostics commit retains its publication warning',async t=>{

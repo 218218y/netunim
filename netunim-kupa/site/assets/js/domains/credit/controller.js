@@ -83,10 +83,11 @@ export function createDomainsCreditController({model,toast,render,renderStatus=r
       assertCurrent();
       if(!status)throw new Error(local.bridgeError||'Bank Bridge אינו זמין');
       if(!supportedCreditBridge(status))throw new Error('יש לשדרג את Bank Bridge לפני איפוס מלא של סנכרון האשראי');
-      await bridge.resetCreditProfiles();
-      assertCurrent();
       automaticActive=false;autoTask.stop();if(preferenceResult(preferences.reset()))clearPreferenceFailure();
-      await publishCreditSync(normalizeCreditSync({}),'סנכרון האשראי אופס והופרד מגיבויי הקופה',null,assertCurrent,assertCurrent,true);
+      const reset=await publishCreditSync(normalizeCreditSync({}),'סנכרון האשראי אופס והופרד מגיבויי הקופה',null,assertCurrent,assertCurrent,true);
+      local.resetPending=true;
+      if(!reset.followupConfirmed)throw new Error('איפוס האשראי נשמר בענן אך האימות טרם הושלם. החיבורים המקומיים נשמרו. יש לנסות איפוס שוב להשלמה.');
+      assertCurrent();await bridge.resetCreditProfiles();assertCurrent();local.resetPending=false;
       await refreshCreditBridgeStatus();
       assertCurrent();
       toast(publication.status().publicationWarning||'סנכרון האשראי אופס. אפשר להגדיר מחדש חיבור אחד לכל בעל חשבון וחברה.');
