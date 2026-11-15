@@ -157,9 +157,12 @@ is an Auth configuration issue; this database refactor does not change Auth sett
 
 All static entrypoints use `tools/supabase_deploy_gate.py` before both preflight
 success and Wrangler. It reads live catalogs and the migration ledger using the
-logged-in Supabase CLI (`db query --linked --project-ref`), an explicitly configured
-PostgreSQL connection, or a fresh connector capture. SQL runs inside `BEGIN READ ONLY`.
-The target is always the explicit project in `postflight-target.json`.
+logged-in Supabase CLI v3 (`db query --read-only --remote=<project-ref>`), an
+explicitly configured PostgreSQL connection, or a fresh connector capture. The CLI
+runs one standalone read-only statement under its own enforced transaction (and does
+not need hosted mutation consent). The direct PostgreSQL path still wraps SQL in
+`BEGIN READ ONLY` / `ROLLBACK`. The target is always the explicit project in
+`postflight-target.json`.
 
 A committed receipt older than the local migrations is an authenticated baseline,
 not a claim that the live database is still old. The gate first verifies the live
@@ -170,8 +173,9 @@ migrations therefore need no manual receipt/schema promotion to publish the site
 Missing/modified migrations, unexplained live drift and failed configured connections
 still block publication. `--preflight-only` performs this same read-only verification.
 
-Authenticate the CLI once with `supabase login`; it must support `db query --linked
---project-ref --file --output json`. Pending-upgrade derivation needs the repository's
+Authenticate the CLI once with `supabase login`; it must support `db query --file
+--output json --read-only --agent=no --remote=<project-ref>`. Pending-upgrade
+derivation needs the repository's
 PostgreSQL test dependencies. The gate does not run the full test suite, apply any
 Production DDL, or change tracked files, so the fast path remains bound to its exact
 CI-verified commit. Without any live connection capability, only a current authenticated

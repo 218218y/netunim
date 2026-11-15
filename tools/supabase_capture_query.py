@@ -8,7 +8,7 @@ import json
 from supabase_postflight import ROOT, build_fingerprint, migration_manifest_sql
 
 
-def query():
+def query_statement():
     target = json.loads((ROOT / 'supabase/postflight-target.json').read_text(encoding='utf8'))
     literal = lambda value: "'" + value.replace("'", "''") + "'"
     sql = (ROOT / 'supabase/schema_inventory.sql').read_text(encoding='utf8')
@@ -18,7 +18,14 @@ def query():
     extra += ', (' + history + ') as migrations'
     extra += ', (' + migration_manifest_sql().rstrip(';') + ') as manifest;'
     assert sql.count(') as inventory;') == 1
-    return 'BEGIN READ ONLY;\n' + sql.replace(') as inventory;', ') as inventory' + extra) + '\nROLLBACK;'
+    return sql.replace(') as inventory;', ') as inventory' + extra)
+
+
+def query():
+    # Retain the explicit transaction for psql/operator captures. Supabase CLI
+    # v3 instead enforces its own transaction via db query --read-only, which
+    # rejects SQL starting with BEGIN.
+    return 'BEGIN READ ONLY;\n' + query_statement() + '\nROLLBACK;'
 
 
 if __name__ == '__main__':

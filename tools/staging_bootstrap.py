@@ -46,7 +46,7 @@ def main():
         shutil.copytree(ROOT/'supabase/migrations', scratch/'supabase/migrations')
         baseline = scratch/'supabase/migrations'/BASELINE
         baseline.write_text(portable_baseline(baseline.read_text(encoding='utf-8')), encoding='utf-8')
-        command = ['supabase','db','push','--project-ref',target,'--workdir',str(scratch),'--skip-vault','--yes']
+        command = ['supabase','db','push','--workdir',str(scratch),'--skip-vault','--yes','--remote='+target]
         if not args.apply: command.append('--dry-run')
         subprocess.run(command, check=True)
     finally:

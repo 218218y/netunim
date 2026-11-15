@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import supabase_capture_query as capture_sql
 import supabase_deploy_gate as gate
 
 
@@ -114,17 +115,24 @@ class SupabaseDeployGateContracts(unittest.TestCase):
             os.environ['NETUNIM_SUPABASE_CAPTURE'] = '/capture.json'
             self.assertEqual(gate.live_source(), 'capture')
 
-    def test_cli_uses_pinned_project_read_only_sql_file_and_never_logs_connection_errors(self):
+    def test_cli_v3_uses_pinned_remote_and_enforced_read_only_query(self):
         row = dict(inventory={}, migrations=[], manifest=[], project_id=self.target['project_id'], captured_at='now', build_fingerprint='fp')
         with tempfile.TemporaryDirectory() as directory, patch.object(gate.subprocess, 'run') as run:
             run.return_value = subprocess.CompletedProcess([], 0, json.dumps({'rows':[row]}), '')
             path = gate.capture_live(self.target, Path(directory), 'cli')
             self.assertEqual(json.loads(path.read_text(encoding='utf8')), row)
             command = run.call_args.args[0]
-            self.assertEqual(command[command.index('--project-ref')+1], self.target['project_id'])
+            self.assertIn('--remote=' + self.target['project_id'], command)
+            self.assertIn('--read-only', command)
+            self.assertIn('--agent=no', command)
+            self.assertNotIn('--yes', command, 'A read-only query must not grant remote mutation consent')
+            self.assertNotIn('--linked', command)
+            self.assertNotIn('--project-ref', command)
             sql = Path(command[command.index('--file')+1]).read_text(encoding='utf8')
-            self.assertTrue(sql.startswith('BEGIN READ ONLY;'))
-            self.assertTrue(sql.endswith('ROLLBACK;'))
+            self.assertRegex(sql, r'(?m)^with ns as \(')
+            self.assertEqual(sql, capture_sql.query_statement())
+            self.assertNotIn('BEGIN READ ONLY', sql)
+            self.assertNotIn('ROLLBACK;', sql)
             self.assertEqual(run.call_args.kwargs['stdin'], subprocess.DEVNULL)
             run.return_value = subprocess.CompletedProcess([], 1, '', 'SECRET_MUST_NOT_APPEAR')
             with self.assertRaises(SystemExit) as failure:
@@ -137,6 +145,16 @@ class SupabaseDeployGateContracts(unittest.TestCase):
                 run.return_value = subprocess.CompletedProcess([], 0, json.dumps(value), '')
                 with self.subTest(value=value), self.assertRaises(SystemExit):
                     gate.capture_live(self.target, Path(directory), 'cli')
+
+    def test_operator_capture_still_uses_explicit_read_only_transaction(self):
+        wrapped = capture_sql.query()
+        self.assertEqual(wrapped, 'BEGIN READ ONLY;\n' + capture_sql.query_statement() + '\nROLLBACK;')
+
+    def test_cli_v3_never_accepts_agent_envelope_as_a_capture(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(gate.subprocess, 'run') as run:
+            run.return_value = subprocess.CompletedProcess([], 0, json.dumps({'untrusted_data': {'rows': []}}), '')
+            with self.assertRaisesRegex(SystemExit, 'incomplete/unrecognized'):
+                gate.capture_live(self.target, Path(directory), 'cli')
 
     def test_postgres_wraps_the_capture_as_one_json_row(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(gate.subprocess, 'run') as run:

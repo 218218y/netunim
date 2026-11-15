@@ -66,13 +66,20 @@ enabled. This avoids certificate failures on networks using a trusted proxy;
 Cloudflare authentication and upload permissions remain required for upload.
 
 For any reviewed database release, the database operator first runs
-`verify.bat --no-pause`, checks `supabase migration list --workdir .`, and reviews
-`supabase db push --dry-run --workdir .`. Production must be an exact prefix of
-the local chain, with only the intended migrations pending. Apply that exact suffix
-once with `supabase db push --workdir .`. Deploy an Edge Function only when that
-reviewed release also changes one; for the Morning function, use
+`verify.bat --no-pause`, checks
+`supabase migration list --workdir . --remote=bupoidcurcxuypfrjqio`, and reviews
+`supabase db push --dry-run --workdir . --remote=bupoidcurcxuypfrjqio`.
+CLI v3 targets the local stack by default; the explicit remote ref prevents accidental
+verification against a local database or a different linked project. Production must
+be an exact prefix of the local chain, with only the intended migrations pending.
+Apply that exact suffix **once** with
+`supabase db push --workdir . --remote=bupoidcurcxuypfrjqio --yes` only after
+explicitly reviewing and approving the dry-run. `--yes` is the v3 non-interactive
+consent for a hosted mutation, not a substitute for review. Deploy an Edge Function
+only when that reviewed release also changes one; for the Morning function, use
 `supabase functions deploy morning-documents --workdir netunim-orders
---project-ref bupoidcurcxuypfrjqio --no-verify-jwt --use-api` and keep existing secrets.
+--no-verify-jwt --use-api --remote=bupoidcurcxuypfrjqio --yes` and keep existing
+secrets. For the full v3 command sequence see `docs/SUPABASE_CLI_V3_HE.md`.
 The root `supabase/migrations` is the only migration chain. Do not run migration push
 from a function directory, repair history, seed, or reset the linked Production database.
 

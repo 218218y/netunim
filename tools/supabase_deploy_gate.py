@@ -13,7 +13,7 @@ import tempfile
 
 from supabase_postflight import (ROOT, build_fingerprint, canonical, connector_capture,
                                 release_gate, verify_evidence, require_release_migrations)
-from supabase_capture_query import query
+from supabase_capture_query import query_statement
 from supabase_migration_manifest import manifest as local_manifest, verify_server_manifest
 
 
@@ -30,16 +30,20 @@ def live_source():
 def capture_live(target, directory, source):
     if source == 'capture':
         return Path(os.environ['NETUNIM_SUPABASE_CAPTURE'])
-    sql = query()
+    sql = query_statement()
     if source == 'postgres':
         command = ['psql', '-X', '-w', '-qAt', '-v', 'ON_ERROR_STOP=1']
-        select_sql = sql.removeprefix('BEGIN READ ONLY;\n').removesuffix('\nROLLBACK;').strip().removesuffix(';')
+        select_sql = sql.strip().removesuffix(';')
         input_sql = 'BEGIN READ ONLY;\nselect row_to_json(capture_row) from ('+select_sql+') capture_row;\nROLLBACK;'
     else:
         path = directory/'catalog.sql'
         path.write_text(sql, encoding='utf8')
-        command = [shutil.which('supabase') or 'supabase', 'db', 'query', '--linked',
-                   '--project-ref', target['project_id'], '--output', 'json', '--file', str(path)]
+        # v3 defaults to the local stack and requires consent for remote SQL
+        # unless --read-only enforces a read-only query. Pin Production explicitly.
+        # --agent=no avoids an agent-specific JSON warning envelope.
+        command = [shutil.which('supabase') or 'supabase', 'db', 'query',
+                   '--file', str(path), '--output', 'json', '--read-only',
+                   '--agent=no', '--remote=' + target['project_id']]
         input_sql = None
     try:
         result = subprocess.run(command, cwd=ROOT, input=input_sql, stdin=subprocess.DEVNULL if input_sql is None else None,
@@ -50,7 +54,8 @@ def capture_live(target, directory, source):
     if result.returncode:
         # CLI diagnostics may include connection details; never echo them or tokens.
         raise SystemExit('FAIL: live Supabase catalog read failed. Check connectivity and supabase login; '
-                         'the CLI must support db query --linked --project-ref --file --output json. No site uploaded.')
+                         'Supabase CLI v3 must support db query --read-only --remote=<project> '
+                         '--file --output json. No site uploaded.')
     try:
         payload = json.loads(result.stdout)
         rows = payload.get('rows') if isinstance(payload, dict) and 'inventory' not in payload else payload
