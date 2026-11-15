@@ -95,7 +95,7 @@ export function createFinanceHistoryDialog(ports){
         const reason=panel.querySelector('[data-history-reason]').value.trim();
         if(!panel.querySelector('[data-history-reviewed]').checked||reason.length<8){error(Error('יש לבדוק את ההפרשים, לסמן אישור ולציין סיבה מפורטת'));return}
         return perform(async()=>{
-          if(!await ports.confirm('לשחזר את האשראי מהגרסה שנבחרה?','חיובי האשראי יוחלפו לפי ההשוואה. נתוני הבנק לא יוחלפו.'))return;
+          if(!await ports.confirmDialog('לשחזר את האשראי מהגרסה שנבחרה?','חיובי האשראי יוחלפו לפי ההשוואה. נתוני הבנק לא יוחלפו.'))return;
           guard();if(!visible(root))return;const result=await service.restore(preview,reason,guard);guard();
           if(visible(root))root.innerHTML=`<p role="status">${result.displayConfirmed?'השחזור נשמר ואומת בקריאה חוזרת מהענן.':'השחזור נשמר ואומת בענן, אך עדכון התצוגה עדיין לא אושר. יש לרענן מהענן.'}</p>`;
         });

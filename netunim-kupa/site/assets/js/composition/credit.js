@@ -180,7 +180,7 @@ export function createKupaCreditRuntime({model,ui,platform={}}){
       const assertCurrent=historyPorts.capture();assertCurrent();
       return editorWork.run(async()=>{
         const {createFinanceHistoryDialog}=await import('../shared/finance-history-dialog.js');assertCurrent();if(disposed)return false;
-        history??=createFinanceHistoryDialog({...historyPorts,isActive:()=>!disposed,saveJson:(...args)=>effects.saveJson(...args),confirm:(...args)=>uiModal.confirmDialog(...args),
+        history??=createFinanceHistoryDialog({...historyPorts,isActive:()=>!disposed,saveJson:(...args)=>effects.saveJson(...args),confirmDialog:(...args)=>uiModal.confirmDialog(...args),
           mount:body=>{uiModal.modal('גרסאות וגיבוי אשראי',body,'',()=>{});document.querySelector('#modal .modal-foot').replaceChildren();return document.querySelector('[data-finance-history]')}});
         return history.open(assertCurrent);
       }).catch(error=>{try{assertCurrent();if(!disposed)uiStatus.toast(error.message)}catch{}return false});

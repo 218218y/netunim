@@ -323,7 +323,7 @@ export function createOrdersFinanceCapability({
       if(historyFlight)return historyFlight;
       historyFlight=(async()=>{
         const {createFinanceHistoryDialog}=await import('../shared/finance-history-dialog.js');assertCurrent();if(disposed)return false;
-        history??=createFinanceHistoryDialog({...historyPorts,isActive:()=>!disposed,saveJson:(...args)=>effects.saveJson(...args),confirm:ownedModal.confirmDialog,
+        history??=createFinanceHistoryDialog({...historyPorts,isActive:()=>!disposed,saveJson:(...args)=>effects.saveJson(...args),confirmDialog:ownedModal.confirmDialog,
           mount:body=>{ownedModal.modal('גרסאות וגיבוי אשראי',body);return document.querySelector('[data-finance-history]')}});
         return history.open(assertCurrent);
       })().catch(error=>{try{assertCurrent();if(!disposed)notify(error.message)}catch{}return false}).finally(()=>{historyFlight=null});
@@ -374,12 +374,13 @@ export function createOrdersFinanceCapability({
     recomputeKupaNetFromCache:(...args) => readoutReady().recomputeKupaNetFromCache(...args),
     renderKupaDependentView:(...args) => readoutReady().renderKupaDependentView(...args),
   };
-  const ownedRuntimes = () => [...(presentation?.runtimes || []), archiveReconciliation?.runtime, bankSnapshots?.runtime, controller?.runtime,
+  const historyLoading={isPending:()=>!!historyFlight,drain:async()=>{await historyFlight},dispose:()=>history?.runtime.dispose()};
+  const ownedRuntimes = () => [historyLoading,history?.runtime,...(presentation?.runtimes || []), archiveReconciliation?.runtime, bankSnapshots?.runtime, controller?.runtime,
     connections?.runtime, bankConnections?.runtime, archive?.runtime].filter(Boolean);
   const runtime = {
-    isPending:() => !!historyFlight||!!history?.runtime.isPending()||ownedRuntimes().some(owner => owner.isPending()),
+    isPending:() => ownedRuntimes().some(owner => owner.isPending()),
     async drain() {
-      do { await Promise.all([historyFlight,history?.runtime.drain(),...ownedRuntimes().map(owner => owner.drain())]); } while(runtime.isPending());
+      do { await Promise.all(ownedRuntimes().map(owner => owner.drain())); } while(runtime.isPending());
     },
     start() { uiReady(); return controller.startAutoSync(); },
     resume() { uiReady(); return controller.resumeAutoSync(); },
@@ -391,7 +392,7 @@ export function createOrdersFinanceCapability({
     },
     dispose() {
       if (disposed) return false;
-      disposed = true;history?.runtime.dispose();
+      disposed = true;
       ownedRuntimes().forEach(owner => owner.dispose());
       controller?.setFinanceStatusListener(() => {});
       effects.dispose();
