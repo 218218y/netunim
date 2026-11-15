@@ -4,8 +4,9 @@ import fs from 'node:fs';
 import { parse } from 'acorn';
 import { analyze } from 'eslint-scope';
 import { creditAdapterPolicyHashes } from './credit_adapter_policy_fixture.mjs';
+import {restoreFinanceHistoryChanges} from './finance_history_policy_fixture.mjs';
 const folder = '../netunim-orders/site/assets/js/domains/finance/';
-const read = (name) => fs.readFileSync(new URL(folder + name + '.js', import.meta.url), 'utf8');
+const read = (name) => restoreFinanceHistoryChanges(fs.readFileSync(new URL(folder + name + '.js', import.meta.url), 'utf8'),`netunim-orders/site/assets/js/domains/finance/${name}.js`);
 const fixture = JSON.parse(
   fs.readFileSync(
     new URL('./fixtures/orders-finance-document-policy.json', import.meta.url),

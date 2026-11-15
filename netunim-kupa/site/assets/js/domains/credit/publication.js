@@ -10,7 +10,7 @@
 const WARNING='נתוני האשראי נשמרו בענן. השלמת השמירה הנלווית לא אושרה. יש לבדוק ולטעון מהענן, ללא סריקה נוספת של חברות האשראי.';
 /** @param {FinanceState|undefined|null} state */
 function hasCreditState(state){return !!state&&typeof state==='object'&&!Array.isArray(state)&&!!state.creditSync&&typeof state.creditSync==='object'&&!Array.isArray(state.creditSync)}
-/** @param {{commit:(mutator:(state:FinanceState)=>FinanceState,lease:unknown,options:{assertCurrent:PublicationAssertion})=>Promise<FinanceCommit>,publish:(state:FinanceState)=>undefined,checkpoint:(message:string)=>Promise<unknown>,read:(options:{assertCurrent:PublicationAssertion})=>Promise<FinanceRead>}} ports */
+/** @param {{commit:(mutator:(state:FinanceState)=>FinanceState,lease:unknown,options:{assertCurrent:PublicationAssertion,creditReset?:boolean})=>Promise<FinanceCommit>,publish:(state:FinanceState)=>undefined,checkpoint:(message:string)=>Promise<unknown>,read:(options:{assertCurrent:PublicationAssertion})=>Promise<FinanceRead>}} ports */
 export function createCreditPublication({commit:remoteCommit,publish,checkpoint,read}){
   for(const port of [remoteCommit,publish,checkpoint,read])if(typeof port!=='function')throw new TypeError('credit_publication_ports_required');
   /** @type {PublicationReceipt|null} */ let latest=null;
@@ -24,11 +24,11 @@ export function createCreditPublication({commit:remoteCommit,publish,checkpoint,
     if(latest===receipt){receipt.warning=warning;receipt.at=warning?new Date().toISOString():'';receipt.code=warning?code:''}
     return {remoteCommitted:true,displayPublished:true,followupConfirmed:confirmed,warning};
   }
-  /** @param {(state:FinanceState)=>FinanceState} mutator @param {string} message @param {unknown} lease @param {PublicationAssertion} assertCurrent @param {PublicationAssertion} assertRetained @returns {Promise<PublicationResult>} */
-  async function commit(mutator,message,lease,assertCurrent,assertRetained){
+  /** @param {(state:FinanceState)=>FinanceState} mutator @param {string} message @param {unknown} lease @param {PublicationAssertion} assertCurrent @param {PublicationAssertion} assertRetained @param {boolean} [creditReset] @returns {Promise<PublicationResult>} */
+  async function commit(mutator,message,lease,assertCurrent,assertRetained,creditReset=false){
     if(typeof assertRetained!=='function')throw new TypeError('credit_publication_retained_authority_required');
     assertCurrent();assertRetained();/** @type {FinanceState|undefined} */ let candidate;
-    const result=await remoteCommit(state=>{assertCurrent();candidate=mutator(state);return candidate},lease,{assertCurrent});assertCurrent();
+    const result=await remoteCommit(state=>{assertCurrent();candidate=mutator(state);return candidate},lease,{assertCurrent,...(creditReset?{creditReset:true}:{})});assertCurrent();
     if(result?.saved!==true)throw new Error('נתוני האשראי לא נשמרו בענן. הנתונים הקודמים נשמרו; יש להתחבר ולבדוק לפני ניסיון נוסף.');
     const state=result.row?.state||candidate;if(!state||!hasCreditState(state))throw new Error('credit_publication_state_required');
     const rawRevision=result.row?.revision,revision=rawRevision===undefined?null:rawRevision;

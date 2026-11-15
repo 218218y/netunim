@@ -18,7 +18,10 @@ def definitions(db):
 
 def run():
     migrations = sorted((ROOT/'supabase/migrations').glob('*.sql'))
-    with IsolatedPostgres(schema_files=[p for p in migrations if p != MIGRATION]) as db:
+    # Compare the MFA migration against its actual predecessor, then verify
+    # every later endpoint too. Applying future migrations before this boundary
+    # would mix new RPCs into the historical 27-function body baseline.
+    with IsolatedPostgres(schema_files=[p for p in migrations if p.name < MIGRATION.name]) as db:
         previous = {f['signature']:f for f in definitions(db)}
         assert len(previous) == 27
         # Managed Storage grants are a platform prerequisite, absent from the
@@ -35,6 +38,13 @@ def run():
             guard = r'\s*(?:PERFORM|SELECT) netunim_internal\.require_financial_mfa_v1\(\);'
             assert len(re.findall(guard, body)) == 1, function['signature']
             assert re.sub(guard, '', body, count=1).strip() == expected, ('business body changed',function['signature'])
+        for migration in migrations:
+            if migration.name > MIGRATION.name:
+                db.migrate(migration.read_text(encoding='utf-8'))
+        current = definitions(db)
+        for function in current:
+            assert not function['strict'], function['signature']
+            assert len(re.findall(guard, function['body'], re.IGNORECASE)) == 1, function['signature']
         db.sql('insert into auth.users values('+quote(OTHER)+');')
         ids=[]
         for owner in (OWNER,OTHER):
@@ -60,6 +70,6 @@ def run():
         assert db.sql("select count(*) from pg_policy where polname='financial_mfa_v1'").strip() != '0'
         # Missing/forged assurance remains denied; another owner's active factor does not opt B in.
         denied(db,OWNER,'netunim_internal.require_financial_mfa_v1()')
-    print('PASS MFA: unchanged business definitions, all 27 privileged entrypoints, real RLS, lower-AAL denial and AAL2/unenrolled positive controls')
+    print(f'PASS MFA: unchanged 27 historical business definitions, all {len(current)} current privileged entrypoints, real RLS, lower-AAL denial and AAL2/unenrolled positive controls')
 
 if __name__ == '__main__': run()

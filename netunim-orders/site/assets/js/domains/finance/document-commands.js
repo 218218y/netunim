@@ -111,11 +111,11 @@ export function createOrdersFinanceDocumentCommands({
   async function mutateFinanceCloud(
     mutator,
     lease = null,
-    { assertCurrent = lease?.assertCurrent || operationScope.capture() } = {}
+    { assertCurrent = lease?.assertCurrent || operationScope.capture(), creditReset = false } = {}
   ) {
     assertCurrent();
     if (!lease)
-      return manualFinanceQueue((held) => mutateFinanceCloud(mutator, held), { assertCurrent });
+      return manualFinanceQueue((held) => mutateFinanceCloud(mutator, held, {assertCurrent,creditReset}), { assertCurrent });
     lease = { ...lease, assertCurrent };
     const operationId = createOperationId('finance');
     let row = await readFinanceSyncDocument({ assertCurrent });
@@ -138,6 +138,7 @@ export function createOrdersFinanceDocumentCommands({
           beforeState: base,
           afterState: candidate,
         });
+      if(creditReset)audit.creditReset=true;
       const result = await runBusyCloudWriteWithPolicy(() =>
         rpcSaveFinanceSync(candidate, baseRevision, operationId, audit, lease)
       );

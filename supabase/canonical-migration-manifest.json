@@ -278,5 +278,10 @@
     "version": "20261108210000",
     "name": "financial_mfa_boundaries",
     "sha256": "2508b7f766a88aa1006cbeba69214624d1856a573dc3b4a5cdf353341306eb3c"
+  },
+  {
+    "version": "20261115160000",
+    "name": "finance_credit_history",
+    "sha256": "a37532a1aa116e837639f10ccd7f3ed52ba080db036dfe099ec702b414715b65"
   }
 ]

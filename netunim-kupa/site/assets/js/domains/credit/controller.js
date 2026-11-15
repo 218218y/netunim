@@ -86,7 +86,7 @@ export function createDomainsCreditController({model,toast,render,renderStatus=r
       await bridge.resetCreditProfiles();
       assertCurrent();
       automaticActive=false;autoTask.stop();if(preferenceResult(preferences.reset()))clearPreferenceFailure();
-      await publishCreditSync(normalizeCreditSync({}),'סנכרון האשראי אופס והופרד מגיבויי הקופה',null,assertCurrent,assertCurrent);
+      await publishCreditSync(normalizeCreditSync({}),'סנכרון האשראי אופס והופרד מגיבויי הקופה',null,assertCurrent,assertCurrent,true);
       await refreshCreditBridgeStatus();
       assertCurrent();
       toast(publication.status().publicationWarning||'סנכרון האשראי אופס. אפשר להגדיר מחדש חיבור אחד לכל בעל חשבון וחברה.');
@@ -115,8 +115,8 @@ export function createDomainsCreditController({model,toast,render,renderStatus=r
     }
   }
 
-  async function publishCreditSync(candidate,message,lease,assertCurrent,assertRetained){
-    return publication.commit(state=>({...state,creditSync:candidate}),message,lease,assertCurrent,assertRetained);
+  async function publishCreditSync(candidate,message,lease,assertCurrent,assertRetained,creditReset=false){
+    return publication.commit(state=>({...state,creditSync:candidate}),message,lease,assertCurrent,assertRetained,creditReset);
   }
 
   async function persistCreditSettings(mutator,message){

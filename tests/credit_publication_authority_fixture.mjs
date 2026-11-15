@@ -1,7 +1,8 @@
+import {restoreFinanceHistoryChanges} from './finance_history_policy_fixture.mjs';
 // Preserve the immutable historical policy/hash while reconstructing only the
 // separately tested retained-receipt authority boundary.
 export function restoreCreditPublicationAuthority(source) {
-  return source
+  return restoreFinanceHistoryChanges(source,'netunim-kupa/site/assets/js/domains/credit/publication.js')
     .replace(/\r\n/g, '\n')
     .replace(' @param {PublicationAssertion} assertRetained', '')
     .replace(

@@ -223,6 +223,10 @@
     {
       "version": "20261108210000",
       "name": "financial_mfa_boundaries"
+    },
+    {
+      "version": "20261115160000",
+      "name": "finance_credit_history"
     }
   ]
 }

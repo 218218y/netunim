@@ -1,0 +1,32 @@
+{
+  "netunim-kupa/site/assets/js/domains/credit/publication.js": [
+    {
+      "before": "function hasCreditState(state){return !!state&&typeof state==='object'&&!Array.isArray(state)&&!!state.creditSync&&typeof state.creditSync==='object'&&!Array.isArray(state.creditSync)}\n/** @param {{commit:(mutator:(state:FinanceState)=>FinanceState,lease:unknown,options:{assertCurrent:PublicationAssertion})=>Promise<FinanceCommit>,publish:(state:FinanceState)=>undefined,checkpoint:(message:string)=>Promise<unknown>,read:(options:{assertCurrent:PublicationAssertion})=>Promise<FinanceRead>}} ports */\nexport function createCreditPublication({commit:remoteCommit,publish,checkpoint,read}){\n",
+      "after": "function hasCreditState(state){return !!state&&typeof state==='object'&&!Array.isArray(state)&&!!state.creditSync&&typeof state.creditSync==='object'&&!Array.isArray(state.creditSync)}\n/** @param {{commit:(mutator:(state:FinanceState)=>FinanceState,lease:unknown,options:{assertCurrent:PublicationAssertion,creditReset?:boolean})=>Promise<FinanceCommit>,publish:(state:FinanceState)=>undefined,checkpoint:(message:string)=>Promise<unknown>,read:(options:{assertCurrent:PublicationAssertion})=>Promise<FinanceRead>}} ports */\nexport function createCreditPublication({commit:remoteCommit,publish,checkpoint,read}){\n"
+    },
+    {
+      "before": "  }\n  /** @param {(state:FinanceState)=>FinanceState} mutator @param {string} message @param {unknown} lease @param {PublicationAssertion} assertCurrent @param {PublicationAssertion} assertRetained @returns {Promise<PublicationResult>} */\n  async function commit(mutator,message,lease,assertCurrent,assertRetained){\n    if(typeof assertRetained!=='function')throw new TypeError('credit_publication_retained_authority_required');\n    assertCurrent();assertRetained();/** @type {FinanceState|undefined} */ let candidate;\n    const result=await remoteCommit(state=>{assertCurrent();candidate=mutator(state);return candidate},lease,{assertCurrent});assertCurrent();\n    if(result?.saved!==true)throw new Error('נתוני האשראי לא נשמרו בענן. הנתונים הקודמים נשמרו; יש להתחבר ולבדוק לפני ניסיון נוסף.');\n",
+      "after": "  }\n  /** @param {(state:FinanceState)=>FinanceState} mutator @param {string} message @param {unknown} lease @param {PublicationAssertion} assertCurrent @param {PublicationAssertion} assertRetained @param {boolean} [creditReset] @returns {Promise<PublicationResult>} */\n  async function commit(mutator,message,lease,assertCurrent,assertRetained,creditReset=false){\n    if(typeof assertRetained!=='function')throw new TypeError('credit_publication_retained_authority_required');\n    assertCurrent();assertRetained();/** @type {FinanceState|undefined} */ let candidate;\n    const result=await remoteCommit(state=>{assertCurrent();candidate=mutator(state);return candidate},lease,{assertCurrent,...(creditReset?{creditReset:true}:{})});assertCurrent();\n    if(result?.saved!==true)throw new Error('נתוני האשראי לא נשמרו בענן. הנתונים הקודמים נשמרו; יש להתחבר ולבדוק לפני ניסיון נוסף.');\n"
+    }
+  ],
+  "netunim-orders/site/assets/js/domains/finance/document-commands.js": [
+    {
+      "before": "    lease = null,\n    { assertCurrent = lease?.assertCurrent || operationScope.capture() } = {}\n  ) {\n",
+      "after": "    lease = null,\n    { assertCurrent = lease?.assertCurrent || operationScope.capture(), creditReset = false } = {}\n  ) {\n"
+    },
+    {
+      "before": "    if (!lease)\n      return manualFinanceQueue((held) => mutateFinanceCloud(mutator, held), { assertCurrent });\n    lease = { ...lease, assertCurrent };\n",
+      "after": "    if (!lease)\n      return manualFinanceQueue((held) => mutateFinanceCloud(mutator, held, {assertCurrent,creditReset}), { assertCurrent });\n    lease = { ...lease, assertCurrent };\n"
+    },
+    {
+      "before": "        });\n      const result = await runBusyCloudWriteWithPolicy(() =>\n",
+      "after": "        });\n      if(creditReset)audit.creditReset=true;\n      const result = await runBusyCloudWriteWithPolicy(() =>\n"
+    }
+  ],
+  "netunim-orders/site/assets/js/domains/finance/credit-settings-commands.js": [
+    {
+      "before": "const saved=await mutateFinanceCloud(finance=>{finance.creditSync=normalizeCreditSync({});return finance},null,{assertCurrent});assertCurrent();",
+      "after": "const saved=await mutateFinanceCloud(finance=>{finance.creditSync=normalizeCreditSync({});return finance},null,{assertCurrent,creditReset:true});assertCurrent();"
+    }
+  ]
+}

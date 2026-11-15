@@ -161,13 +161,14 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     const expected=Number(expectedRevision||0),op=String(operationId||'').trim();
     if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הסינכרון הפיננסי אינו תקין');
     if(!op)throw new Error('מזהה פעולת הסינכרון הפיננסי חסר');
-    const r=await supaRest(`/rest/v1/rpc/${FINANCE_RPC}_v6`,
+    const reset=audit.creditReset===true;
+    const r=await supaRest(reset?'/rest/v1/rpc/reset_finance_credit_with_backup':`/rest/v1/rpc/${FINANCE_RPC}_v6`,
       {
       method:'POST',
       networkRetry:true,
       dataPriority:'high',
       ...(assertCurrent?{assertRequestScope:assertCurrent}:{}),
-      body:JSON.stringify({p_document_name:FINANCE_DOC,p_expected_revision:expected,p_state:state,p_operation_id:op,p_audit:audit,...financeFencePayload(lease)})
+      body:JSON.stringify({p_document_name:FINANCE_DOC,p_expected_revision:expected,p_operation_id:op,...(reset?{p_credit_sync:state.creditSync,p_reason:'Confirmed reset of Credit connections',p_lease_token:lease?.leaseToken,p_fence_epoch:lease?.fenceEpoch}:{p_state:state,p_audit:audit,...financeFencePayload(lease)})})
     });
     const body=await r.text();
     assertCurrent?.();
@@ -179,11 +180,11 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     }
     return {r,j,body,row:firstResponseValue(j)};
   }
-  /** @param {(state:State)=>State|null|false|undefined} mutator @param {FenceLease|null} [lease] @param {import('../shared/cloud-transport-contracts.js').ReadScope} [options]
+  /** @param {(state:State)=>State|null|false|undefined} mutator @param {FenceLease|null} [lease] @param {import('../shared/cloud-transport-contracts.js').ReadScope & {creditReset?:boolean}} [options]
    * @returns {Promise<{saved:false,row:import('../shared/cloud-read-records.js').CloudDocument|null}|{saved:true,row:import('../shared/finance-write-receipt.js').FinanceWriteReceipt}>} */
-  async function saveFinancePatch(mutator,lease=null,{assertCurrent=lease?.assertCurrent}={}){
+  async function saveFinancePatch(mutator,lease=null,{assertCurrent=lease?.assertCurrent,creditReset=false}={}){
     assertCurrent?.();
-    if(!lease)return manualFinanceQueue(held=>saveFinancePatch(mutator,held),assertCurrent?{assertCurrent}:{});
+    if(!lease)return manualFinanceQueue(held=>saveFinancePatch(mutator,held,{creditReset,...(assertCurrent?{assertCurrent}:{})}),assertCurrent?{assertCurrent}:{});
     if(assertCurrent)lease={...lease,assertCurrent};
     const operationId=createOperationId('finance');
     let row=await readFinanceSyncDocument(assertCurrent?{assertCurrent}:{});
@@ -194,7 +195,8 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     // Capture exactly the JSON sent by the RPC, including domain toJSON views.
       const next=JSON.parse(JSON.stringify(candidate));
       const baseRevision=Number(row?.revision||0),audit=operationAuditMetadata({site:'kupa',mutationType:'finance-update',surface:'kupa.finance.sync-document',baseRevision,beforeState:base,afterState:next});
-      const res=await runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync(next,baseRevision,operationId,audit,lease));
+      const saveAudit=creditReset?{...audit,creditReset:true}:audit;
+      const res=await runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync(next,baseRevision,operationId,saveAudit,lease));
       assertCurrent?.();
       if(res?.r?.ok)return {saved:true,row:readFinanceWriteReceipt(Object.hasOwn(res,'j')?res.j:res.row,{baseRevision,sentState:next})};
       const error=normalizeCloudError(res);
