@@ -19,6 +19,22 @@ python tools/sync-assets.py
 מחיקת אחסון אתר-לבדוק שהאתר או השרת לא פעיל ואז לאפס נתונים לגמרי
 chrome://settings/content/all
 
+העלאת מיגרציות פקודות חדשות
+שלב 1 - בדיקה לפני העלאה
+supabase --version
+supabase migration list --workdir . --remote=bupoidcurcxuypfrjqio
+supabase db push --dry-run --workdir . --remote=bupoidcurcxuypfrjqio
+
+.\verify.bat --no-pause
+
+שלב 2 — העלאת המיגרציות ואימות לאחר הפריסה
+supabase db push --workdir . --remote=bupoidcurcxuypfrjqio --yes
+supabase migration list --workdir . --remote=bupoidcurcxuypfrjqio
+supabase db push --dry-run --workdir . --remote=bupoidcurcxuypfrjqio
+python tools/supabase_deploy_gate.py
+
+
+פקודות ישנות
 העלאת qsl cli
 ```powershell
 supabase --version
