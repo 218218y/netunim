@@ -235,6 +235,10 @@
     {
       "version": "20261115200000",
       "name": "finance_version_export"
+    },
+    {
+      "version": "20261115213000",
+      "name": "credit_profile_identity"
     }
   ]
 }

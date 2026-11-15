@@ -16,6 +16,18 @@ function financialKey(tx){
     tx.id?'':tx.description]);
 }
 
+/** @type {Intl.DateTimeFormat|undefined} */
+let billingDayFormat;
+/** Use the same business calendar as the SQL guard, including month/year
+ * boundaries that arrive in Israel before UTC midnight. @param {string} at */
+function billingObservationDay(at){
+  billingDayFormat??=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem',year:'numeric',month:'2-digit',day:'2-digit'});
+  const date=new Date(at),parts=billingDayFormat.formatToParts(Number.isFinite(date.getTime())?date:new Date());
+  /** @param {string} type */
+  const part=type=>parts.find(item=>item.type===type)?.value||'';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
 /** Calendar history is protected conservatively: the protocol has no issuer
  * statement-closed flag. Also protect completed rows whose billing day has
  * arrived within the current month (inclusive of the current billing day). Never infer removal authority from success,
@@ -28,9 +40,10 @@ export function mergeCreditMonthSnapshot(prior,next,reference=null){
     :{...next,status:'missing'};
   if(prior?.transactions.length){
     const at=[reference,prior.fetchedAt,next.fetchedAt].filter(Boolean).sort().at(-1)||new Date().toISOString();
-    const protectedRows=prior.month<at.slice(0,7)?prior.transactions:prior.transactions.filter(tx=>
+    const day=billingObservationDay(at);
+    const protectedRows=prior.month<day.slice(0,7)?prior.transactions:prior.transactions.filter(tx=>
       tx.status==='completed'&&/^\d{4}-\d{2}-\d{2}/.test(String(tx.processedDate||''))&&
-      String(tx.processedDate).slice(0,10)<=at.slice(0,10));
+      String(tx.processedDate).slice(0,10)<=day);
     if(protectedRows.length){
       const available=new Map();
       for(const tx of next.transactions){const key=financialKey(tx);available.set(key,(available.get(key)||0)+1)}

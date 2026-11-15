@@ -110,10 +110,10 @@ with IsolatedPostgres(schema_files=[p for p in sorted(migration.parent.glob('*.s
     alias=json.loads(json.dumps(state));alias['creditSync']['profiles'][0]['ownerLabel']='Owner'
     assert save(alias,0,'alias-start',document='alias')['revision']==1
     alias_new=json.loads(json.dumps(alias));alias_new['creditSync']['profiles'][0]['profileId']='new-P'
-    assert save(alias_new,1,'alias-match',document='alias')['revision']==2
+    rejected(alias_new,1,'unproved-alias','credit_history_regression',document='alias')
     ambiguous=json.loads(json.dumps(alias_new));ambiguous['creditSync']['profiles'][0]['profileId']='newer-P'
     ambiguous['creditSync']['profiles'].append({**ambiguous['creditSync']['profiles'][0],'profileId':'other-P'})
-    rejected(ambiguous,2,'ambiguous-alias','credit_history_regression',document='alias')
+    rejected(ambiguous,1,'ambiguous-alias','credit_history_regression',document='alias')
     try:
         db.auth_sql("select public.restore_finance_credit_version('history-test',1,6,'stale-lease','Verified original issuer data','invalid-token',"+str(epoch)+")")
     except RuntimeError as error:

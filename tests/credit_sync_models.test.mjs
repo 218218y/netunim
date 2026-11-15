@@ -62,12 +62,11 @@ const duplicatedImportedIdentity=normalizeCreditSync({version:4,profiles:[
   'legacy-max-5521:5521':{included:true,hidden:false,account:'עסקי',cardName:'MAX ראשי'},
   'import:max-jacob:5521':{included:false,hidden:false,account:'עסקי'},
 }});
-assert.equal(duplicatedImportedIdentity.profiles.length,1,'same issuer + owner + discovered card is one physical credit identity even when another computer used a different profileId');
-assert.equal(duplicatedImportedIdentity.profiles[0].profileId,'import:max-jacob','portable import:connectionKey identity wins over a legacy machine/cloud profile id');
-assert.equal(duplicatedImportedIdentity.cardMappings['import:max-jacob:5521'].included,true,'reconciliation preserves the established included mapping instead of keeping the duplicate default-excluded row');
-assert.equal(duplicatedImportedIdentity.cardMappings['import:max-jacob:5521'].cardName,'MAX ראשי','reconciliation carries user card metadata to the stable identity');
-assert.equal(duplicatedImportedIdentity.cardMappings['legacy-max-5521:5521'],undefined,'legacy alias mapping is removed after identity consolidation');
-assert.deepEqual(duplicatedImportedIdentity.profiles[0].accounts[0].months.map(month=>month.month),['2026-08','2026-10'],'history from both aliases survives consolidation');
+assert.equal(duplicatedImportedIdentity.profiles.length,2,'owner/company/suffix do not prove a portable import is the same physical card');
+assert.equal(duplicatedImportedIdentity.cardMappings['legacy-max-5521:5521'].included,true);
+assert.equal(duplicatedImportedIdentity.cardMappings['legacy-max-5521:5521'].cardName,'MAX ראשי');
+assert.equal(duplicatedImportedIdentity.cardMappings['import:max-jacob:5521'].included,false);
+assert.deepEqual(duplicatedImportedIdentity.profiles.flatMap(profile=>profile.accounts.flatMap(account=>account.months.map(month=>month.month))).sort(),['2026-08','2026-10']);
 
 const sameSuffixDifferentOwners=normalizeCreditSync({version:4,profiles:[
   {profileId:'owner-a',provider:'max',ownerLabel:'יעקב',accounts:[{accountNumber:'5521'}]},
@@ -77,11 +76,10 @@ assert.equal(sameSuffixDifferentOwners.profiles.length,2,'a matching four-digit 
 
 const legacyToPortableBase=normalizeCreditSync({version:4,profiles:[{profileId:'legacy-cal',provider:'visaCal',label:'כאל-9715',ownerLabel:'רחלי',defaultAccount:'ביתי',syncedAt:'2026-09-20T00:00:00Z',accounts:[{accountNumber:'9715',months:[{month:'2026-09',tier:'core',fetchStatus:'success',fetchedAt:'2026-09-20T00:00:00Z',transactions:[{id:'legacy-cal-history',processedDate:'2026-09-10',chargedAmount:-30,status:'completed'}]}]}]}],cardMappings:{'legacy-cal:9715':{included:true,hidden:false,account:'ביתי'}}});
 const legacyToPortableMerged=mergeCreditSyncResult(legacyToPortableBase,{syncedAt:'2026-10-02T00:00:00Z',profiles:[{profileId:'import:cal-racheli',provider:'visaCal',label:'כאל-9715',ownerLabel:'רחלי',defaultAccount:'ביתי',coreComplete:true,syncedAt:'2026-10-02T00:00:00Z',accounts:[{accountNumber:'9715',months:[{month:'2026-10',tier:'core',fetchStatus:'success',fetchedAt:'2026-10-02T00:00:00Z',transactions:[{id:'portable-cal-history',processedDate:'2026-10-10',chargedAmount:-40,status:'completed'}]}]}]}],errors:[]});
-assert.equal(legacyToPortableMerged.profiles.length,1,'first successful sync under the portable id migrates an equivalent legacy cloud profile instead of adding a second profile');
-assert.equal(legacyToPortableMerged.profiles[0].profileId,'import:cal-racheli');
-assert.equal(legacyToPortableMerged.cardMappings['import:cal-racheli:9715'].included,true,'legacy user mapping follows the migrated portable profile id');
-assert.equal(legacyToPortableMerged.cardMappings['legacy-cal:9715'],undefined);
-assert.deepEqual(legacyToPortableMerged.profiles[0].accounts[0].months.map(month=>month.month),['2026-09','2026-10'],'profile id migration preserves earlier issuer history');
+assert.equal(legacyToPortableMerged.profiles.length,2,'a different imported profile retains its own history and opt-in mapping');
+assert.equal(legacyToPortableMerged.cardMappings['legacy-cal:9715'].included,true);
+assert.equal(legacyToPortableMerged.cardMappings['import:cal-racheli:9715'].included,false);
+assert.deepEqual(legacyToPortableMerged.profiles.flatMap(profile=>profile.accounts.flatMap(account=>account.months.map(month=>month.month))).sort(),['2026-09','2026-10']);
 
 assert.deepEqual(Object.keys(CREDIT_PROVIDER_CONFIG).sort(),['amex','isracard','max','visaCal'],'bridge exposes Cal, MAX, Isracard and Amex issuer connections; Mastercard is not a separate login provider');
 assert.equal(creditProviderSupported('visaCal'),true);

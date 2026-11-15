@@ -113,7 +113,7 @@ test('removing the monthly fetch-status guard restores empty replacement within 
   }
 });
 
-test('removing the owner-label guard restores cross-profile identity collapse',async()=>{
+test('owner-label validation is independent of durable profile identity protection',async()=>{
   const guard=`  if(profile.ownerLabel!==undefined&&(typeof profile.ownerLabel!=='string'||
     profile.ownerLabel.length>100||profile.ownerLabel!==profile.ownerLabel.trim().replace(/\\s+/g,' ')||
     /[\\u0000-\\u001f\\u007f]/.test(profile.ownerLabel)))invalid();`;
@@ -123,6 +123,6 @@ test('removing the owner-label guard restores cross-profile identity collapse',a
   for(const merge of merges){
     const initial=merge({},readCreditRefreshResult({profiles:profiles.map((row,index)=>({...row,ownerLabel:'Owner '+index}))}));
     assert.equal(initial.profiles.length,2);
-    assert.equal(merge(initial,decoder.readCreditRefreshResult({profiles})).profiles.length,1);
+    assert.equal(merge(initial,decoder.readCreditRefreshResult({profiles})).profiles.length,2);
   }
 });

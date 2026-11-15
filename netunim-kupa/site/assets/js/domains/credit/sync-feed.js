@@ -104,18 +104,10 @@ function normalizeSettlementWarningAcks(value={}){
   return Object.fromEntries(rows.slice(0,120));
 }
 
-function creditProfileIdentityText(value){return text(value,100).toLocaleLowerCase('he-IL')}
-function creditProfileAccountNumbers(profile){return new Set((Array.isArray(profile?.accounts)?profile.accounts:[]).map(account=>text(account?.accountNumber||'',80)).filter(Boolean))}
+// Owner labels and card suffixes are not unique identifiers. A new profile
+// must retain its own history and opt-in mapping until its identity is explicit.
 function creditProfilesShareDiscoveredIdentity(a,b){
-  if(!a?.provider||a.provider!==b?.provider)return false;
-  const aAccounts=creditProfileAccountNumbers(a),bAccounts=creditProfileAccountNumbers(b);
-  if(!aAccounts.size||!bAccounts.size)return false;
-  let overlaps=false;for(const accountNumber of aAccounts)if(bAccounts.has(accountNumber)){overlaps=true;break}
-  if(!overlaps)return false;
-  const aOwner=creditProfileIdentityText(a.ownerLabel),bOwner=creditProfileIdentityText(b.ownerLabel);
-  // Card suffixes are not globally unique. Reconcile automatically only when both
-  // profiles also carry the same explicit owner label. Missing/different owners stay separate.
-  return !!aOwner&&!!bOwner&&aOwner===bOwner;
+  return !!a?.profileId&&a.profileId===b?.profileId;
 }
 function creditProfileIdPriority(profile){return String(profile?.profileId||'').startsWith('import:')?1:0}
 function creditMappingPreference(raw={},defaultAccount='עסקי'){
@@ -190,9 +182,8 @@ export function normalizeCreditSync(value={}){
       if(!mappings[key])mappings[key]={included:true,hidden:false,account:profile.defaultAccount,cardName:'',manualFrame:null};
     }
   }
-  // A copied import can exist under an old random profileId and a stable import:connectionKey.
-  // Collapse only identities proven by provider + discovered card overlap + compatible owner,
-  // and prefer the portable import identity while carrying forward history and user mappings.
+  // Reconcile only the same durable profile ID. A portable import with another
+  // ID cannot consume historical rows or inherit inclusion from a card suffix.
   const reconciled=collapseCreditProfileAliases(rawProfiles,mappings),profiles=reconciled.profiles;
   return {
     version:CREDIT_SYNC_VERSION,contractVersion:Math.max(1,Math.trunc(Number(source.contractVersion)||1)),correlationId:text(source.correlationId||'',80),
