@@ -1,3 +1,4 @@
+import {amountRangeMatch,amountRangeMarkup} from '../../shared/search.js';
 import {evidenceDate} from '../../shared/observation-time.js';
 import {withFinanceDerivations} from '../../shared/finance-derivations.js';
 import {updateCashflowExplorer,cashflowExplorerMarkup,cashflowBreachMarkup} from '../../shared/cashflow-breakdown.js';
@@ -164,7 +165,7 @@ function bankChequeDetailsMarkup(row){
 }
 
 function bankTransactionsTableMarkup(feed,role){
-  const mode=bankDataMode(),directSnapshot=feed?.directSnapshot||null,historyRows=bankSmartRows(feed?.transactions||[],directSnapshot?.transactions||[]),allRows=mode==='direct'?(directSnapshot?.transactions||[]):historyRows,periodRows=allRows.filter(bankRowMatchesDateRange),query=ui.bankSearchValue||'',rows=query.trim()?periodRows.filter(row=>bankRowMatchesSearch(row,query)):periodRows,balance=readBankMoney(feed?.balance);
+  const mode=bankDataMode(),directSnapshot=feed?.directSnapshot||null,historyRows=bankSmartRows(feed?.transactions||[],directSnapshot?.transactions||[]),allRows=mode==='direct'?(directSnapshot?.transactions||[]):historyRows,periodRows=allRows.filter(row=>bankRowMatchesDateRange(row)&&amountRangeMatch(row.amount,ui.bankAmountFrom,ui.bankAmountTo)),query=ui.bankSearchValue||'',rows=query.trim()?periodRows.filter(row=>bankRowMatchesSearch(row,query)):periodRows,balance=readBankMoney(feed?.balance);
   const scoped=bankDateFilterActive()||query.trim(),countLabel=scoped?`${rows.length} מתוך ${allRows.length} תנועות`:`${rows.length} תנועות`;
   const available=readBankMoney(feed?.availableBalance),limit=readBankMoney(feed?.creditLimit),difference=Number.isFinite(balance)&&Number.isFinite(available)?available-balance:null;
   const roleName=role==='home'?'ביתי':'עסקי',cashflow=kupaAccountCashflowData(model.state,roleName),facts=[];
@@ -271,7 +272,7 @@ function renderBankContent(){
   ${bankLocalSnapshotNotice(bridgeUi.localSnapshot,{retry:true})}
   <section class="section bank-sync-section">
     <div class="bank-command-row">
-      <div class="bank-view-tools">${bankAccountTabsMarkup()}${localSearchMarkup({value:ui.bankSearchValue||'',placeholder:'חיפוש תנועות…',label:'חיפוש בתנועות הבנק המוצגות',inputAction:'bank-search',className:'bank-search-field'})}${bankHeaderCashflowMarkup()}</div>
+      <div class="bank-view-tools">${bankAccountTabsMarkup()}${localSearchMarkup({value:ui.bankSearchValue||'',placeholder:'חיפוש תנועות…',label:'חיפוש בתנועות הבנק המוצגות',inputAction:'bank-search',className:'bank-search-field'})}${amountRangeMarkup({from:ui.bankAmountFrom,to:ui.bankAmountTo,action:'bank-amount',escapeHtml:esc})}${bankHeaderCashflowMarkup()}</div>
       <div class="bank-sync-quick-actions"><button id="bankSyncHeadline" type="button" class="bank-sync-toggle ${bankSyncHeadlineState(bridgeUi).tone} ${ui.bankSyncOpen?'open':''}" data-action="toggle-bank-sync-options" aria-expanded="${ui.bankSyncOpen===true}" aria-controls="bankSyncPanel">${bankSyncHeadlineMarkup(bridgeUi)}<span class="bank-sync-chevron" aria-hidden="true">⌄</span></button><button type="button" class="btn primary bank-sync-refresh" data-action="refresh-bank-from-hapoalim" ${bridgeUi.busy||bridgeUi.localSnapshot||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>${bridgeUi.busy?(bridgeUi.resultReady?'מסיים…':'מעדכן…'):'רענן'}</button></div>
     </div>
     <div id="bankSyncPanel" class="bank-sync-settings-body" ${ui.bankSyncOpen?'':'hidden'}>

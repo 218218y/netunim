@@ -378,3 +378,5 @@ button.bank-cashflow-projected:focus-visible,.cashflow-breakdown-trigger:focus-v
 
 /* Keep alternate credit detail views explicit: monthly totals and per-card upcoming are not additive. */
 .credit-cycle-explanation{margin:0;padding:5px 11px 8px;color:var(--muted);font-size:11px;line-height:1.5;background:#fff}
+
+.movement-amount-range{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}.movement-amount-range label{display:inline-flex;align-items:center;gap:4px;font-size:12px}.movement-amount-range input{width:92px;min-width:0;padding:7px;border:1px solid var(--line,#ddd);border-radius:8px;background:var(--panel,#fff);color:inherit}

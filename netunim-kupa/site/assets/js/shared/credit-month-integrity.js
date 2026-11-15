@@ -44,3 +44,39 @@ export function mergeCreditMonthSnapshot(prior,next,reference=null){
   }
   return {...next,status:'fresh'};
 }
+
+
+/** Same issuer/account is supplied by the merge owner. A nonempty issuer ID,
+ * purchase date, original money and installment part must all agree. A missing
+ * conversion may become reported money; an existing reported charge cannot change.
+ * @param {Transaction} old @param {Transaction} next */
+function sameUnassignedEvidence(old,next){
+  if(!old.id||old.id!==next.id||!old.date||old.date!==next.date||
+    old.originalAmount==null||!old.originalCurrency||
+    old.originalAmount!==next.originalAmount||old.originalCurrency!==next.originalCurrency||
+    (old.installments?.number??null)!==(next.installments?.number??null)||
+    (old.installments?.total??null)!==(next.installments?.total??null))return false;
+  return old.chargedAmount==null||old.chargedAmount===next.chargedAmount&&old.chargedCurrency===next.chargedCurrency;
+}
+
+/** Unassigned absence never proves deletion. Consume matching observations once
+ * so duplicate issuer IDs and anonymous multiplicity cannot erase a source row.
+ * On uncertainty reject the account's transaction replacement as a unit, rather
+ * than unioning two competing billing placements and double counting them.
+ * @param {Transaction[]} previous @param {Transaction[]} incoming
+ * @param {Month[]} months @param {string|null} reference */
+export function reconcileUnassignedCredit(previous,incoming,months,reference){
+  const candidates=[...incoming.map(tx=>({tx,month:''})),
+    ...months.flatMap(month=>month.transactions.map(tx=>({tx,month:month.month})))];
+  const consumed=new Set(),transfers=[];
+  for(const old of previous){
+    const matches=candidates.map((row,index)=>({row,index})).filter(({row,index})=>
+      !consumed.has(index)&&(old.id?(!row.month&&financialKey(old)===financialKey(row.tx)||sameUnassignedEvidence(old,row.tx)):!row.month&&financialKey(old)===financialKey(row.tx)));
+    if(!matches.length||old.id&&matches.length!==1)return {blocked:true,transactions:previous,transfers:[]};
+    const match=matches[0];
+    if(!match)return {blocked:true,transactions:previous,transfers:[]};
+    const {row,index}=match;consumed.add(index);
+    if(row.month)transfers.push({transaction:old,month:row.month,at:reference});
+  }
+  return {blocked:false,transactions:incoming,transfers};
+}

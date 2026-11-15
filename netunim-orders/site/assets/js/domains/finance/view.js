@@ -1,3 +1,4 @@
+import {amountRangeMatch,amountRangeMarkup} from '../../shared/search.js';
 import {financeSyncProgressMarkup} from '../../shared/sync-status.js';
 import {selectOrdersCreditDetail} from './credit-detail-read-model.js';
 import {creditViewAllowsMonth} from '../../shared/credit-detail-policy.js';
@@ -93,7 +94,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             directRows = attachBankArchiveMetadata(directSnapshot?.transactions || [], archiveRows),
             historyRows = bankSmartRows(archiveRows, directRows),
             allRows = mode === 'direct' ? directRows : historyRows,
-            periodRows = allRows.filter(bankRowMatchesDateRange),
+            periodRows = allRows.filter(row=>bankRowMatchesDateRange(row)&&amountRangeMatch(row.amount,ui.bankAmountFrom,ui.bankAmountTo)),
             query = ui.bankSearchValue || '',
             rows = query.trim() ? periodRows.filter(row => bankRowMatchesSearch(row, query)) : periodRows;
         const scoped = bankDateFilterActive() || query.trim(), countLabel = scoped ? `${rows.length} מתוך ${allRows.length} תנועות` : `${rows.length} תנועות`;
@@ -147,7 +148,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
                 `${active === 'home' ? 'active' : ''}" data-action="set-orders-bank-account-view" data-click-arg0="home">חשבון ביתי</button>`
             ) +
             (
-                `</span><input class="finance-search bank-search" type="search" value="${esc(ui.bankSearchValue || '')}" placeholder="חיפוש בתנועות המוצגות…" aria-label="חיפוש בתנועות הבנק המוצגות" data-input="orders-bank-search"></div>` +
+                `</span><input class="finance-search bank-search" type="search" value="${esc(ui.bankSearchValue || '')}" placeholder="חיפוש בתנועות המוצגות…" aria-label="חיפוש בתנועות הבנק המוצגות" data-input="orders-bank-search">${amountRangeMarkup({from:ui.bankAmountFrom,to:ui.bankAmountTo,action:'orders-bank-amount',escapeHtml:esc})}</div>` +
                 `<div class="finance-sync-quick-actions"><button type="button" class="finance-sync-toggle ${headline.tone} ${open ? 'open' : ''}`
             ) +
             (
@@ -249,7 +250,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
         const detail=selectOrdersCreditDetail({
             allMonths:creditDetailMonths(s.kupa,creditDetailFilters()),
             upcomingRows:creditUpcomingDetailRows(s.kupa,creditDetailFilters()),
-            query,reference:checkTodayISO(),matches:row=>!search.trim()||creditRowMatchesSearch(row,search),
+            query,reference:checkTodayISO(),matches:row=>(!search.trim()||creditRowMatchesSearch(row,search))&&amountRangeMatch(row.includedInIlsTotal?row.amount:null,ui.creditAmountFrom,ui.creditAmountTo),
         });
         ui.creditDetailFocus=detail.focus;
         const upcoming=detail.mode==='upcoming',chargeDay=detail.chargeDay,
@@ -458,7 +459,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
         const headline = creditHeadlineState(s), open = ui.creditSyncOpen === true;
         return (`<section class="finance-sync-section finance-command-section" data-finance-command><div class="finance-command-row"><div class="finance-view-tools credit-view-tools"><input class="finance-search credit-search" type="search" value="${esc(ui.creditSearchValue || '')}` +
             (
-                `" placeholder="חיפוש בעסקאות ותשלומים…" aria-label="חיפוש בעסקאות ותשלומי האשראי המוצגים" data-input="orders-credit-search"></div><div class="finance-sync-quick-actions"><button type="button" class="finance-sync-toggle ${headline.tone} ` +
+                `" placeholder="חיפוש בעסקאות ותשלומים…" aria-label="חיפוש בעסקאות ותשלומי האשראי המוצגים" data-input="orders-credit-search">${amountRangeMarkup({from:ui.creditAmountFrom,to:ui.creditAmountTo,action:'orders-credit-amount',escapeHtml:esc})}</div><div class="finance-sync-quick-actions"><button type="button" class="finance-sync-toggle ${headline.tone} ` +
                 `${open ? 'open' : ''}" data-action="toggle-orders-credit-sync-options" aria-expanded="${open}`
             ) +
             (

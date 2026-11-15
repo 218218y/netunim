@@ -30,6 +30,8 @@ export function createBankActions({ bankCommands, bankPresentation, connectionFo
     'set-bank-data-view': (element, event) => { event?.preventDefault(); event?.stopPropagation(); return setBankDataView(element.dataset.clickArg0); },
     'view-bank-cheque-image': (element, event) => { event?.preventDefault(); event?.stopPropagation(); return openBankChequeImage(element.dataset.clickArg0, element.dataset.clickArg1, element.dataset.clickArg2); },
     'ack-bank-missing': (element, event) => { event?.preventDefault(); event?.stopPropagation(); return acknowledgeMissingBankTransaction(Number(element.dataset.clickArg0)); },
+    'bank-amount-from': element=>{ui.bankAmountFrom=element.value;return setBankSearch(ui.bankSearchValue)},
+    'bank-amount-to': element=>{ui.bankAmountTo=element.value;return setBankSearch(ui.bankSearchValue)},
     'bank-search': (element, event) => { return bankSearch(element.value, element); },
     'bank-date-mode': (element, event) => { return setBankDateMode(element.dataset.clickArg0 || element.value); },
     'bank-date-apply': (element, event) => { const host = element.closest('.bank-date-filter'); return setBankDateMode('range', host?.querySelector('[data-bank-date-from]')?.value || '', host?.querySelector('[data-bank-date-to]')?.value || ''); },

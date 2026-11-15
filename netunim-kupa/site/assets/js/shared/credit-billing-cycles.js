@@ -394,6 +394,7 @@ function synchronizedRows(state, asOf, includeHidden) {
 function manualRows(state, asOf) {
     /** @type {BillingRow[]} */ const rows = [];
     for (const record of Array.isArray(state?.credits) ? state.credits : []) {
+        if(record.archived===true)continue;
         const first = creditBillingISODate(record?.firstChargeDate), count = Math.max(0, Math.trunc(Number(record?.installments) || 0));
         if (!first || !count)
             continue;

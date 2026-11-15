@@ -559,10 +559,12 @@ const normalizationModel={state:{},lastNormalizeRemovedCredits:0};
 const stateNormalization=createStateNormalization({model:normalizationModel});
 const migratedState=stateNormalization.normalizeState({version:4,creditSync:{version:2,profiles:[],cardMappings:{}},credits:[{id:'old-manual',active:true,firstChargeDate:'2026-09-10',totalAmount:100,installments:1,card:'ישן',account:'עסקי'}]});
 assert.equal(migratedState.creditSync.version,4);
-assert.equal(migratedState.credits.length,0,'v2 -> v3 migration removes the historical manual dataset exactly once as requested');
+assert.equal(migratedState.credits.length,1,'legacy cutover retains archived manual evidence');
+assert.equal(migratedState.credits[0].archived,true);
+assert.equal(migratedState.credits[0].id,'old-manual');
 migratedState.credits.push({id:'new-manual',active:true,firstChargeDate:'2026-09-10',totalAmount:100,installments:1,card:'חדש',account:'עסקי'});
 const normalizedAgain=stateNormalization.normalizeState(migratedState);
-assert.equal(normalizedAgain.credits[0].id,'new-manual','manual additions created after v3 migration survive future normalization/saves');
+assert.equal(normalizedAgain.credits.find(row=>!row.archived).id,'new-manual','manual additions created after v3 migration survive future normalization/saves');
 const v3ManualPreserved=stateNormalization.normalizeState({version:4,creditSync:{version:3,profiles:[],cardMappings:{}},credits:[{id:'v3-manual',active:true,firstChargeDate:'2026-09-10',totalAmount:42,installments:1,card:'חדש',account:'עסקי'}]});
 assert.equal(v3ManualPreserved.credits[0].id,'v3-manual','the v4 monthly-LKG upgrade never repeats the destructive v2-to-v3 migration');
 
