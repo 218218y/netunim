@@ -1,3 +1,4 @@
+import {restoreFinanceHistoryChanges} from './finance_history_policy_fixture.mjs';
 import {restoreBankMoneyBoundary} from './bank_balance_policy_fixture.mjs';
 import {restoreCreditAccountFeed} from './credit_account_authority_fixture.mjs';
 import {restoreFinanceAttemptClock} from './credit_cooldown_policy_fixture.mjs';
@@ -78,7 +79,7 @@ test('Orders issuer/wire/publication policy, credential values and financial Ban
   assert.equal(fixture.baseline, '56e9620242de2679a761bdd52733d606177c0b1f');
   assert.equal(Object.keys(fixture.sha256).length, 5);
   for (const [file, expected] of Object.entries(fixture.sha256))
-    assert.equal(hash(file.endsWith('/finance/credit-feed.js')?restoreCreditAccountFeed(read(file),{orders:true}):file.endsWith('/integrations/bank-bridge.js')?restoreFinanceAttemptClock(read(file)):read(file)),
+    assert.equal(hash(file.endsWith('/finance/credit-feed.js')?restoreCreditAccountFeed(read(file),{orders:true}):file.endsWith('/integrations/bank-bridge.js')?restoreFinanceAttemptClock(read(file)):restoreFinanceHistoryChanges(read(file).replaceAll('\r\n','\n'),file)),
       file==='shared/bank-bridge-client.js'?bankBridgeProgressClientHash:expected,file);
   const functions = factory(parse(restoreBankMoneyBoundary(read(controller)),{ecmaVersion:'latest',sourceType:'module',ranges:true}), 'createDomainsFinanceController').body.body;
   // The five local Bank commands are intentionally replaced by the scoped

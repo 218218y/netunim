@@ -227,13 +227,14 @@ export function createCloudTransport({supaFetch,localResetReadOnlyFetch}){
     assertCurrent?.();
     const op=String(operationId||'').trim();
     if(!op)throw new Error('מזהה פעולת הסינכרון הפיננסי חסר');
-    const r=await supaFetch(`/rest/v1/rpc/${FINANCE_RPC}_v6`,
+    const reset=audit.creditReset===true;
+    const r=await supaFetch(reset?'/rest/v1/rpc/reset_finance_credit_with_backup':`/rest/v1/rpc/${FINANCE_RPC}_v6`,
       {
       method:'POST',
       networkRetry:true,
       ...(assertCurrent?{assertRequestScope:assertCurrent}:{}),
       dataPriority:'high',
-      body:JSON.stringify({p_document_name:FINANCE_DOC,p_expected_revision:Number(expectedRevision||0),p_state:state,p_operation_id:op,p_audit:audit,...financeFencePayload(lease)})
+      body:JSON.stringify({p_document_name:FINANCE_DOC,p_expected_revision:Number(expectedRevision||0),p_operation_id:op,...(reset?{p_credit_sync:state.creditSync,p_reason:'Confirmed reset of Credit connections',p_lease_token:lease?.leaseToken,p_fence_epoch:lease?.fenceEpoch}:{p_state:state,p_audit:audit,...financeFencePayload(lease)})})
     });
     const txt=await r.text();
     assertCurrent?.();
