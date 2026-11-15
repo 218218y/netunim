@@ -977,3 +977,5 @@ button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-v
 .nav.keytips-active button[data-nav-keytip]:hover::before,.nav.keytips-active button[data-nav-keytip].active::before{background:#ffedaa;border-color:#b88d3d;color:#49330d}
 
 .credit-cycle-explanation{margin:0;padding:5px 11px 8px;color:var(--muted);font-size:11px;line-height:1.5;background:#fff}
+
+.movement-amount-range{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}.movement-amount-range label{display:inline-flex;align-items:center;gap:4px;font-size:12px}.movement-amount-range input{width:92px;min-width:0;padding:7px;border:1px solid var(--line,#ddd);border-radius:8px;background:var(--panel,#fff);color:inherit}

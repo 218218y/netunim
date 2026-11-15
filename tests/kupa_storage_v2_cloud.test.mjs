@@ -95,7 +95,7 @@ test('Kupa legacy card IDs are queued as one V2 cloud normalization without a V1
     assert.deepEqual(calls[0].adoptedBase.credits.map(row=>row.id),['expired-credit']);
     assert.ok(calls[1].state.cards[0].id);
     assert.equal(calls[1].state.cards[0].id,calls[0].adoptedBase.cards[0].id,'normalization retains the durable card identity');
-    assert.deepEqual(calls[1].state.credits,[]);
+    assert.deepEqual(calls[1].state.credits.map(row=>row.id),['expired-credit']);
     assert.equal(cloud.pending,true);
   }finally{api.stopCloudPolling()}
 });

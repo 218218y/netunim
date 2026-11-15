@@ -46,3 +46,22 @@ export function dateInRange(value,from='',to=''){
   const key=`${parts.year}-${String(parts.month).padStart(2,'0')}-${String(parts.day).padStart(2,'0')}`;
   return (!from||key>=from)&&(!to||key<=to);
 }
+
+
+// Range comparisons use cents and absolute movement size: a 200 ILS debit and
+// a 200 ILS credit both match 150–250. Blank bounds are independently open.
+export function amountRangeMatch(value,from='',to=''){
+  const bound=text=>String(text??'').trim()===''?null:Number(String(text).replaceAll(',',''));
+  const low=bound(from),high=bound(to);
+  if(low===null&&high===null)return true;
+  if(low!==null&&(!Number.isFinite(low)||low<0)||high!==null&&(!Number.isFinite(high)||high<0)||
+    low!==null&&high!==null&&low>high||value===null||value===undefined||value==='')return false;
+  const amount=Number(value);if(!Number.isFinite(amount))return false;
+  const cents=Math.round(Math.abs(amount)*100);
+  return (low===null||cents>=Math.round(low*100))&&(high===null||cents<=Math.round(high*100));
+}
+
+export function amountRangeMarkup({from='',to='',action='',fromAction=action+'-from',toAction=action+'-to',escapeHtml}){
+  const input=(side,value,label)=>`<label>${label}<input type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(value??''))}" aria-label="סכום ${label} בשקלים" data-change="${escapeHtml(side==='from'?fromAction:toAction)}"></label>`;
+  return `<span class="movement-amount-range" role="group" aria-label="טווח סכום בשקלים ללא סימן"><small>סכום ₪</small>${input('from',from,'מ־')}${input('to',to,'עד')}</span>`;
+}

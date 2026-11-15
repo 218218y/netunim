@@ -31,6 +31,8 @@ export function createFinanceBankActions({ domainsFinanceController, domainsFina
     'orders-bank-create-document': (element, event) => { event?.preventDefault(); event?.stopPropagation(); return createOrdersBankDocument(Number(element.dataset.clickArg0), Number(element.dataset.clickArg1)); },
     'view-orders-bank-cheque-image': (element, event) => { event?.preventDefault(); event?.stopPropagation(); return openOrdersBankChequeImage(element.dataset.clickArg0, element.dataset.clickArg1, element.dataset.clickArg2); },
     'ack-orders-bank-missing': (element, event) => { event?.preventDefault(); event?.stopPropagation(); return acknowledgeOrdersBankMissing(Number(element.dataset.clickArg0)); },
+    'orders-bank-amount-from': element=>{ui.bankAmountFrom=element.value;return setOrdersBankSearch(ui.bankSearchValue)},
+    'orders-bank-amount-to': element=>{ui.bankAmountTo=element.value;return setOrdersBankSearch(ui.bankSearchValue)},
     'orders-bank-search': (element, event) => { return bankSearch(element.value, element); },
     'orders-bank-date-mode': (element, event) => { return setOrdersBankDateMode(element.dataset.clickArg0 || element.value); },
     'orders-bank-date-apply': (element, event) => { const host = element.closest('.bank-date-filter'); return setOrdersBankDateMode('range', host?.querySelector('[data-bank-date-from]')?.value || '', host?.querySelector('[data-bank-date-to]')?.value || ''); },

@@ -16,7 +16,7 @@ test('Kupa normalization delegates bank, credit sync and credit expiry to bound 
   };
   const model={},normalization=createStateNormalization({model,policies});
   const state=normalization.normalizeState({bank:{feed:bankFeed,homeFeed},creditSync,credits:[{id:'kept'},{id:'expired'}]});
-  assert.deepEqual(state.credits.map(credit=>credit.id),['kept']);
-  assert.deepEqual(model.lastNormalizeRemovedCreditIds,['expired']);
-  assert.deepEqual(calls,[['bank',bankFeed],['bank',homeFeed],['sync',creditSync],['expiry','kept'],['expiry','expired']]);
+  assert.deepEqual(state.credits.map(credit=>credit.id),['kept','expired']);
+  assert.deepEqual(model.lastNormalizeRemovedCreditIds,[]);
+  assert.deepEqual(calls,[['bank',bankFeed],['bank',homeFeed],['sync',creditSync]]);
 });

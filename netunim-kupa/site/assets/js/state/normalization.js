@@ -16,7 +16,7 @@ import {normalizeNotesSheet} from '../shared/notes-sheet-model.js';
 // Domain policies are explicit ports, bound by composition before storage recovery begins.
 export function createStateNormalization({model,externalWorkbooks=false,policies}){
   if(!model||!policies||['normalizeBankFeed','normalizeCreditSync','inactiveCreditExpired'].some(name=>typeof policies[name]!=='function'))throw new TypeError('kupa_state_normalization_policies_required');
-  const {normalizeBankFeed,normalizeCreditSync,inactiveCreditExpired}=policies;
+  const {normalizeBankFeed,normalizeCreditSync}=policies;
 function prepareKupaCloudState(source=model.state,{normalized=false}={}){const x=normalized?clone(source):normalizeState(source);delete x.checks;delete x.creditSync;const bank=x.bank&&typeof x.bank==='object'?x.bank:{};x.bank={currentBalance:bank.source==='manual'?bank.currentBalance:null,updatedAt:bank.source==='manual'?bank.updatedAt:null,asOfDate:bank.source==='manual'?bank.asOfDate:null,adjustments:(bank.adjustments||[]).filter(a=>a?.type!=='check_deposit'),source:bank.source==='manual'?'manual':null,sourceAccount:null,snapshotToken:bank.snapshotToken??null,snapshotSeq:bank.snapshotSeq??null};return x}
 
 function applyKupaCloudState(cloudState,checks=model.state.checks){const x=normalizeState({...clone(cloudState||{}),checks:normalizeSharedChecks(checks)});x.bank.adjustments=(x.bank.adjustments||[]).filter(a=>a?.type!=='check_deposit');return x}
@@ -63,12 +63,13 @@ function normalizeState(d){
   n.cashflowSettings=normalizeCashflowSettings(n.cashflowSettings);
   const creditSyncSourceVersion=Math.trunc(Number(n.creditSync?.version)||1);
   n.creditSync=normalizeCreditSync(n.creditSync);
-  const rawCredits=(Array.isArray(n.credits)?n.credits:[]).map(x=>({...x,totalAmount:wholeMoney(x.totalAmount),ownerLabel:String(x.ownerLabel||'')})),before=rawCredits.length;
-  // v3 was the one-time synchronized-primary cutover. Later schema upgrades (including
-  // v4 monthly LKG) must never repeat that destructive migration.
-  n.credits=creditSyncSourceVersion<3?[]:rawCredits.filter(cr=>!inactiveCreditExpired(cr));
-  const keptCreditIds=new Set(n.credits.map(x=>String(x?.id||'')));model.lastNormalizeRemovedCreditIds=creditSyncSourceVersion<3?[]:rawCredits.map(x=>String(x?.id||'')).filter(id=>id&&!keptCreditIds.has(id));
-  model.lastNormalizeRemovedCredits=Math.max(0,before-n.credits.length);assertKupaEntityInvariants(n,{includeChecks:true,required:true});
+  const rawCredits=(Array.isArray(n.credits)?n.credits:[]).map(x=>({...x,totalAmount:wholeMoney(x.totalAmount),ownerLabel:String(x.ownerLabel||'')}));
+  // Old synchronized-primary imports retain their original records as an
+  // explicit archive. Inactive age is display policy, never deletion authority.
+  n.credits=rawCredits.map(cr=>creditSyncSourceVersion<3&&!cr.archived
+    ?{...cr,archived:true,archiveReason:'legacy-synced-cutover'}:cr);
+  model.lastNormalizeRemovedCreditIds=[];
+  model.lastNormalizeRemovedCredits=0;assertKupaEntityInvariants(n,{includeChecks:true,required:true});
   return n;
 }
 

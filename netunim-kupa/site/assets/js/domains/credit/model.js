@@ -16,7 +16,7 @@ export function creditDetailItemIdentity(item={}){
 
 export function rawCreditSchedule(cr){if(!cr.firstChargeDate||num(cr.installments)<1)return[];const total=num(cr.totalAmount),n=Number(cr.installments),base=Math.round((total/n)*100)/100;let rows=[],used=0;for(let i=0;i<n;i++){const amt=i===n-1?Math.round((total-used)*100)/100:base;used+=amt;rows.push({creditId:cr.id,date:addMonthsISO(cr.firstChargeDate,i),amount:amt,part:i+1,totalParts:n,card:cr.card,account:cr.account==='ביתי'?'ביתי':'עסקי',ownerLabel:String(cr.ownerLabel||''),hidden:false,description:cr.description,source:'manual'})}return rows}
 
-export function creditSchedule(cr){return cr.active?rawCreditSchedule(cr):[]}
+export function creditSchedule(cr){return cr.active&&!cr.archived?rawCreditSchedule(cr):[]}
 
 export function inactiveCreditExpired(cr,asOf=todayISO()){if(cr?.active!==false)return false;const rows=rawCreditSchedule(cr);if(!rows.length)return false;const last=rows[rows.length-1].date;return Math.floor((dObj(asOf)-dObj(last))/86400000)>60}
 

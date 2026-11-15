@@ -1,4 +1,4 @@
-import {mergeCreditMonthSnapshot,CREDIT_HISTORICAL_MONTH_REGRESSION} from '../../shared/credit-month-integrity.js';
+import {reconcileUnassignedCredit,mergeCreditMonthSnapshot,CREDIT_HISTORICAL_MONTH_REGRESSION} from '../../shared/credit-month-integrity.js';
 import {creditRetryAfterAt} from '../../shared/credit-cooldown-policy.js';
 import {todayISO} from '../../core/dates.js';
 import {normalizeCreditCardAccountTransitions} from '../../shared/credit-card-account.js';
@@ -58,6 +58,8 @@ export function normalizeCreditAccount(account={},fallbackFetchedAt=null){
   const txns=[...months.flatMap(slice=>slice.transactions),...pendingTransactions,...unassignedTransactions].filter(tx=>tx.date||tx.processedDate||tx.id),balance=finite(account.balance),cardFrame=finite(account.cardFrame),availableCredit=finite(account.availableCredit),framePresent=cardFrame!==null||balance!==null||availableCredit!==null,frameStatus=['fresh','stale','missing'].includes(String(account.frameStatus))?String(account.frameStatus):framePresent?'fresh':'missing';
   const seen=new Set();
   const result={
+    ...(account.unassignedErrorCode?{unassignedErrorCode:text(account.unassignedErrorCode,80),unassignedErrorAt:iso(account.unassignedErrorAt)}:{}),
+    ...(Array.isArray(account.unassignedTransfers)&&account.unassignedTransfers.length?{unassignedTransfers:account.unassignedTransfers.map(row=>({transaction:normalizeCreditTransaction(row.transaction),month:text(row.month,7),at:iso(row.at)}))}:{}),
     accountNumber:text(account.accountNumber||'',80),
     balance,
     balanceDate:iso(account.balanceDate),
@@ -141,7 +143,10 @@ function mergeCreditAccountSnapshot(previous,incoming,reference=null){
   const old=normalizeCreditAccount(previous),next=normalizeCreditAccount(incoming),monthMap=new Map(old.months.map(slice=>[slice.month,slice]));
   for(const slice of next.months)monthMap.set(slice.month,mergeCreditMonthSnapshot(monthMap.get(slice.month),slice,reference));
   const pendingOk=next.pendingStatus==='success',pendingTransactions=pendingOk?next.pendingTransactions:old.pendingTransactions,pendingStatus=pendingOk?'success':next.pendingStatus,pendingFetchedAt=pendingOk?next.pendingFetchedAt:old.pendingFetchedAt,frameOk=next.frameFetchStatus==='success',hadFrame=old.frameFetchedAt||old.balance!==null||old.cardFrame!==null||old.availableCredit!==null;
-  return normalizeCreditAccount({...old,...next,balance:frameOk?next.balance:old.balance,balanceDate:frameOk?next.balanceDate:old.balanceDate,cardType:frameOk?(next.cardType||old.cardType):old.cardType,cardFrame:frameOk?next.cardFrame:old.cardFrame,availableCredit:frameOk?next.availableCredit:old.availableCredit,frameStatus:frameOk?'fresh':hadFrame?'stale':'missing',frameFetchStatus:next.frameFetchStatus,frameFetchedAt:frameOk?next.frameFetchedAt:old.frameFetchedAt,frameErrorCode:frameOk?'':next.frameErrorCode,frameErrorAt:frameOk?null:next.frameErrorAt,months:[...monthMap.values()],pendingTransactions,pendingStatus,pendingFetchedAt,pendingErrorCode:pendingOk?'':next.pendingErrorCode,pendingErrorAt:pendingOk?null:next.pendingErrorAt,unassignedTransactions:next.unassignedTransactions.length?next.unassignedTransactions:old.unassignedTransactions});
+  const unassigned=reconcileUnassignedCredit(old.unassignedTransactions,next.unassignedTransactions,[...monthMap.values()],reference);
+  if(unassigned.blocked)return normalizeCreditAccount({...old,
+    unassignedErrorCode:'CREDIT_UNASSIGNED_REGRESSION',unassignedErrorAt:reference||new Date().toISOString()});
+  return normalizeCreditAccount({...old,...next,balance:frameOk?next.balance:old.balance,balanceDate:frameOk?next.balanceDate:old.balanceDate,cardType:frameOk?(next.cardType||old.cardType):old.cardType,cardFrame:frameOk?next.cardFrame:old.cardFrame,availableCredit:frameOk?next.availableCredit:old.availableCredit,frameStatus:frameOk?'fresh':hadFrame?'stale':'missing',frameFetchStatus:next.frameFetchStatus,frameFetchedAt:frameOk?next.frameFetchedAt:old.frameFetchedAt,frameErrorCode:frameOk?'':next.frameErrorCode,frameErrorAt:frameOk?null:next.frameErrorAt,months:[...monthMap.values()],pendingTransactions,pendingStatus,pendingFetchedAt,pendingErrorCode:pendingOk?'':next.pendingErrorCode,pendingErrorAt:pendingOk?null:next.pendingErrorAt,unassignedErrorCode:'',unassignedErrorAt:null,unassignedTransactions:unassigned.transactions,unassignedTransfers:[...(old.unassignedTransfers||[]),...unassigned.transfers]});
 }
 function collapseCreditProfileAliases(profiles,mappings){
   const rows=Array.isArray(profiles)?profiles:[],parent=rows.map((_,index)=>index);
@@ -296,7 +301,15 @@ export function mergeCreditSyncResult(current,payload={}){
   let integrityBlocked=false;
   for(const [id,profile] of byId){
     let blocked=false;
-    for(const account of profile.accounts)for(const slice of account.months){
+    for(const account of profile.accounts){
+      if(account.unassignedErrorCode){
+        blocked=true;integrityBlocked=true;
+        errors.push({profileId:id,provider:profile.provider,label:profile.label,code:account.unassignedErrorCode,
+          stage:'UnassignedIntegrity',component:'core_transactions',severity:'error',accountSuffix:account.accountNumber.slice(-4),
+          at:account.unassignedErrorAt,correlationId:payload.correlationId||'',
+          message:'עדכון עסקאות ללא חודש חיוב הושהה: חסרות עסקאות או שהשיוך לחודש אינו חד משמעי. הנתונים הקודמים נשמרו; יש לבצע שחזור ולהשוות לפירוט החברה.'});
+      }
+      for(const slice of account.months){
       if(slice.lastErrorCode!==CREDIT_HISTORICAL_MONTH_REGRESSION)continue;
       blocked=true;integrityBlocked=true;
       errors.push({profileId:id,provider:profile.provider,label:profile.label,
@@ -305,6 +318,7 @@ export function mergeCreditSyncResult(current,payload={}){
         accountSuffix:account.accountNumber.slice(-4),at:slice.lastErrorAt,
         correlationId:payload.correlationId||'',
         message:'עדכון חודש אשראי קודם הושהה כי חסרות עסקאות או השתנו נתונים כספיים. הנתונים הקודמים נשמרו; יש להשוות לפירוט החברה ולבצע שחזור מלא.'});
+    }
     }
     if(blocked)byId.set(id,normalizeCreditProfile({...profile,coreComplete:false,
       syncedAt:base.profiles.find(row=>row.profileId===id)?.syncedAt||null}));
