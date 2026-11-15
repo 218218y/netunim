@@ -25,8 +25,8 @@ for(const action of ['refresh','settings','reset'])for(const failure of ['false'
   const f=fixture(t,failure);
   const result=action==='refresh'?await f.api.refreshCreditSync():action==='settings'?await f.api.saveCreditCardOrder([]):await f.api.resetCreditSync();
   if(action==='settings')assert.equal(result,true,'an ancillary failure cannot negate a confirmed remote settings write');
-  const ui=f.api.creditSyncUiState();assert.ok(ui.publicationWarning,'the incomplete follow-up must remain visible');assert.equal(ui.error,'','this is not a provider/remote-commit failure');
-  const summary={sync:f.model.state.creditSync};assert.equal(creditSyncHeadlineState(ui,summary).tone,'warn');assert.match(creditSyncDiagnosticsMarkup(ui,summary),/נשמרו בענן/);
+  const ui=f.api.creditSyncUiState();assert.ok(ui.publicationWarning,'the incomplete follow-up must remain visible');if(action==='reset')assert.match(ui.error,/איפוס/);else assert.equal(ui.error,'','this is not a provider/remote-commit failure');
+  const summary={sync:f.model.state.creditSync};assert.equal(creditSyncHeadlineState(ui,summary).tone,action==='reset'?'error':'warn');assert.match(creditSyncDiagnosticsMarkup(ui,summary),/נשמרו בענן/);
   assert.deepEqual(f.model.state.creditSync,f.remote().creditSync);assert.equal(f.counts().commits,1);assert.equal(f.counts().checkpoints,1);assert.equal(f.counts().providerRuns,action==='refresh'?1:0);
-  if(action!=='settings')assert.ok(f.messages.some(message=>message===ui.publicationWarning),'operator receives the committed-but-incomplete result');
+  if(action!=='settings')assert.ok(f.messages.some(message=>message===(action==='reset'?ui.error:ui.publicationWarning)),'operator receives the committed-but-incomplete result');
 });

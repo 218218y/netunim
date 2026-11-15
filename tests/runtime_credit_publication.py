@@ -49,7 +49,7 @@ FLOW = r"""(async()=>{
  check(JSON.stringify(await db.load(identity))===durableBefore,'injected follow-up failure changed durable Main records');
  const warning=credit.queries.uiState();check(warning.publicationWarning&&(action==='reset'?warning.error.includes('איפוס'):warning.error===''),'incorrect confirmed write / pending reset status');
  check(JSON.stringify(state.creditSync)===JSON.stringify(finance.creditSync),'confirmed credit result not published');
- check(document.getElementById('creditSyncToggle')?.classList.contains('warn'),'Credit headline claimed ordinary success');
+ check(document.getElementById('creditSyncToggle')?.classList.contains(action==='reset'?'error':'warn'),'Credit headline claimed ordinary success');
  check(document.querySelector('[data-action="retry-credit-publication"]'),'missing recovery action');
  unavailable=true;const before=JSON.stringify(state.creditSync);check(await credit.commands.retryCreditPublication()===false,'unavailable read confirmed recovery');
  check(JSON.stringify(state.creditSync)===before&&credit.queries.uiState().publicationWarning,'unverified read discarded the last confirmed result');
