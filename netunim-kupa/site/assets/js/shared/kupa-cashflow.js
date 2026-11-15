@@ -141,7 +141,8 @@ export function kupaReconciledCreditDetailMonthsData(kupa,reference=localTodayIS
 }
 /** @type {Calculation['calculateCreditDetailMonths']} */
 function calculateCreditDetailMonths(kupa,reference,historyMonths){
-  const ref=isoDay(reference)||localTodayISO(),currentMonth=monthKey(ref),safeHistory=historyMonths===Infinity?Infinity:Math.max(0,Math.trunc(Number(historyMonths)||0)),cutoffMonth=safeHistory===Infinity?'':monthKey(addMonthsISO(`${currentMonth}-01`,-safeHistory)),rows=kupaReconciledCreditDetailRowsData(kupa,'all',ref),displayContext=creditAccountDisplayContext(kupa,rows),byMonth=/** @type {Map<string,import('./kupa-cashflow-contracts.js').DetailMonth>} */(new Map()),unassigned=[],unplacedUnassigned=[];
+  const ref=isoDay(reference)||localTodayISO(),currentMonth=monthKey(ref);
+  const safeHistory=historyMonths===Infinity?Infinity:Math.max(0,Math.trunc(Number(historyMonths)||0)),cutoffMonth=safeHistory===Infinity?'':monthKey(addMonthsISO(`${currentMonth}-01`,-safeHistory)),rows=kupaReconciledCreditDetailRowsData(kupa,'all',ref),displayContext=creditAccountDisplayContext(kupa,rows),byMonth=/** @type {Map<string,import('./kupa-cashflow-contracts.js').DetailMonth>} */(new Map()),unassigned=[],unplacedUnassigned=[];
   /** @param {string} key @param {import('./kupa-cashflow-contracts.js').ReconciledRow} row */
   const add=(key,row)=>{const month=byMonth.get(key)||{key,total:0,items:[],uncertainCount:0,missingAmountCount:0,coverageGapCount:0,incompleteCount:0,partial:false};month.total+=num(row.amount);month.items.push(row);byMonth.set(key,month)};
   for(const originalRow of rows){

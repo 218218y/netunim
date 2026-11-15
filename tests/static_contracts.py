@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 import re
 from presentation_sources import presentation_contains
+from browser_script_units import browser_js_units
 import subprocess
 import sys
 import tempfile
@@ -25,30 +26,6 @@ def ok(condition, message: str):
         errors.append(message)
 
 
-def browser_js_units(html: Path) -> list[tuple[str, str]]:
-    """Return executable classic/module scripts in document order, including local src files."""
-    text = html.read_text(encoding="utf-8")
-    units: list[tuple[str, str]] = []
-    pattern = re.compile(r"<script\b(?P<attrs>[^>]*)>(?P<body>.*?)</script>", re.I | re.S)
-    for index, match in enumerate(pattern.finditer(text), 1):
-        attrs = match.group("attrs") or ""
-        script_type = re.search(r"\btype\s*=\s*[\"']([^\"']+)[\"']", attrs, re.I)
-        typ = script_type.group(1).strip().lower() if script_type else ""
-        if typ and typ not in ("text/javascript", "application/javascript", "module"):
-            continue
-        src_match = re.search(r"\bsrc\s*=\s*[\"']([^\"']+)[\"']", attrs, re.I)
-        if src_match:
-            src = src_match.group(1).split("?", 1)[0].split("#", 1)[0]
-            if re.match(r"^[a-z][a-z0-9+.-]*:", src, re.I) or src.startswith("//"):
-                continue
-            target = html.parent / src.lstrip("/")
-            if not target.is_file():
-                units.append((f"missing:{src}", ""))
-                continue
-            units.append((str(target.relative_to(ROOT)), target.read_text(encoding="utf-8")))
-        elif match.group("body").strip():
-            units.append((f"{html.relative_to(ROOT)}:inline-{index}", match.group("body")))
-    return units
 
 
 def browser_code(site: Path) -> str:

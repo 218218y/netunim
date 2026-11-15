@@ -67,8 +67,8 @@ test('statement correction is signed, currency-scoped and handles duplicate issu
   for(const total of [0,-10,1400])assert.equal(kupaAccountCashflowData(stateFor(parseVisaCalMonthData(body({totalDebits:[{currencySymbol:'₪',amount:total}]}))),'ביתי','2026-09-10').credit,total);
 });
 
-test('fresh monthly sync replaces the statement correction; failed coverage retains last known data',()=>{
-  const slice=amount=>({month:'2026-09',tier:'core',fetchStatus:'success',fetchedAt:'2026-09-10',transactions:parseVisaCalMonthData(body({totalDebits:[{currencySymbol:'₪',amount}]}))});
+test('unbilled monthly sync replaces the statement correction; failed coverage retains last known data',()=>{
+  const slice=amount=>({month:'2026-09',tier:'core',fetchStatus:'success',fetchedAt:'2026-09-09',transactions:parseVisaCalMonthData(body({totalDebits:[{currencySymbol:'₪',amount}]}))});
   const state=stateFor([]);state.creditSync=mergeCreditSyncResult(state.creditSync,{profiles:[{profileId:'cal',provider:'visaCal',coreComplete:true,accounts:[{accountNumber:'9715',months:[slice(1369.78)]}]}]});
   assert.equal(kupaAccountCashflowData(state,'ביתי','2026-09-10').credit,1369.78);
   state.creditSync=mergeCreditSyncResult(state.creditSync,{profiles:[{profileId:'cal',provider:'visaCal',coreComplete:false,accounts:[{accountNumber:'9715',months:[{month:'2026-09',tier:'core',fetchStatus:'provider_error',transactions:[]}]}]}]});
