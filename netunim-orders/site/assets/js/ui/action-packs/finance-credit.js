@@ -28,6 +28,7 @@ export function createFinanceCreditActions({ domainsFinanceView, ui }) {
   const toggleOrdersCreditSyncOptions = (...args) => domainsFinanceView.toggleCreditSyncOptions(...args);
   const creditSearch = createLazyDeferredSearchUpdater(value => { ui.creditSearchValue = value; }, setOrdersCreditSearch);
   const actions = {
+    'orders-credit-finance-history':()=>domainsFinanceView.openFinanceHistory(),
     'refresh-orders-credit': (element, event) => { return refreshOrdersCredit(false, 'forecast'); },
     'refresh-orders-credit-quick': (element, event) => { return refreshOrdersCredit(false, 'quick'); },
     'refresh-orders-credit-recovery': (element, event) => { return refreshOrdersCredit(false, 'recovery'); },

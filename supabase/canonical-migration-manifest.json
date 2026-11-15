@@ -288,5 +288,10 @@
     "version": "20261115183000",
     "name": "credit_reconciliation_followup",
     "sha256": "e544d66cc3d229e9dc7834eaefd9ee4f1a6bc9d22cc19f8c6f57b549735fbc6a"
+  },
+  {
+    "version": "20261115200000",
+    "name": "finance_version_export",
+    "sha256": "cc529a77efbd2150c8af2b63514f87a2c111fb0569d964435d9aecdefdcf10ce"
   }
 ]

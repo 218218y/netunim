@@ -25,7 +25,7 @@ export function composeKupaFinance({
   credit.bindServices({
     bridge,authority:{scope:operationScope,automaticAccess},
     persistence:{save:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['creditSync']})},
-    cloud:{refresh:financeCloud.refreshFinanceCloudSnapshot,commit:(...args)=>financeCloud.saveFinancePatchTracked(...args),
+    cloud:{subscribeAccountScope:cloudAuth.subscribeAccountScope,historyRequest:(...args)=>cloudAuth.supaRest(...args),readHistoryHead:(...args)=>cloudTransport.readFinanceSyncDocument(...args),refresh:financeCloud.refreshFinanceCloudSnapshot,commit:(...args)=>financeCloud.saveFinancePatchTracked(...args),
       claimLease:financeCloud.claimFinanceSyncLease,releaseLease:financeCloud.releaseFinanceSyncLease},
     presentation:{toast:(...args)=>uiStatus.toast(...args),render:(...args)=>uiNavigation.render(...args),
       renderStatus:()=>{if(ui.currentPage==='credit')uiNavigation.render()},

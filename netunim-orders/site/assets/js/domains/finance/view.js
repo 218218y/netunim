@@ -512,7 +512,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             ) +
             (
                 `${s.creditBusy || !s.bridgeTokenConfigured ? 'disabled' : ''}>ייצוא אבחון אשראי</button></div></div>${financeSyncProgressMarkup('credit',s.creditProgress)}${diagnostics ? `<div class="finance-sync-diagnostics">${diagnostics}</div>` : ''}<div class="credit-sync-settings-grid">` +
-                `<div class="credit-sync-panel"><div class="credit-sync-panel-head"><b>חיבורים במחשב זה</b><span class="credit-profile-actions">`
+                `<div class="credit-sync-panel"><div class="credit-sync-panel-head"><b>חיבורים במחשב זה</b><span class="credit-profile-actions"><button class="btn" type="button" data-action="orders-credit-finance-history">גרסאות וגיבוי אשראי</button>`
             ) +
             (
                 `<button class="btn" type="button" data-action="import-orders-finance-connections" ${s.creditBusy || !s.bridgeTokenConfigured ? 'disabled' : ''}>ייבוא בנק + אשראי</button>` +

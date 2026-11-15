@@ -318,7 +318,7 @@ function renderCreditContent(){
   `החיובים שלו נכנסים לחישובי הקופה, העו״ש והמאזן; כרטיס ביתי נשאר גלוי בדוחות אך אינו נגרע מהקופה העסקית.</small></div><span class="badge blue">הפרדה מלאה</span></div>
           ` +
   `<div class="credit-sync-settings-grid">
-            <div class="credit-sync-panel"><div class="credit-sync-panel-head"><b>חיבורים במחשב זה</b><span class="credit-profile-actions">` +
+            <div class="credit-sync-panel"><div class="credit-sync-panel-head"><b>חיבורים במחשב זה</b><span class="credit-profile-actions"><button class="btn" type="button" data-action="credit-finance-history">גרסאות וגיבוי אשראי</button>` +
   `<button class="btn" type="button" data-action="import-finance-connections" ${syncUi.busy?'disabled':''}>ייבוא בנק + אשראי</button><button class="btn" type="button" data-action="open-credit-connection">+ חיבור</button><button class="btn danger-soft" type="button" ` +
   `data-action="reset-credit-sync" ${syncUi.busy?'disabled':''}>איפוס מלא</button></span></div>
               ${localProfiles.length?localProfiles.map(p=>creditLocalProfileRow(p)).join(''):'<div class="empty compact">עדיין לא הוגדר חיבור אשראי במחשב זה.</div>'}
@@ -641,8 +641,8 @@ function creditMonthRow(m,max){
 function legacyCreditArchiveMarkup(){
   const rows=(model.state.credits||[]).filter(row=>row.archived===true);
   if(!rows.length)return '';
-  const items=rows.map(row=>`<li>${esc(row.card||'כרטיס ישן')} · ${esc(row.description||'חיוב ידני')} · ${esc(dateFmt(row.firstChargeDate))} · ${money(row.totalAmount)}</li>`).join('');
-  return `<details class="section"><summary>ארכיון חיובים ידניים מגיבויים ישנים (${rows.length})</summary><p>הרשומות נשמרו בשלמותן בגיבוי ואינן נספרות לצד החיובים המסונכרנים.</p><ul>${items}</ul></details>`;
+  const items=rows.map(row=>`<li>${esc(row.card||'כרטיס ישן')} · ${esc(row.description||'חיוב ידני')} · ${esc(dateFmt(row.firstChargeDate))} · ${money(row.totalAmount)} <button type="button" class="btn" data-action="open-credit-modal-2" data-click-arg0="${esc(row.id)}">בדיקה ועריכה</button></li>`).join('');
+  return `<details class="section"><summary>ארכיון חיובים ידניים (${rows.length})</summary><p>הרשומות נשמרו בשלמותן בגיבוי ואינן נספרות לצד החיובים המסונכרנים.</p><ul>${items}</ul></details>`;
 }
 function creditMonthCard(m){
   return creditMonthRow(m,Math.max(1,Math.abs(m.total)))
