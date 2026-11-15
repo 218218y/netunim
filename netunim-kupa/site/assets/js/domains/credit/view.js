@@ -188,7 +188,7 @@ function creditDetailSectionMarkup(){
   'פירוט החודש כולל את כל המחזורים של אותו חודש, גם כאלה שמועדם כבר עבר או שנפרעו. החודש והחיוב הקרוב הן שתי דרכי צפייה באותן עסקאות; אין לחבר את הסכומים ביניהם.';
   return (`<section id="credit-active-transactions" class="section credit-detail-section"><div class="section-head credit-detail-section-head"><div><div class="credit-detail-title-row"><h3 ` +
   `title="כל חודשי החיוב השמורים וכל החיובים העתידיים שהתקבלו מהחברות">עסקאות ותשלומים</h3>${creditUpcomingControl(upcoming,chargeDay,upcomingTotal)}` +
-  `${creditMonthsControl(historyMonths,futureMonths,selectedMonthKey,upcoming?'all':chargeDay)}${creditDateRangeMarkup({mode,from:ui.creditDateFrom,to:ui.creditDateTo,action:'credit-date-apply',periodAction:'credit-detail-period',escapeHtml:esc,dateEditorMarkup})}${amountRangeMarkup({from:ui.creditAmountFrom,to:ui.creditAmountTo,fromAction:'credit-amount-from',toAction:'credit-amount-to',escapeHtml:esc})}</div>` +
+  `${creditMonthsControl(historyMonths,futureMonths,selectedMonthKey,upcoming?'all':chargeDay)}${creditDateRangeMarkup({mode,from:ui.creditDateFrom,to:ui.creditDateTo,action:'credit-date-apply',periodAction:'credit-detail-period',escapeHtml:esc,dateEditorMarkup})}</div>` +
   `${searching?`<small class="credit-search-count">${esc(detailItems.length)} מתוך ${esc(focusedCount)} תוצאות</small>`:''}</div></div>${detailFocus?.cardKey?(
   `<div class="credit-detail-focus"><span><b>${esc(detailFocusLabel)}</b><small>${esc(focusMonthLabel)} · מיקוד בכרטיס מתוך התחזית</small></span><button type="button" class="iconbtn" data-action="clear-credit-detail-focus" data-click-arg0="` +
   `${esc(detailFocus.monthKey)}">כל הכרטיסים ×</button></div>`):
@@ -294,13 +294,12 @@ function renderCreditContent(){
     <section class="section credit-sync-section">
       <div class="credit-command-row">
         <div class="credit-view-tools">` +
-  `${localSearchMarkup({
+  `${amountRangeMarkup({searchMarkup:localSearchMarkup({
   value:ui.creditSearchValue||'',
   placeholder:'חיפוש בעסקאות, ממתינות ותשלומים…',
   label:'חיפוש בעסקאות הממתינות ובתשלומי האשראי המוצגים',
   inputAction:'credit-search',
-  className:'credit-search-field'
-})}</div>
+}),className:'credit-search-field',from:ui.creditAmountFrom,to:ui.creditAmountTo,fromAction:'credit-amount-from',toAction:'credit-amount-to',escapeHtml:esc})}</div>
         <div class="credit-sync-quick-actions"><button id="creditSyncToggle" type="button" class="credit-sync-toggle ` +
   `${syncHeadline.tone} ${ui.creditSyncOpen?'open':''}" data-action="toggle-credit-sync-options" aria-expanded="${ui.creditSyncOpen===true}" aria-controls="creditSyncPanel">` +
   `${creditSyncHeadlineMarkup(syncHeadline)}<span class="credit-sync-chevron" aria-hidden="true">⌄</span></button><button class="btn primary credit-sync-refresh" type="button" data-action="refresh-credit-sync" ` +
@@ -344,7 +343,7 @@ function renderCreditContent(){
     </section>
 
     <div ` +
-  `class="credit-report-stack">
+  `class="credit-report-stack">${(model.state.credits||[]).some(row=>row.legacyReviewRequired&&!row.archived)?'<div class="soft-note">נשמרו חיובים ידניים מגיבוי ישן ללא הוכחה שהוחלפו בחברת האשראי. הם כלולים בחישוב; יש לבדוק כפל מול הפירוט המסונכרן לפני החלטה על ארכוב.</div>':''}
       <div class="credit-primary-report">
         <div class="toolbar credit-filter-toolbar">
           <div class="credit-filter-primary">

@@ -283,5 +283,10 @@
     "version": "20261115160000",
     "name": "finance_credit_history",
     "sha256": "a37532a1aa116e837639f10ccd7f3ed52ba080db036dfe099ec702b414715b65"
+  },
+  {
+    "version": "20261115183000",
+    "name": "credit_reconciliation_followup",
+    "sha256": "e544d66cc3d229e9dc7834eaefd9ee4f1a6bc9d22cc19f8c6f57b549735fbc6a"
   }
 ]

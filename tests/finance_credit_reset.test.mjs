@@ -26,7 +26,17 @@ test('Orders explicit reset command carries reset authority through its Finance 
   const scopes=[],guard=()=>{};
   const api=createCreditSettingsCommands({local:{},operationScope:{capture:()=>guard},
     connections:{queries:{supported:()=>true,refreshStatus:async()=>({}),capture:()=>guard,snapshot:()=>({status:{}})},commands:{resetProfiles:async()=>{}}},
-    mutateFinanceCloud:async(mutate,lease,options)=>{mutate({});scopes.push(options);return {}},
+    mutateFinanceCloud:async(mutate,lease,options)=>{mutate({});scopes.push(options);return {saved:true,published:true}},
     automation:{setCreditAutoEnabled:guard,setCreditAutoMode:guard,scheduleCreditAuto:guard,preferenceState:()=>({})},toast:guard});
   assert.equal(await api.resetCreditSync(),true);assert.equal(scopes[0].creditReset,true);
+});
+
+for(const mode of ['cloud-failure','unverified','verified'])test('Orders reset preserves local credentials until verified cloud reset: '+mode,async()=>{
+  const order=[],guard=()=>{};
+  const api=createCreditSettingsCommands({local:{},operationScope:{capture:()=>guard},
+    connections:{queries:{supported:()=>true,refreshStatus:async()=>({}),capture:()=>guard,snapshot:()=>({status:{}})},commands:{resetProfiles:async()=>{order.push('bridge')}}},
+    mutateFinanceCloud:async()=>{order.push('cloud');if(mode==='cloud-failure')throw Error('offline');return {saved:true,published:mode==='verified'}},
+    automation:{setCreditAutoEnabled:guard,setCreditAutoMode:guard,scheduleCreditAuto:guard,preferenceState:()=>({})},toast:guard});
+  assert.equal(await api.resetCreditSync(),mode==='verified');
+  assert.deepEqual(order,mode==='verified'?['cloud','bridge']:['cloud']);
 });

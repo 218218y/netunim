@@ -64,10 +64,15 @@ function normalizeState(d){
   const creditSyncSourceVersion=Math.trunc(Number(n.creditSync?.version)||1);
   n.creditSync=normalizeCreditSync(n.creditSync);
   const rawCredits=(Array.isArray(n.credits)?n.credits:[]).map(x=>({...x,totalAmount:wholeMoney(x.totalAmount),ownerLabel:String(x.ownerLabel||'')}));
-  // Old synchronized-primary imports retain their original records as an
-  // explicit archive. Inactive age is display policy, never deletion authority.
-  n.credits=rawCredits.map(cr=>creditSyncSourceVersion<3&&!cr.archived
-    ?{...cr,archived:true,archiveReason:'legacy-synced-cutover'}:cr);
+  // A version number is not evidence that an issuer replaced a manual charge.
+  // Undo only the known automatic archive marker; explicit archives stay intact.
+  const hasIssuerRows=n.creditSync.profiles.some(profile=>profile.accounts.some(account=>account.txns.length));
+  n.credits=rawCredits.map(cr=>{
+    const automatic=cr.archiveReason==='legacy-synced-cutover';
+    const kept=automatic?{...cr,archived:false,archiveReason:''}:cr;
+    return (creditSyncSourceVersion<3||automatic)&&hasIssuerRows&&!kept.archived
+      ?{...kept,legacyReviewRequired:true}:kept;
+  });
   model.lastNormalizeRemovedCreditIds=[];
   model.lastNormalizeRemovedCredits=0;assertKupaEntityInvariants(n,{includeChecks:true,required:true});
   return n;

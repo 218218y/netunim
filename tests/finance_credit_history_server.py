@@ -4,7 +4,7 @@ from isolated_sync_postgres import IsolatedPostgres, ROOT, quote
 
 
 migration = ROOT/'supabase/migrations/20261115160000_finance_credit_history.sql'
-with IsolatedPostgres(schema_files=[p for p in sorted(migration.parent.glob('*.sql')) if p != migration]) as db:
+with IsolatedPostgres(schema_files=[p for p in sorted(migration.parent.glob('*.sql')) if p.name < migration.name]) as db:
     db.auth_sql("select public.claim_finance_sync_lease('credit','history-test',120)")
     epoch = int(db.auth_sql("select fence_epoch from public.finance_sync_leases where owner_id=auth.uid() and lease_name='credit'").strip())
     def save(state, revision, operation, document='history-test'):
@@ -14,6 +14,8 @@ with IsolatedPostgres(schema_files=[p for p in sorted(migration.parent.glob('*.s
     baseline={'bank':{'balance':10},'creditSync':{'version':4,'profiles':[]}}
     assert save(baseline,0,'baseline',document='pre-migration')['revision']==1
     db.migrate(migration.read_text(encoding='utf-8'))
+    for later in sorted(migration.parent.glob('*.sql')):
+        if later.name > migration.name: db.migrate(later.read_text(encoding='utf-8'))
     seeded=json.loads(db.auth_sql("select row_to_json(r) from public.read_finance_document_version('pre-migration',1) r").strip())
     assert seeded['state']==baseline, 'existing Finance head was not captured by migration'
 
