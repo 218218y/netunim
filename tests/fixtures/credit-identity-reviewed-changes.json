@@ -1,0 +1,22 @@
+{
+  "netunim-kupa/site/assets/js/domains/credit/sync-feed.js": [
+    {
+      "before": "function creditProfileIdentityText(value){return text(value,100).toLocaleLowerCase('he-IL')}\nfunction creditProfileAccountNumbers(profile){return new Set((Array.isArray(profile?.accounts)?profile.accounts:[]).map(account=>text(account?.accountNumber||'',80)).filter(Boolean))}\nfunction creditProfilesShareDiscoveredIdentity(a,b){\n  if(!a?.provider||a.provider!==b?.provider)return false;\n  const aAccounts=creditProfileAccountNumbers(a),bAccounts=creditProfileAccountNumbers(b);\n  if(!aAccounts.size||!bAccounts.size)return false;\n  let overlaps=false;for(const accountNumber of aAccounts)if(bAccounts.has(accountNumber)){overlaps=true;break}\n  if(!overlaps)return false;\n  const aOwner=creditProfileIdentityText(a.ownerLabel),bOwner=creditProfileIdentityText(b.ownerLabel);\n  // Card suffixes are not globally unique. Reconcile automatically only when both\n  // profiles also carry the same explicit owner label. Missing/different owners stay separate.\n  return !!aOwner&&!!bOwner&&aOwner===bOwner;\n}\n",
+      "after": "// Owner labels and card suffixes are not unique identifiers. A new profile\n// must retain its own history and opt-in mapping until its identity is explicit.\nfunction creditProfilesShareDiscoveredIdentity(a,b){\n  return !!a?.profileId&&a.profileId===b?.profileId;\n}\n"
+    },
+    {
+      "before": "  // A copied import can exist under an old random profileId and a stable import:connectionKey.\n  // Collapse only identities proven by provider + discovered card overlap + compatible owner,\n  // and prefer the portable import identity while carrying forward history and user mappings.\n",
+      "after": "  // Reconcile only the same durable profile ID. A portable import with another\n  // ID cannot consume historical rows or inherit inclusion from a card suffix.\n"
+    }
+  ],
+  "netunim-orders/site/assets/js/domains/finance/credit-feed.js": [
+    {
+      "before": "function creditProfileIdentityText(value){return text(value,100).toLocaleLowerCase('he-IL')}\nfunction creditProfileAccountNumbers(profile){return new Set((Array.isArray(profile?.accounts)?profile.accounts:[]).map(account=>text(account?.accountNumber||'',80)).filter(Boolean))}\nfunction creditProfilesShareDiscoveredIdentity(a,b){\n  if(!a?.provider||a.provider!==b?.provider)return false;\n  const aAccounts=creditProfileAccountNumbers(a),bAccounts=creditProfileAccountNumbers(b);\n  if(!aAccounts.size||!bAccounts.size)return false;\n  let overlaps=false;for(const accountNumber of aAccounts)if(bAccounts.has(accountNumber)){overlaps=true;break}\n  if(!overlaps)return false;\n  const aOwner=creditProfileIdentityText(a.ownerLabel),bOwner=creditProfileIdentityText(b.ownerLabel);\n  // Card suffixes are not globally unique. Reconcile automatically only when both\n  // profiles also carry the same explicit owner label. Missing/different owners stay separate.\n  return !!aOwner&&!!bOwner&&aOwner===bOwner;\n}\n",
+      "after": "// Owner labels and card suffixes are not unique identifiers. A new profile\n// must retain its own history and opt-in mapping until its identity is explicit.\nfunction creditProfilesShareDiscoveredIdentity(a,b){\n  return !!a?.profileId&&a.profileId===b?.profileId;\n}\n"
+    },
+    {
+      "before": "  // A copied import can exist under an old random profileId and a stable import:connectionKey.\n  // Collapse only identities proven by provider + discovered card overlap + compatible owner,\n  // and prefer the portable import identity while carrying forward history and user mappings.\n",
+      "after": "  // Reconcile only the same durable profile ID. A portable import with another\n  // ID cannot consume historical rows or inherit inclusion from a card suffix.\n"
+    }
+  ]
+}

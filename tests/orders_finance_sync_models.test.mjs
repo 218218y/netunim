@@ -32,11 +32,10 @@ const ordersDuplicatedImportedIdentity=normalizeCreditSync({version:4,profiles:[
   'import:isracard-racheli:5360':{included:false,hidden:false,account:'עסקי'},
   'import:isracard-racheli:7248':{included:false,hidden:false,account:'עסקי'},
 }});
-assert.equal(ordersDuplicatedImportedIdentity.profiles.length,1,'Orders collapses the same cross-computer imported credit alias as Kupa');
-assert.equal(ordersDuplicatedImportedIdentity.profiles[0].profileId,'import:isracard-racheli');
-assert.equal(ordersDuplicatedImportedIdentity.cardMappings['import:isracard-racheli:0826'].included,true);
-assert.equal(ordersDuplicatedImportedIdentity.cardMappings['import:isracard-racheli:0826'].account,'ביתי','Orders preserves the established per-card role while moving the mapping to the stable profile id');
-assert.equal(ordersDuplicatedImportedIdentity.cardMappings['legacy-isracard:0826'],undefined);
+assert.equal(ordersDuplicatedImportedIdentity.profiles.length,2,'Orders never infers profile identity from a suffix and owner label');
+assert.equal(ordersDuplicatedImportedIdentity.cardMappings['legacy-isracard:0826'].included,true);
+assert.equal(ordersDuplicatedImportedIdentity.cardMappings['legacy-isracard:0826'].account,'ביתי');
+assert.equal(ordersDuplicatedImportedIdentity.cardMappings['import:isracard-racheli:0826'].included,false);
 
 const scrollUi={scrollViewportMemory:new Map()};
 const layout=createUiLayout({ui:scrollUi,supplierUi:{supplierViewportMemory:new Map()}});
