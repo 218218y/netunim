@@ -31,6 +31,9 @@ function openCreditModal(id){if(!isActive())return false;
     <div class="form-group"><label>סכום כולל</label><input id="cTotal" type="number" step="1" inputmode="numeric" min="0" value="${esc(cr.totalAmount||'')}"></div>
     <div class="form-group"><label>מספר תשלומים</label><input id="cParts" type="number" min="1" max="60" step="1" inputmode="numeric" value="${esc(cr.installments||1)}"></div>
     <div class="form-group"><label>פעיל</label><select id="cActive"><option ${cr.active?'selected':''}>כן</option><option ${!cr.active?'selected':''}>לא</option></select></div>
+    <div class="form-group full"><label><input id="cArchived" type="checkbox" ${cr.archived?'checked':''}> ארכיון — שמירת המקור ללא הכללה בחישוב</label></div>
+    <div class="form-group full"><label>סיבה לשינוי הארכוב</label><input id="cArchiveNote" maxlength="500" value="${esc(cr.archiveNote||'')}"></div>
+    ${cr.legacyReviewRequired?'<div class="form-group full"><label><input id="cReviewed" type="checkbox"> השוויתי לפירוט המסונכרן ובחרתי אם החיוב הידני ייכלל</label></div>':''}
     <div class="form-group full"><label>הערה</label><textarea id="cNote">${esc(cr.note)}</textarea></div>
     <div class="form-group full"><div class="notice">זו רשומה ידנית קיימת מהעבר. אפשר לערוך או למחוק אותה; רשומות חדשות מתווספות רק דרך סנכרון האשראי.</div></div>
   </div>`,'שמור שינויים',()=>saveCredit(id),()=>deleteRecord('credits',id));armModalDraftGuard()
@@ -38,7 +41,25 @@ function openCreditModal(id){if(!isActive())return false;
 
 function prefillChargeDate(){if(!isActive())return false;const tx=document.getElementById('cTx').value,card=document.getElementById('cCard').value;setDateValue(document.getElementById('cFirst'),nextChargeDate(card,tx))}
 
-function saveCredit(id){if(!isActive())return false;if(!id)return toast('הוספה ידנית לאשראי אינה זמינה.');const index=model.state.credits.findIndex(x=>x.id===id);if(index<0)return toast('רשומת האשראי הידנית לא נמצאה.');const rec={id,account:document.getElementById('cAccount').value,ownerLabel:document.getElementById('cOwner').value.trim(),card:document.getElementById('cCard').value.trim(),description:document.getElementById('cDesc').value.trim(),transactionDate:document.getElementById('cTx').value,totalAmount:wholeMoney(document.getElementById('cTotal').value),installments:Number(document.getElementById('cParts').value),firstChargeDate:document.getElementById('cFirst').value,active:document.getElementById('cActive').value==='כן',note:document.getElementById('cNote').value.trim(),createdAt:model.state.credits[index]?.createdAt||todayISO()};if(!rec.card||!rec.totalAmount||!rec.installments||!rec.firstChargeDate)return toast('יש למלא כרטיס, סכום, תשלומים וחיוב ראשון');model.state.credits[index]=rec;closeModal(true);saveState('התוספת הידנית עודכנה',{operations:[{type:'put',collection:'credits',id:rec.id,mode:'replace',record:rec}]});renderCredit()}
+function saveCredit(id){
+  if(!isActive())return false;
+  if(!id)return toast('הוספה ידנית לאשראי אינה זמינה.');
+  const index=model.state.credits.findIndex(x=>x.id===id);
+  if(index<0)return toast('רשומת האשראי הידנית לא נמצאה.');
+  const previous=model.state.credits[index],archived=document.getElementById('cArchived')?.checked===true;
+  const archiveNote=String(document.getElementById('cArchiveNote')?.value||'').trim();
+  if(archived!==(previous.archived===true)&&archiveNote.length<8)return toast('יש לציין סיבה לשינוי הארכוב, 8 תווים לפחות');
+  if(previous.legacyReviewRequired&&!document.getElementById('cReviewed')?.checked)return toast('יש להשוות את החיוב הידני לפירוט המסונכרן ולאשר את הבחירה');
+  const rec={...previous,id,account:document.getElementById('cAccount').value,ownerLabel:document.getElementById('cOwner').value.trim(),
+    card:document.getElementById('cCard').value.trim(),description:document.getElementById('cDesc').value.trim(),
+    transactionDate:document.getElementById('cTx').value,totalAmount:wholeMoney(document.getElementById('cTotal').value),
+    installments:Number(document.getElementById('cParts').value),firstChargeDate:document.getElementById('cFirst').value,
+    active:document.getElementById('cActive').value==='כן',note:document.getElementById('cNote').value.trim(),createdAt:previous.createdAt||todayISO(),
+    archived,archiveReason:archived?'manual-review':'',archiveNote,legacyReviewRequired:false};
+  if(!rec.card||!rec.totalAmount||!rec.installments||!rec.firstChargeDate)return toast('יש למלא כרטיס, סכום, תשלומים וחיוב ראשון');
+  model.state.credits[index]=rec;closeModal(true);
+  saveState('התוספת הידנית עודכנה',{operations:[{type:'put',collection:'credits',id:rec.id,mode:'replace',record:rec}]});renderCredit();
+}
 
 return { openCreditModal, prefillChargeDate, saveCredit };
 }

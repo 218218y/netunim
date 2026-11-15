@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-4ad6262bd6e9';
+const CACHE='orders-app-shell-esm-82e53eaa0193';
 const SHELL=[
   './',
   './index.html',
@@ -342,6 +342,9 @@ const SHELL=[
   './assets/js/shared/finance-connection-import.js',
   './assets/js/shared/finance-derivations.js',
   './assets/js/shared/finance-fence.js',
+  './assets/js/shared/finance-history-dialog.js',
+  './assets/js/shared/finance-history-model.js',
+  './assets/js/shared/finance-history-service.js',
   './assets/js/shared/finance-lease-heartbeat.js',
   './assets/js/shared/finance-lease-owner.js',
   './assets/js/shared/finance-lease-receipt.js',

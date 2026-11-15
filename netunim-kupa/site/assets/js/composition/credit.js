@@ -27,7 +27,7 @@ export function createKupaCreditRuntime({model,ui,platform={}}){
   let view=null;
   let creditController=null;
   let actions=null;
-  let disposed=false,connectionDialog=null,connections=null;
+  let disposed=false,connectionDialog=null,connections=null,history=null,historyPorts=null;
   const effects=platform.effects??createFinanceBrowserEffects();
   const editorWork=createRuntimeTaskOwner();
   const search=createLazyDeferredSearchUpdater(value=>{if(!disposed)ui.creditSearchValue=value},(...args)=>{if(!disposed)requireView().setCreditSearch(...args)});
@@ -43,6 +43,8 @@ export function createKupaCreditRuntime({model,ui,platform={}}){
       ['effects',effects,['writeText','saveJson','dispose']],
     ])for(const method of methods)if(typeof port?.[method]!=='function')throw new TypeError(`credit_${name}_${method}_required`);
     if(typeof authority?.automaticAccess!=='function')throw new TypeError('credit_automatic_access_required');
+    historyPorts={subscribeAccountScope:cloud.subscribeAccountScope,request:(...args)=>cloud.historyRequest(...args),readHead:(...args)=>cloud.readHistoryHead(...args),capture:()=>authority.scope.capture(),
+      refresh:(...args)=>cloud.refresh(...args),leases:{claim:(...args)=>cloud.claimLease(...args),release:(...args)=>cloud.releaseLease(...args)}};
     connections=createCreditConnectionOwner({
       protocol:{minimumBridgeVersion:73,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},
       pairing:{token:()=>bridge.getBridgeToken()},
@@ -102,13 +104,13 @@ export function createKupaCreditRuntime({model,ui,platform={}}){
     start:(...args)=>disposed?Promise.resolve(false):requireController().startAutoSync(...args),
     stop:()=>creditController?.stopAutoSync()??false,
     wake:(...args)=>disposed?Promise.resolve(false):requireController().maybeAutoRefreshCreditSync(...args),
-    isPending:()=>editorWork.isPending()||(creditController?.runtime.isPending()??false)||(connections?.runtime.isPending()??false),
+    isPending:()=>!!history?.runtime.isPending()||editorWork.isPending()||(creditController?.runtime.isPending()??false)||(connections?.runtime.isPending()??false),
     async drain(){
-      do{await Promise.all([editorWork.drain(),creditController?.runtime.drain(),connections?.runtime.drain()])}while(runtime.isPending());
+      do{await Promise.all([history?.runtime.drain(),editorWork.drain(),creditController?.runtime.drain(),connections?.runtime.drain()])}while(runtime.isPending());
     },
     dispose(){
       if(disposed)return false;
-      disposed=true;editorWork.close();search.cancel();connectionDialog?.dispose();connections?.runtime.dispose();creditController?.runtime.dispose();effects.dispose();return true;
+      disposed=true;history?.runtime.dispose();editorWork.close();search.cancel();connectionDialog?.dispose();connections?.runtime.dispose();creditController?.runtime.dispose();effects.dispose();return true;
     },
   };
 
@@ -174,6 +176,15 @@ export function createKupaCreditRuntime({model,ui,platform={}}){
       readProfile:(...args)=>requireController().connectionProfile(...args),saveConnection:commands.saveCreditConnection,
       closeModal:()=>{if(!disposed)uiModal.closeModal(true)},isActive:()=>!disposed,
     });
+    commands.openCreditHistory=()=>{
+      const assertCurrent=historyPorts.capture();assertCurrent();
+      return editorWork.run(async()=>{
+        const {createFinanceHistoryDialog}=await import('../shared/finance-history-dialog.js');assertCurrent();if(disposed)return false;
+        history??=createFinanceHistoryDialog({...historyPorts,isActive:()=>!disposed,saveJson:(...args)=>effects.saveJson(...args),confirm:(...args)=>uiModal.confirmDialog(...args),
+          mount:body=>{uiModal.modal('גרסאות וגיבוי אשראי',body,'',()=>{});document.querySelector('#modal .modal-foot').replaceChildren();return document.querySelector('[data-finance-history]')}});
+        return history.open(assertCurrent);
+      }).catch(error=>{try{assertCurrent();if(!disposed)uiStatus.toast(error.message)}catch{}return false});
+    };
     const pack=createCreditActions({creditCommands:commands,domainsCreditEditor:editor,domainsCreditView:view,ui,search,isActive:()=>!disposed});
     const order=createCreditCardOrderView({
       isActive:()=>!disposed,getSync:()=>model.state.creditSync,saveOrder:commands.saveCreditCardOrder,

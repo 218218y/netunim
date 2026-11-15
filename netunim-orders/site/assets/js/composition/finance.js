@@ -88,6 +88,7 @@ export function createOrdersFinanceCapability({
   const effects = platform.effects ?? createFinanceBrowserEffects();
   requireMethods('effects', effects, ['isOnline', 'writeText', 'saveJson', 'delay', 'dispose']);
   const bridge = createFinanceBridgeIntegration(platform.bridge ? {platform:platform.bridge} : undefined);
+  let history=null,historyFlight=null,historyPorts=null;
   let disposed = false, cache = null, controller = null, presentation = null, archive = null, connections = null, bankConnections = null, bankSnapshots = null, bankRefresh = null, archiveReconciliation = null;
   const operationScope = createFinanceOperationScope({readAccess:() => {
     const access = readAccess();
@@ -142,6 +143,8 @@ export function createOrdersFinanceCapability({
     ]);
     requireMethods('checks', checks, ['syncSharedChecksFromCloud', 'saveSharedChecksToCloud', 'hasLocalWork']);
     if (typeof toast !== 'function') throw new TypeError('orders_finance_toast_required');
+    historyPorts={subscribeAccountScope:auth.subscribeAccountScope,request:(...args)=>auth.supaFetch(...args),readHead:(...args)=>cloud.readFinanceSyncDocument(...args),capture:()=>operationScope.capture(),
+      refresh:options=>cache.refreshKupaReadout({force:true,renderIfChanged:true,...options}),leases:{claim:(...args)=>cloud.claimFinanceSyncLease(...args),release:(...args)=>cloud.releaseFinanceSyncLease(...args)}};
     const syncLeases = {
       claim:(...args) => cloud.claimFinanceSyncLease(...args),
       release:(...args) => cloud.releaseFinanceSyncLease(...args),
@@ -315,12 +318,23 @@ export function createOrdersFinanceCapability({
       saveOrder:(...args) => controller.saveCreditCardOrder(...args),
       modal:ownedModal.modal, closeModal:ownedModal.closeModal, render:view.renderKupa, escapeHtml:esc,
     });
+    const openFinanceHistory=()=>{
+      const assertCurrent=operationScope.capture();assertCurrent();
+      if(historyFlight)return historyFlight;
+      historyFlight=(async()=>{
+        const {createFinanceHistoryDialog}=await import('../shared/finance-history-dialog.js');assertCurrent();if(disposed)return false;
+        history??=createFinanceHistoryDialog({...historyPorts,isActive:()=>!disposed,saveJson:(...args)=>effects.saveJson(...args),confirm:ownedModal.confirmDialog,
+          mount:body=>{ownedModal.modal('גרסאות וגיבוי אשראי',body);return document.querySelector('[data-finance-history]')}});
+        return history.open(assertCurrent);
+      })().catch(error=>{try{assertCurrent();if(!disposed)notify(error.message)}catch{}return false}).finally(()=>{historyFlight=null});
+      return historyFlight;
+    };
     const packs = [
       {name:'morning-reports', actions:reports?.actions || {}},
       {name:'morning-expenses', actions:expenses?.actions || {}},
       {name:'credit-order', actions:markMutationActions(creditOrder.actions, {finance:['credit-card-order-save']})},
       {name:'finance-bank', actions:createFinanceBankActions({domainsFinanceController:controller, domainsFinanceView:view, importFinanceConnections:importConnections.commands.importConnections, ui, uiStatus:{toast:notify}})},
-      {name:'finance-credit', actions:createFinanceCreditActions({domainsFinanceView:view, ui})},
+      {name:'finance-credit', actions:createFinanceCreditActions({domainsFinanceView:{...view,openFinanceHistory}, ui})},
     ];
     const guardedPacks = packs.map(pack => ({...pack, actions:Object.fromEntries(
       Object.entries(pack.actions).map(([name, handler]) => {
@@ -363,9 +377,9 @@ export function createOrdersFinanceCapability({
   const ownedRuntimes = () => [...(presentation?.runtimes || []), archiveReconciliation?.runtime, bankSnapshots?.runtime, controller?.runtime,
     connections?.runtime, bankConnections?.runtime, archive?.runtime].filter(Boolean);
   const runtime = {
-    isPending:() => ownedRuntimes().some(owner => owner.isPending()),
+    isPending:() => !!historyFlight||!!history?.runtime.isPending()||ownedRuntimes().some(owner => owner.isPending()),
     async drain() {
-      do { await Promise.all(ownedRuntimes().map(owner => owner.drain())); } while(runtime.isPending());
+      do { await Promise.all([historyFlight,history?.runtime.drain(),...ownedRuntimes().map(owner => owner.drain())]); } while(runtime.isPending());
     },
     start() { uiReady(); return controller.startAutoSync(); },
     resume() { uiReady(); return controller.resumeAutoSync(); },
@@ -377,7 +391,7 @@ export function createOrdersFinanceCapability({
     },
     dispose() {
       if (disposed) return false;
-      disposed = true;
+      disposed = true;history?.runtime.dispose();
       ownedRuntimes().forEach(owner => owner.dispose());
       controller?.setFinanceStatusListener(() => {});
       effects.dispose();

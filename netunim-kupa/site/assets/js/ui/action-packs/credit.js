@@ -21,6 +21,7 @@ export function createCreditActions({ creditCommands, domainsCreditEditor, domai
   const toggleCreditSyncOptions = (...args) => domainsCreditView.toggleCreditSyncOptions(...args);
   const creditSearch = search || createLazyDeferredSearchUpdater(value => { ui.creditSearchValue = value; }, setCreditSearch);
   return {
+    'credit-finance-history':()=>creditCommands.openCreditHistory(),
     'expenses-hub-tab': (element, event) => { ui.expensesTab = element.dataset.clickArg0 === 'expenses' ? 'expenses' : 'credit'; return renderCredit(); },
     'credit-details-page': element => pageCreditDetails(element.dataset.clickArg0, element.dataset.clickArg1),
     'credit-amount-from': element=>{ui.creditAmountFrom=element.value;return refreshAmountRange(element,()=>setCreditSearch(ui.creditSearchValue))},
