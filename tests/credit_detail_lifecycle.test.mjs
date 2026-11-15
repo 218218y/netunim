@@ -47,15 +47,28 @@ test('Saturday-shifted actual debit stays in the nominal day-10 cycle',()=>{
   assert.equal(creditDetailDayMatch(shifted,'10'),true,'the day-10 filter includes the actual Sunday debit');
 });
 
-test('future-month menu omits a month that is already fully represented by nearest-charge cycles',()=>{
+test('monthly chronology retains months already represented in the upcoming card cycles',()=>{
   const october={key:'2026-10',items:[
     {creditAccountKey:'sync:max:6326',date:'2026-10-11',description:'regular'},
     {creditAccountKey:'sync:max:6326',date:'2026-10-02',detailCycleBillingDate:'2026-10-11',foreignCurrency:true,description:'FX'},
   ]},november={key:'2026-11',items:[{creditAccountKey:'sync:max:6326',date:'2026-11-10',description:'later'}]},upcoming=october.items;
-  assert.deepEqual(creditDetailFutureMonths([october,november],upcoming).map(month=>month.key),['2026-11'],'a month that would duplicate the complete nearest-charge view is not offered again as a future month');
+  assert.deepEqual(creditDetailFutureMonths([october,november],upcoming).map(month=>month.key),['2026-10','2026-11'],'October remains accessible even when every row is also upcoming');
   const partialOctober={...october,items:[...october.items,{creditAccountKey:'sync:max:7777',date:'2026-10-15',description:'later card cycle'}]};
-  assert.deepEqual(creditDetailFutureMonths([partialOctober,november],upcoming).map(month=>month.key),['2026-10','2026-11'],'a month with another card-cycle not present in nearest-charge stays reachable');
-  assert.deepEqual(creditDetailFutureMonths([october,november],upcoming,'2026-10').map(month=>month.key),['2026-10','2026-11'],'an already selected redundant month remains represented while the user is viewing it');
+  assert.deepEqual(creditDetailFutureMonths([partialOctober,november],upcoming).map(month=>month.key),['2026-10','2026-11'],'a month with another card-cycle also remains available');
+  assert.deepEqual(creditDetailFutureMonths([october,november],upcoming,'2026-10').map(month=>month.key),['2026-10','2026-11'],'monthly chronology must not depend on the selected month');
+});
+
+test('combined monthly browsing includes every retained historical month, not only the default twelve-month window',()=>{
+  const keys=Array.from({length:16},(_,index)=>new Date(Date.UTC(2025,6+index,10)).toISOString().slice(0,7));
+  const state={credits:[],creditSync:{version:4,profiles:[{profileId:'cards',provider:'max',accounts:[{
+    accountNumber:'a',txns:keys.map(key=>({id:key,status:'completed',processedDate:`${key}-10`,
+      transactionDate:`${key}-08`,chargedAmount:-10,chargedCurrency:'ILS'})),
+  }]}],cardMappings:{'cards:a':{included:true,cardName:'A'}}}};
+  const all=kupaReconciledCreditDetailMonthsData(state,'2026-11-15',Infinity);
+  const limited=kupaReconciledCreditDetailMonthsData(state,'2026-11-15',12);
+  assert.deepEqual(all.months.map(month=>month.key),keys,'full chronology includes all sixteen saved months');
+  assert.ok(limited.months.length<all.months.length,'an ordinary twelve-month summary still may have its own window');
+  assert.equal(all.cutoffMonth,'','unlimited month browsing must not fabricate a historic cutoff');
 });
 
 test('foreign immediate debits are assigned to the enclosing statement cycle without changing their real debit date',()=>{

@@ -22,7 +22,7 @@ import { bankChequeImageDownloadName, retainBankChequeImagePreviewUrl } from '..
 import { createCreditConnectionView, creditMappingRow } from './credit-connection-view.js';
 import { creditDetailRowMarkup } from './credit-detail-view.js';
 import { bankHeadlineState, bankSyncPanelMarkup } from './bank-connection-view.js';
-import { creditDateRangeMarkup, replaceCreditDetailMarkup, creditDetailMonthlySections, creditUpcomingSelectorMarkup, creditHistoryMenuMarkup, creditFutureMenuMarkup, creditDetailChargeHeadingMarkup } from '../../shared/credit-detail-controls.js';
+import { creditDateRangeMarkup, replaceCreditDetailMarkup, creditDetailMonthlySections, creditUpcomingSelectorMarkup, creditCombinedMonthMenuMarkup, creditDetailChargeHeadingMarkup } from '../../shared/credit-detail-controls.js';
 import { createCreditCardBoundaryRowMarkup, creditCycleRowsMarkup, creditUpcomingSectionsMarkup } from '../../shared/credit-detail-sections.js';
 import { CREDIT_DETAIL_HISTORY_MONTHS } from '../../shared/credit-history.js';
 import { attachBankArchiveMetadata } from './bank-morning.js';
@@ -232,11 +232,8 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             ...creditControlBase, active, selectedDay, total, upcomingAction: 'orders-credit-detail-upcoming', upcomingDayAction: 'orders-credit-detail-upcoming-day'
         });
     }
-    function creditHistoryControl(months, selectedKey = '', selectedDay = 'all') {
-        return creditHistoryMenuMarkup({ ...creditControlBase, months, selectedKey, selectedDay });
-    }
-    function creditFutureControl(months, selectedKey = '', selectedDay = 'all') {
-        return creditFutureMenuMarkup({ ...creditControlBase, months, selectedKey, selectedDay });
+    function creditMonthsControl(historyMonths, months, selectedKey = '', selectedDay = 'all') {
+        return creditCombinedMonthMenuMarkup({ ...creditControlBase, historyMonths, months, selectedKey, selectedDay });
     }
     function creditChargeHeading(items) {
         return creditDetailChargeHeadingMarkup(items, money, esc);
@@ -259,8 +256,8 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             {historyMonths,upcomingTotal,futureMonths}=detail,
             detailMarkup=creditDetailMarkup(detail),selectedMonthKey=upcoming?'':detail.focus?.monthKey||'';
         const explanation = upcoming ? 'מוצג המחזור הקרוב שטרם אומת כנפרע בכל כרטיס, גם אם מועדו חלף או שהכרטיס הבא שייך לחודש אחר. חיוב מיידי שכבר בוצע אינו נספר כאן שוב.' : 'פירוט החודש כולל את כל מחזורי אותו חודש, גם אם מועד החיוב עבר או שהחיוב כבר נפרע. פירוט החודש והחיוב הקרוב חופפים; אין לחבר את הסכומים.';
-        return (`<section id="ordersCreditDetailRegion" class="finance-report-section credit-detail-section"><div class="section-head credit-detail-section-head"><div class="credit-detail-title-row"><h3>עסקאות ותשלומים</h3>${creditHistoryControl(historyMonths, selectedMonthKey, upcoming ? 'all' : chargeDay)}` +
-            `${creditUpcomingControl(upcoming, chargeDay, upcomingTotal)}${creditFutureControl(futureMonths, selectedMonthKey, upcoming ? 'all' : chargeDay)}` +
+        return (`<section id="ordersCreditDetailRegion" class="finance-report-section credit-detail-section"><div class="section-head credit-detail-section-head"><div class="credit-detail-title-row"><h3>עסקאות ותשלומים</h3>${creditUpcomingControl(upcoming, chargeDay, upcomingTotal)}` +
+            `${creditMonthsControl(historyMonths, futureMonths, selectedMonthKey, upcoming ? 'all' : chargeDay)}` +
             `${creditDateRangeMarkup({
                 mode: ui.creditDetailMode,
                 from: ui.creditDateFrom,

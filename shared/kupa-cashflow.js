@@ -136,12 +136,12 @@ function creditUnassignedDisplayTarget(row,context,reference){
 }
 /** @type {Calculation['kupaReconciledCreditDetailMonthsData']} */
 export function kupaReconciledCreditDetailMonthsData(kupa,reference=localTodayISO(),historyMonths=CREDIT_DETAIL_HISTORY_MONTHS){
-  const ref=isoDay(reference)||localTodayISO(),history=Math.max(0,Math.trunc(Number(historyMonths)||0));
+  const ref=isoDay(reference)||localTodayISO(),history=historyMonths===Infinity?Infinity:Math.max(0,Math.trunc(Number(historyMonths)||0));
   return financeDerivation(kupa,'credit-detail',`${ref}:${history}`,()=>calculateCreditDetailMonths(kupa,ref,history));
 }
 /** @type {Calculation['calculateCreditDetailMonths']} */
 function calculateCreditDetailMonths(kupa,reference,historyMonths){
-  const ref=isoDay(reference)||localTodayISO(),currentMonth=monthKey(ref),safeHistory=Math.max(0,Math.trunc(Number(historyMonths)||0)),cutoffMonth=monthKey(addMonthsISO(`${currentMonth}-01`,-safeHistory)),rows=kupaReconciledCreditDetailRowsData(kupa,'all',ref),displayContext=creditAccountDisplayContext(kupa,rows),byMonth=/** @type {Map<string,import('./kupa-cashflow-contracts.js').DetailMonth>} */(new Map()),unassigned=[],unplacedUnassigned=[];
+  const ref=isoDay(reference)||localTodayISO(),currentMonth=monthKey(ref),safeHistory=historyMonths===Infinity?Infinity:Math.max(0,Math.trunc(Number(historyMonths)||0)),cutoffMonth=safeHistory===Infinity?'':monthKey(addMonthsISO(`${currentMonth}-01`,-safeHistory)),rows=kupaReconciledCreditDetailRowsData(kupa,'all',ref),displayContext=creditAccountDisplayContext(kupa,rows),byMonth=/** @type {Map<string,import('./kupa-cashflow-contracts.js').DetailMonth>} */(new Map()),unassigned=[],unplacedUnassigned=[];
   /** @param {string} key @param {import('./kupa-cashflow-contracts.js').ReconciledRow} row */
   const add=(key,row)=>{const month=byMonth.get(key)||{key,total:0,items:[],uncertainCount:0,missingAmountCount:0,coverageGapCount:0,incompleteCount:0,partial:false};month.total+=num(row.amount);month.items.push(row);byMonth.set(key,month)};
   for(const originalRow of rows){
@@ -150,7 +150,7 @@ function calculateCreditDetailMonths(kupa,reference,historyMonths){
       const account=displayContext.accountsByCard.get(creditCardKey(row)),cycle=account?creditAccountStatementCycleDateData(account,row.date):null;
       if(cycle?.date&&cycle.date!==row.date)row={...row,detailCycleBillingDate:cycle.date,detailCycleNominalDay:cycle.nominalDay,detailCycleAssignmentSource:cycle.source,detailCycleAssignmentConfidence:cycle.confidence};
     }
-    const key=monthKey(row.detailCycleBillingDate||row.date);if(key){if(key>=cutoffMonth)add(key,row);continue}
+    const key=monthKey(row.detailCycleBillingDate||row.date);if(key){if(!cutoffMonth||key>=cutoffMonth)add(key,row);continue}
     unassigned.push(row);const target=creditUnassignedDisplayTarget(row,displayContext,ref);if(target?.date){const targetMonth=monthKey(target.date);if(targetMonth){add(targetMonth,{...row,detailCycleUncertain:true,detailDisplayBillingDate:target.date,detailDisplayBillingDateSource:target.source,detailDisplayBillingDateConfidence:target.confidence});continue}}unplacedUnassigned.push({...row,detailCycleUncertain:true})
   }
   for(const month of byMonth.values()){month.total=Math.round(month.total*100)/100;month.items.sort((a,b)=>creditCardConfiguredOrderCompare(a,b,kupa?.creditSync?.cardMappings)||Number(b.detailCycleUncertain===true)-Number(a.detailCycleUncertain===true)||String(a.date||a.detailDisplayBillingDate||'').localeCompare(String(b.date||b.detailDisplayBillingDate||''))||creditCardCompare(a,b,

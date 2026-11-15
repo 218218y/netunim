@@ -93,6 +93,30 @@ function creditCycleMenuMarkup({months=[],selectedKey='',selectedDay='all',forma
   return `<details class="credit-cycle-menu ${className} ${selected?'active':''}" data-dismiss-on-outside><summary class="credit-cycle-menu-trigger" aria-label="${safe(ariaLabel,escapeHtml)}"><span><b>${safe(label,escapeHtml)}</b>${selectedMeta?`<small>${safe(selectedMeta,escapeHtml)}</small>`:''}</span><span class="credit-cycle-menu-chevron" aria-hidden="true">⌄</span></summary><div class="credit-cycle-menu-popover" data-menu-panel><div class="credit-cycle-menu-popover-title"><b>${safe(label,escapeHtml)}</b><small>בחר חודש או מועד חיוב</small></div><div class="credit-cycle-menu-list">${ordered.map(month=>cycleSelectorMarkup({month,active:month.key===selectedKey,selectedDay,formatMoney,formatMonth,escapeHtml,monthAction,monthDayAction,header:true})).join('')}</div></div></details>`;
 }
 
+// Past and current/future months are two sections of *one* chronological
+// selector. Months that overlap "upcoming" remain fully selectable.
+export function creditCombinedMonthMenuMarkup({historyMonths=[],months=[],selectedKey='',selectedDay='all',formatMoney,formatMonth,escapeHtml,monthAction,monthDayAction}){
+  const all=[...historyMonths,...months].filter(month=>month&&month.key);
+  if(!all.length)return '';
+  const ordered=[...all].sort((a,b)=>a.key==='unassigned'?1:b.key==='unassigned'?-1:a.key.localeCompare(b.key));
+  const historyKeys=new Set(historyMonths.map(month=>month.key));
+  const past=ordered.filter(month=>historyKeys.has(month.key));
+  const remaining=ordered.filter(month=>!historyKeys.has(month.key));
+  const selected=ordered.find(month=>month.key===selectedKey);
+  const selectedLabel=selected?(selected.key==='unassigned'?'מחזור לא ודאי':formatMonth(selected.key)):'';
+  const selectedMeta=selected?`${selectedLabel}${selectedDay==='10'||selectedDay==='15'?` · ${selectedDay}`:''}`:'';
+  // On initial open, place only the last three past months above today's/next
+  // charges. Reopening while inspecting older history keeps the selected month
+  // in view instead of unexpectedly jumping away from it.
+  const defaultStart=past[Math.max(0,past.length-3)]||remaining[0];
+  const scrollStart=selected&&selected.key!=='unassigned'&&defaultStart&&selected.key<defaultStart.key?selected:defaultStart;
+  const render=month=>{
+    const markup=cycleSelectorMarkup({month,active:month.key===selectedKey,selectedDay,formatMoney,formatMonth,escapeHtml,monthAction,monthDayAction,header:true});
+    return month===scrollStart?markup.replace('class="credit-cycle-selector ', 'data-menu-scroll-start class="credit-cycle-selector '):markup;
+  };
+  return `<details class="credit-cycle-menu credit-combined-month-menu ${selected?'active':''}" data-dismiss-on-outside><summary class="credit-cycle-menu-trigger" aria-label="בחירת חודש חיוב מכל החודשים השמורים"><span><b>פירוט לפי חודש</b>${selectedMeta?`<small>${safe(selectedMeta,escapeHtml)}</small>`:''}</span><span class="credit-cycle-menu-chevron" aria-hidden="true">⌄</span></summary><div class="credit-cycle-menu-popover" data-menu-panel><div class="credit-cycle-menu-popover-title"><b>פירוט לפי חודש</b><small>חודשים קודמים, נוכחיים ועתידיים</small></div><div class="credit-cycle-menu-list" data-menu-scroll-container>${past.length?`<div class="credit-cycle-menu-group-title">חיובים קודמים</div>${past.map(render).join('')}`:''}${past.length&&remaining.length?'<div class="credit-cycle-menu-divider" role="separator" aria-label="סוף החיובים הקודמים"></div>':''}${remaining.length?`<div class="credit-cycle-menu-group-title">חיובים נוכחיים ועתידיים</div>${remaining.map(render).join('')}`:''}</div></div></details>`;
+}
+
 export function creditHistoryMenuMarkup(options){return creditCycleMenuMarkup({...options,label:'חיובים קודמים',ariaLabel:'בחירת חיובים קודמים',reverse:true,className:'credit-history-menu'})}
 export function creditFutureMenuMarkup(options){return creditCycleMenuMarkup({...options,label:'פירוט לפי חודש',ariaLabel:'פירוט חיובים לפי חודש כולל מועדים שחלפו',reverse:false,className:'credit-future-menu'})}
 

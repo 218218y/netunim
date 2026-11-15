@@ -42,5 +42,5 @@ export function nextAccountCreditCycleData(state,account='עסקי',reference=to
 export function nextBusinessCreditCycleData(state,reference=todayISO()){return nextAccountCreditCycleData(state,'עסקי',reference)}
 export function nextHomeCreditCycleData(state,reference=todayISO()){return nextAccountCreditCycleData(state,'ביתי',reference)}
 
-export function creditMonthlyDetailData(state,asOf=todayISO(),historyMonths=CREDIT_DETAIL_HISTORY_MONTHS){return kupaReconciledCreditDetailMonthsData(state,asOf,historyMonths)}
-export function creditUpcomingDetailData(state,asOf=todayISO(),historyMonths=CREDIT_DETAIL_HISTORY_MONTHS){return kupaReconciledCreditUpcomingDetailData(state,asOf,historyMonths)}
+export function creditMonthlyDetailData(state,asOf=todayISO(),historyMonths=Infinity){return kupaReconciledCreditDetailMonthsData(state,asOf,historyMonths)}
+export function creditUpcomingDetailData(state,asOf=todayISO(),historyMonths=Infinity){return kupaReconciledCreditUpcomingDetailData(state,asOf,historyMonths)}

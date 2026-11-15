@@ -150,7 +150,15 @@ export function bindDismissibleDetails(root,{selector='details[data-dismiss-on-o
     active.width=floatingMenuWidth(popup.getBoundingClientRect().width,win.getComputedStyle(popup).width,popup.scrollWidth);
     popup.setAttribute('popover','manual');
     for(const [key,value] of Object.entries({position:'fixed',inset:'auto',margin:'0',transform:'none',visibility:'visible',opacity:'1','pointer-events':'auto','box-sizing':'border-box','min-width':'0','max-width':`${Math.max(0,viewport().width-16)}px`,'overflow-y':'auto','overscroll-behavior':'contain'}))popup.style.setProperty(key,value,'important');
-    popup.showPopover();position();popupResizeObserver?.observe(popup);
+    popup.showPopover();
+    const scrollHost=popup.querySelector('[data-menu-scroll-container]');
+    const scrollStart=scrollHost?.querySelector('[data-menu-scroll-start]');
+    if(scrollStart){
+      // Use viewport geometry rather than offsetParent: this panel lives in
+      // the browser's top layer and may change containing blocks on open.
+      scrollHost.scrollTop+=scrollStart.getBoundingClientRect().top-scrollHost.getBoundingClientRect().top;
+    }
+    position();popupResizeObserver?.observe(popup);
   };
   const outside=event=>{if(active&&!active.host.contains(event.target))close()};
   root.addEventListener('pointerdown',outside,true);

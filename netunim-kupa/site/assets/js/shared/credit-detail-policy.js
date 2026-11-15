@@ -111,23 +111,13 @@ export function creditDetailAccountGroupKey(row){
   return '';
 }
 
-/** @param {DetailRow} row */
-function creditDetailUpcomingCycleKey(row){
-  const owner=creditDetailAccountGroupKey(row),date=creditDetailCycleDisplayDate(row);
-  return owner&&date?`${owner}\u0000${date}`:'';
-}
-
-/** @template {DetailMonth} M @param {M[]} [months] @param {DetailRow[]} [upcomingItems] @param {string} [selectedKey] @returns {M[]} */
-export function creditDetailFutureMonths(months=[],upcomingItems=[],selectedKey=''){
-  const upcomingCycles=new Set((Array.isArray(upcomingItems)?upcomingItems:[]).map(creditDetailUpcomingCycleKey).filter(Boolean));
-  return (Array.isArray(months)?months:[]).filter(month=>{
-    if(!month||month.key==='unassigned'||month.key===selectedKey||!Array.isArray(month.items)||!month.items.length)return true;
-    // A calendar month is redundant only when every visible card-cycle in it is
-    // already represented by the per-card nearest-charge view.  If the month
-    // contains even one later cycle, keep it in "future charges" so the user
-    // can still reach data that is not present in the nearest-charge view.
-    return month.items.some(row=>{const key=creditDetailUpcomingCycleKey(row);return !key||!upcomingCycles.has(key)});
-  });
+/** Return all available billing months without hiding a month represented by
+ * the nearest per-card charge. Monthly browsing is an independent chronology,
+ * not a deduplicated summary of another UI control.
+ * @template {DetailMonth} M @param {M[]} [months]
+ * @returns {M[]} */
+export function creditDetailFutureMonths(months=[]){
+  return Array.isArray(months)?months.slice():[];
 }
 
 /** @param {DetailRow[]} [items] */

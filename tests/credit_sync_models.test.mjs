@@ -494,9 +494,9 @@ const historyState={credits:[],creditSync:normalizeCreditSync({version:3,profile
 ]}]}],cardMappings:{[historyKey]:{included:true,hidden:false,account:'עסקי'}}})};
 const monthlyHistory=creditMonthlyDetailData(historyState,'2026-09-01');
 assert.equal(CREDIT_DETAIL_HISTORY_MONTHS,12);
-assert.deepEqual(monthlyHistory.months.map(x=>x.key),['2025-09','2026-08','2026-10'],'monthly detail keeps twelve prior calendar months plus every actually known future billing month');
-assert.deepEqual(monthlyHistory.months.map(x=>x.total),[20,40,30]);
-assert.equal(monthlyHistory.months.some(x=>x.items.some(item=>item.description==='ישן מדי')),false,'older history remains outside the compact monthly transaction browser');
+assert.deepEqual(monthlyHistory.months.map(x=>x.key),['2025-08','2025-09','2026-08','2026-10'],'monthly detail keeps every retained history month plus every known future billing month');
+assert.deepEqual(monthlyHistory.months.map(x=>x.total),[50,20,40,30]);
+assert.equal(monthlyHistory.months.some(x=>x.items.some(item=>item.description==='ישן מדי')),true,'older retained statements must remain accessible by scrolling up the combined month selector');
 
 const multiMonthKey=creditCardMappingKey('multi-month','5555');
 const multiMonthState={credits:[],creditSync:normalizeCreditSync({version:3,profiles:[{profileId:'multi-month',provider:'max',accounts:[{accountNumber:'5555',txns:[

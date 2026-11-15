@@ -1,7 +1,7 @@
 // @ts-check
 import {
   creditDetailMonthIsPast,creditDetailRangeMatch,creditDetailQuickPeriodMatch,
-  creditViewAllowsMonth,creditDetailDayMatch,creditDetailMonthDayMatch,creditDetailFutureMonths,
+  creditDetailDayMatch,creditDetailMonthDayMatch,creditDetailFutureMonths,
 } from '../../shared/credit-detail-policy.js';
 
 /**
@@ -16,8 +16,7 @@ export function selectOrdersCreditDetail({allMonths,upcomingRows,query,reference
   const mode=['month','range','all','recent3'].includes(query.creditDetailMode)?query.creditDetailMode:'upcoming';
   const chargeDay=query.creditDetailChargeDay==='10'||query.creditDetailChargeDay==='15'?query.creditDetailChargeDay:'all';
   const historyMonths=allMonths.filter(month=>creditDetailMonthIsPast(month,reference));
-  const months=allMonths.filter(month=>!creditDetailMonthIsPast(month,reference)
-    &&(month.key==='unassigned'||creditViewAllowsMonth(month.key,query.creditView,current)));
+  const months=allMonths.filter(month=>!creditDetailMonthIsPast(month,reference));
   const selectableMonths=[...historyMonths,...months];
   const base={mode,chargeDay,historyMonths,months,upcomingTotal:upcomingRows.reduce((sum,row)=>sum+row.amount,0)};
   if(mode!=='month'){
@@ -27,11 +26,11 @@ export function selectOrdersCreditDetail({allMonths,upcomingRows,query,reference
       :allRows.filter(row=>creditDetailQuickPeriodMatch(row,mode,reference));
     const focusedRows=mode==='upcoming'?periodRows.filter(row=>creditDetailDayMatch(row,chargeDay)):periodRows;
     return {...base,focus:null,selected:null,items:focusedRows.filter(matches),focusedCount:focusedRows.length,
-      futureMonths:creditDetailFutureMonths(months,upcomingRows)};
+      futureMonths:creditDetailFutureMonths(months)};
   }
   const first=selectableMonths[0];
   if(!first)return {...base,focus:null,selected:null,items:[],focusedCount:0,
-    futureMonths:creditDetailFutureMonths(months,upcomingRows)};
+    futureMonths:creditDetailFutureMonths(months)};
 
   let focus=query.creditDetailFocus;
   if(!focus||!selectableMonths.some(month=>month.key===focus?.monthKey)){
@@ -46,5 +45,5 @@ export function selectOrdersCreditDetail({allMonths,upcomingRows,query,reference
   const focusedRows=selected.items.filter(row=>(!focus?.cardKey||(row.creditAccountKey||'')===focus.cardKey)
     &&creditDetailMonthDayMatch(row,chargeDay));
   return {...base,focus,selected,items:focusedRows.filter(matches),focusedCount:focusedRows.length,
-    futureMonths:creditDetailFutureMonths(months,upcomingRows,focus.monthKey)};
+    futureMonths:creditDetailFutureMonths(months)};
 }

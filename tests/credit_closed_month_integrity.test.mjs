@@ -80,11 +80,11 @@ test('original production projection reproduces September/October loss using act
 });
 
 for (const [name, merge] of [['Kupa', kupaMerge], ['Orders', ordersMerge]]) {
-  const envelope = (transactions, stamp = '2026-11-13T12:00:00Z') => readCreditRefreshResult({
+  const envelope = (transactions, stamp = '2026-11-13T12:00:00Z', monthKey = '2026-10') => readCreditRefreshResult({
     contractVersion: 2, syncedAt: stamp, correlationId: 'synthetic-regression',
     profiles: [{ profileId: 'P', provider: 'isracard', syncedAt: stamp, attemptedAt: stamp,
       coreComplete: true, accounts: [{ accountNumber: '0042', months: [{
-        month: '2026-10', tier: 'core', fetchStatus: 'success', fetchedAt: stamp, transactions,
+        month: monthKey, tier: 'core', fetchStatus: 'success', fetchedAt: stamp, transactions,
       }] }] }], errors: [],
   }, Date.parse(stamp) + 60_000);
   const original = [completed('2026-10', 'first'), completed('2026-10', 'second')];
@@ -113,6 +113,20 @@ for (const [name, merge] of [['Kupa', kupaMerge], ['Orders', ordersMerge]]) {
       assert.equal(restored.profiles[0].coreComplete, true);
       assert.equal(restored.errors.length, 0);
     }
+  });
+
+  test(`${name} protects completed charges on the current debit day from an incomplete successful refresh`, () => {
+    const onBillingDay={...completed('2026-11','same-day-15'),processedDate:'2026-11-15T00:00:00Z'};
+    const first=merge({cardMappings:{'P:0042':{included:true}}},envelope([onBillingDay],'2026-11-15T08:00:00Z','2026-11'));
+    const second=merge(first,envelope([],'2026-11-15T14:00:00Z','2026-11'));
+    const month=second.profiles[0].accounts[0].months.find(row=>row.month==='2026-11');
+    assert.deepEqual(month.transactions.map(tx=>tx.id),['same-day-15'], 'same-day completed rows must not be erased');
+    assert.equal(month.status,'stale');
+    assert.equal(month.lastErrorCode,'CREDIT_HISTORICAL_MONTH_REGRESSION');
+    assert.equal(second.syncedAt,first.syncedAt,'the rejected snapshot must not advance the verified sync watermark');
+    const restored=merge(second,envelope([onBillingDay],'2026-11-15T15:00:00Z','2026-11'));
+    assert.equal(restored.errors.length,0);
+    assert.equal(restored.profiles[0].accounts[0].months.find(row=>row.month==='2026-11').status,'fresh');
   });
 
   test(`${name} accepts complete reordered history, late charges and refunds; current month stays mutable`, () => {

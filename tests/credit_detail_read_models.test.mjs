@@ -85,3 +85,22 @@ test('the applications retain their distinct nearest-month policies',()=>{
   assert.equal(kupa.detailFocus.monthKey,'2026-11');
   assert.equal(orders.focus.monthKey,'2026-10');
 });
+
+for(const kind of ['kupa','orders']){
+  test(`${kind}: December remains in the month menu when its rows are all next card charges`,()=>{
+    const december=row('december','2026-12-10',{creditAccountKey:'card-c'});
+    const november=row('november','2026-11-15');
+    const args={query:{...query,creditDetailMode:'upcoming',creditView:'2026'},reference:'2026-11-15',matches:()=>true};
+    const allMonths=[{key:'2026-10',items:[row('october','2026-10-10')]},{key:'2026-11',items:[november]},{key:'2026-12',items:[december]},
+      {key:'2027-01',items:[row('january','2027-01-10')]}];
+    const result=kind==='kupa'?selectKupaCreditDetail({...args,prepared:{detail:{months:allMonths},upcoming:{items:[november,december]}}}):
+      selectOrdersCreditDetail({...args,allMonths,upcomingRows:[november,december]});
+    assert.deepEqual(result.historyMonths.map(month=>month.key),['2026-10']);
+    assert.deepEqual(result.futureMonths.map(month=>month.key),['2026-11','2026-12','2027-01'],
+      'the month menu is independent of both upcoming overlap and the forecast-year filter');
+    const selectedQuery={...args,query:{...args.query,creditDetailMode:'month',creditDetailFocus:{monthKey:'2026-12',cardKey:''}}};
+    const month=kind==='kupa'?selectKupaCreditDetail({...selectedQuery,prepared:{detail:{months:allMonths},upcoming:{items:[november,december]}}}):
+      selectOrdersCreditDetail({...selectedQuery,allMonths,upcomingRows:[november,december]});
+    assert.deepEqual((kind==='kupa'?month.detailItems:month.items).map(item=>item.id),['december']);
+  });
+}

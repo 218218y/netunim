@@ -1,7 +1,7 @@
 // @ts-check
 import {
   creditDetailMonthIsPast,creditDetailRangeMatch,creditDetailQuickPeriodMatch,
-  creditViewAllowsMonth,creditDetailDayMatch,creditDetailMonthDayMatch,creditDetailFutureMonths,
+  creditDetailDayMatch,creditDetailMonthDayMatch,creditDetailFutureMonths,
 } from '../../shared/credit-detail-policy.js';
 /** @typedef {import('../../shared/credit-detail-read-contracts.js').DetailRow} DetailRow */
 
@@ -52,8 +52,7 @@ export function selectKupaCreditDetail({prepared,query,reference,matches}){
       missingAmountCount,coverageGapCount,incompleteCount,partial:incompleteCount>0};
   }).filter(month=>month.items.length);
   const historyMonths=allDetailMonths.filter(month=>creditDetailMonthIsPast(month,reference));
-  const detailMonths=allDetailMonths.filter(month=>!creditDetailMonthIsPast(month,reference)
-    &&(month.key==='unassigned'||creditViewAllowsMonth(month.key,query.creditView,currentMonth)));
+  const detailMonths=allDetailMonths.filter(month=>!creditDetailMonthIsPast(month,reference));
   const selectableMonths=[...historyMonths,...detailMonths];
   const allUpcomingItems=prepared.upcoming.items.filter(item=>filterMatch(query,item));
   const base={mode,chargeDay,detailMonths,historyMonths};
@@ -63,13 +62,13 @@ export function selectKupaCreditDetail({prepared,query,reference,matches}){
     const focusedItems=mode==='range'
       ?allItems.filter(item=>creditDetailRangeMatch(item,query.creditDateFrom,query.creditDateTo))
       :allItems.filter(item=>creditDetailQuickPeriodMatch(item,mode,reference));
-    return {...base,chargeDay:'all',futureMonths:creditDetailFutureMonths(detailMonths,allUpcomingItems),
+    return {...base,chargeDay:'all',futureMonths:creditDetailFutureMonths(detailMonths),
       detailFocus:null,detailItems:focusedItems.filter(matches),focusedCount:focusedItems.length,
       detailFocusLabel:'',upcomingTotal:0};
   }
   if(mode==='upcoming'){
     const focusedItems=allUpcomingItems.filter(item=>creditDetailDayMatch(item,chargeDay));
-    return {...base,futureMonths:creditDetailFutureMonths(detailMonths,allUpcomingItems),
+    return {...base,futureMonths:creditDetailFutureMonths(detailMonths),
       detailFocus:null,detailItems:focusedItems.filter(matches),focusedCount:focusedItems.length,
       detailFocusLabel:'',upcomingTotal:allUpcomingItems.reduce((sum,item)=>sum+item.amount,0)};
   }
@@ -95,7 +94,7 @@ export function selectKupaCreditDetail({prepared,query,reference,matches}){
   const focusedItems=(detailMonth?.items||[]).filter(item=>(!detailFocus?.cardKey||rowCardKey(item)===detailFocus.cardKey)
     &&creditDetailMonthDayMatch(item,chargeDay));
   const focusRow=detailFocus?.cardKey?detailMonth?.items.find(item=>rowCardKey(item)===detailFocus?.cardKey):null;
-  return {...base,futureMonths:creditDetailFutureMonths(detailMonths,allUpcomingItems,detailFocus?.monthKey||''),
+  return {...base,futureMonths:creditDetailFutureMonths(detailMonths),
     detailFocus,detailItems:focusedItems.filter(matches),focusedCount:focusedItems.length,
     detailFocusLabel:focusRow?.hidden?'כרטיסים מוסתרים':focusRow?.card||'',upcomingTotal:0};
 }

@@ -734,12 +734,12 @@ ok("checkAccount:'all'" in (ROOT/'netunim-kupa/site/assets/js/state/contexts.js'
 credit_detail_controls=(ROOT/'shared/credit-detail-controls.js').read_text(encoding='utf-8')
 ok('aria-label="טווח תצוגת אשראי" data-change="credit-view"' in (K/'site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
    and 'data-change="orders-credit-view"' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8').split('function creditFiltersMarkup',1)[1].split('function creditForecastMarkup',1)[0]
-   and 'creditHistoryMenuMarkup' in (K/'site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
-   and 'creditHistoryMenuMarkup' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8')
-   and 'creditFutureMenuMarkup' in (K/'site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
-   and 'creditFutureMenuMarkup' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8')
-   and 'credit-history-menu' in credit_detail_controls
-   and 'credit-future-menu' in credit_detail_controls
+   and 'creditCombinedMonthMenuMarkup' in (K/'site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
+   and 'creditCombinedMonthMenuMarkup' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8')
+   and 'creditMonthsControl(historyMonths,futureMonths' in (K/'site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
+   and 'creditMonthsControl(historyMonths, futureMonths' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8')
+   and 'credit-combined-month-menu' in credit_detail_controls
+   and 'data-menu-scroll-start' in credit_detail_controls
    and 'credit-detail-month-tabs' not in credit_detail_controls
    and 'creditViewAllowsMonth' in credit_detail_controls
    and 'class="bank-date-menu credit-date-menu"' in credit_detail_controls

@@ -18,7 +18,7 @@ function financialKey(tx){
 
 /** Calendar history is protected conservatively: the protocol has no issuer
  * statement-closed flag. Also protect completed rows whose billing day has
- * elapsed within the current month. Never infer removal authority from success,
+ * arrived within the current month (inclusive of the current billing day). Never infer removal authority from success,
  * recovery mode or an empty array. Late additions/refunds remain supported.
  * @param {Month|undefined} prior @param {Month} next @param {string|null} [reference]
  * @returns {Month} */
@@ -30,7 +30,7 @@ export function mergeCreditMonthSnapshot(prior,next,reference=null){
     const at=[reference,prior.fetchedAt,next.fetchedAt].filter(Boolean).sort().at(-1)||new Date().toISOString();
     const protectedRows=prior.month<at.slice(0,7)?prior.transactions:prior.transactions.filter(tx=>
       tx.status==='completed'&&/^\d{4}-\d{2}-\d{2}/.test(String(tx.processedDate||''))&&
-      String(tx.processedDate).slice(0,10)<at.slice(0,10));
+      String(tx.processedDate).slice(0,10)<=at.slice(0,10));
     if(protectedRows.length){
       const available=new Map();
       for(const tx of next.transactions){const key=financialKey(tx);available.set(key,(available.get(key)||0)+1)}
