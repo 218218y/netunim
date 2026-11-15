@@ -20,6 +20,7 @@ GROUPS = {
         "windows_deploy_contracts.py",
         "supabase_contracts.py",
         "static_contracts.py",
+        "browser_script_units_test.py",
         "cloud_sync_v3_contracts.py",
         "sync_integrity_v5_contracts.py",
         "offline_dependencies_contracts.py",
