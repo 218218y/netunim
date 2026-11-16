@@ -13,6 +13,14 @@ for(const [name,normalize,merge] of [['kupa',kupa,mergeKupa],['orders',orders,me
  assert.equal(retained.transactions.length,1);assert.equal(retained.fetchStatus,'schema_error');
  assert.equal(after.profiles[0].coreComplete,false);assert.ok(after.errors.some(error=>error.code==='CREDIT_HISTORICAL_MONTH_REGRESSION'));
 });
+for(const [name,normalize,merge] of [['kupa',kupa,mergeKupa],['orders',orders,mergeOrders]])test(name+' a rejected month move cannot count both retained and newly placed charge',()=>{
+ const profile={profileId:'P',provider:'max',accounts:[{accountNumber:'C',months:[month]}]};
+ const before=normalize({version:4,profiles:[profile]});
+ const next={...profile,accounts:[{accountNumber:'C',months:[{...month,transactions:[]},{...month,month:'2026-12',transactions:[{...tx,processedDate:'2026-12-20'}]}]}]};
+ const result=merge(before,{profiles:[next],errors:[]});
+ assert.equal(result.profiles[0].accounts[0].months.flatMap(m=>m.transactions).length,1,'retain the account transaction snapshot as a unit on a rejected move');
+ assert.equal(result.profiles[0].coreComplete,false);
+});
 for(const billing of ['2026-11-20','2027-01-20','2024-02-29'])test('completed evidence is retained irrespective of billing date '+billing,()=>{
  const prior={...month,fetchedAt:'2024-01-01T00:00:00Z',month:billing.slice(0,7),transactions:[{...tx,processedDate:billing}]};
  const after=mergeCreditMonthSnapshot(prior,{...prior,transactions:[]},'2024-01-01T00:00:00Z');

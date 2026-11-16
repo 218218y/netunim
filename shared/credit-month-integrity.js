@@ -71,6 +71,7 @@ function sameUnassignedEvidence(old,next){
     (old.installments?.total??null)!==(next.installments?.total??null))return false;
   return old.chargedAmount==null||old.chargedAmount===next.chargedAmount&&old.chargedCurrency===next.chargedCurrency;
 }
+export {sameUnassignedEvidence};
 
 /** Unassigned absence never proves deletion. Consume matching observations once
  * so duplicate issuer IDs and anonymous multiplicity cannot erase a source row.

@@ -107,6 +107,13 @@ function mergeCreditAccountSnapshot(previous,incoming,reference=null){
   if(!previous)return normalizeCreditAccount(incoming);
   const old=normalizeCreditAccount(previous),next=normalizeCreditAccount(incoming),monthMap=new Map(old.months.map(slice=>[slice.month,slice]));
   for(const slice of next.months)monthMap.set(slice.month,mergeCreditMonthSnapshot(monthMap.get(slice.month),slice,reference));
+  // A rejected month replacement invalidates this account transaction snapshot.
+  // Do not mix the retained placement with a proposed placement in another month.
+  if([...monthMap.values()].some(slice=>slice.lastErrorCode===CREDIT_HISTORICAL_MONTH_REGRESSION))
+    return normalizeCreditAccount({...old,months:old.months.map(slice=>{
+      const blocked=monthMap.get(slice.month);return blocked?.lastErrorCode===CREDIT_HISTORICAL_MONTH_REGRESSION
+        ?{...slice,status:blocked.status,fetchStatus:blocked.fetchStatus,lastErrorCode:blocked.lastErrorCode,lastErrorAt:blocked.lastErrorAt}:slice;
+    })});
   const pendingOk=next.pendingStatus==='success',pendingTransactions=pendingOk?next.pendingTransactions:old.pendingTransactions,pendingStatus=pendingOk?'success':next.pendingStatus,pendingFetchedAt=pendingOk?next.pendingFetchedAt:old.pendingFetchedAt,frameOk=next.frameFetchStatus==='success',hadFrame=old.frameFetchedAt||old.balance!==null||old.cardFrame!==null||old.availableCredit!==null;
   const unassigned=reconcileUnassignedCredit(old.unassignedTransactions,next.unassignedTransactions,[...monthMap.values()],reference);
   if(unassigned.blocked)return normalizeCreditAccount({...old,

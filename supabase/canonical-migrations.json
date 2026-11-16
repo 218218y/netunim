@@ -243,6 +243,10 @@
     {
       "version": "20261116080000",
       "name": "credit_posted_retention"
+    },
+    {
+      "version": "20261116100000",
+      "name": "credit_restore_preflight"
     }
   ]
 }

@@ -2,10 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {sha256,readFinanceBackup,financeBackup,creditVersionDiff} from '../shared/finance-history-model.js';
 import {createFinanceHistoryService} from '../shared/finance-history-service.js';
+import {creditRestorePreflight} from '../shared/credit-restore-validation.js';
 const tx={id:'T',date:'2026-10-01',processedDate:'2026-10-10',originalAmount:-100,originalCurrency:'ILS',chargedAmount:-100,chargedCurrency:'ILS'};
 const source=rows=>({bank:{balance:100},creditSync:{version:4,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'1234',months:[{month:'2026-10',transactions:rows}],unassignedTransactions:[]}]}]}});
-async function fixture(){
-  const target=source([tx]),wire=JSON.stringify(target),hash=await sha256(wire),calls=[],files=[];let live={revision:5,state:source([{...tx,id:'other'}])},active=true,closed=0;
+async function fixture(changeTarget=()=>{}){
+  const target=source([tx]);changeTarget(target);
+  const wire=JSON.stringify(target),hash=await sha256(wire),calls=[],files=[];let live={revision:5,state:source([{...tx,id:'other'}])},active=true,closed=0;
   live.state.bank.balance=900;
   const guard=()=>assert.equal(active,true,'former owner rejected');
   const request=async(path,options)=>{guard();const args=JSON.parse(options.body);calls.push({path,args});
@@ -24,7 +26,8 @@ test('portable export validates original wire bytes, financial shape and tamperi
   await assert.rejects(readFinanceBackup({...backup,stateText:text+' '}));
   await assert.rejects(readFinanceBackup({...backup,revision:0}));
   const invalid=JSON.stringify({creditSync:{profiles:'invalid'}});
-  await assert.rejects(readFinanceBackup({...backup,stateText:invalid,sha256:await sha256(invalid)}));
+  const archived=await readFinanceBackup({...backup,stateText:invalid,sha256:await sha256(invalid)});
+  assert.equal(creditRestorePreflight(archived).ok,false,'transport validation preserves malformed archives for export; ordinary restore is separately blocked');
 });
 test('comparison detects equal-total replacements and preserves duplicate multiplicity',()=>{
   const diff=creditVersionDiff(source([tx,tx]),source([{...tx,id:'other'},tx]));
@@ -54,4 +57,20 @@ test('discarded account previews cannot export or restore even under a later val
   const f=await fixture(),preview=await f.service.preview(2,f.guard);f.service.clear();
   await assert.rejects(f.service.exportVersion(preview,()=>{}));await assert.rejects(f.service.restore(preview,'Verified issuer reconciliation',()=>{}));
   assert.equal(f.files.length,0);
+});
+test('invalid retained identity blocks restore before lease acquisition, while archive export remains available',async()=>{
+  const f=await fixture(state=>state.creditSync.profiles.push(structuredClone(state.creditSync.profiles[0])));
+  const preview=await f.service.preview(2,f.guard);assert.equal(preview.validation.ok,false);
+  await f.service.exportVersion(preview,f.guard);assert.equal(f.files.length,1);
+  await assert.rejects(f.service.restore(preview,'Verified issuer reconciliation',f.guard),/תקינה/);
+  assert.equal(f.closed(),0);assert.equal(f.calls.some(call=>call.path.endsWith('restore_finance_credit_version')),false);
+});
+test('truncated comparison requires export of the complete diff and explicit review',async()=>{
+  const f=await fixture(state=>state.creditSync.profiles[0].accounts[0].months[0].transactions=Array.from({length:501},(_,i)=>({...tx,id:'row-'+i})));
+  const preview=await f.service.preview(2,f.guard);
+  await assert.rejects(f.service.restore(preview,'Verified issuer reconciliation',f.guard),/המלא/);
+  await f.service.exportComparison(preview,f.guard);
+  assert.equal(f.files[0].body.diff.changes.length,502);
+  await assert.rejects(f.service.restore(preview,'Verified issuer reconciliation',f.guard),/המלא/);
+  const result=await f.service.restore(preview,'Verified issuer reconciliation',f.guard,{fullReview:true});assert.equal(result.displayConfirmed,true);
 });

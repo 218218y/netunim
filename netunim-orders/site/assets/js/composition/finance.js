@@ -143,7 +143,7 @@ export function createOrdersFinanceCapability({
     ]);
     requireMethods('checks', checks, ['syncSharedChecksFromCloud', 'saveSharedChecksToCloud', 'hasLocalWork']);
     if (typeof toast !== 'function') throw new TypeError('orders_finance_toast_required');
-    historyPorts={subscribeAccountScope:auth.subscribeAccountScope,request:(...args)=>auth.supaFetch(...args),readHead:(...args)=>cloud.readFinanceSyncDocument(...args),capture:()=>operationScope.capture(),
+    historyPorts={projectCredit:normalizeCreditSync,subscribeAccountScope:auth.subscribeAccountScope,request:(...args)=>auth.supaFetch(...args),readHead:(...args)=>cloud.readFinanceSyncDocument(...args),capture:()=>operationScope.capture(),
       refresh:options=>cache.refreshKupaReadout({force:true,renderIfChanged:true,...options}),leases:{claim:(...args)=>cloud.claimFinanceSyncLease(...args),release:(...args)=>cloud.releaseFinanceSyncLease(...args)}};
     const syncLeases = {
       claim:(...args) => cloud.claimFinanceSyncLease(...args),

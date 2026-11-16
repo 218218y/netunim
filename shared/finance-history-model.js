@@ -1,3 +1,4 @@
+import {creditRestoreImpact} from './finance-history-impact.js';
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 export function financialState(value){
   if(!object(value)||!object(value.creditSync)||!Array.isArray(value.creditSync.profiles))throw Error('מבנה נתוני האשראי אינו תקין');
@@ -18,7 +19,9 @@ export async function readFinanceBackup(value){
   if(!object(value)||value.format!=='netunim-finance-backup'||value.version!==1||value.document!=='main'||
     !Number.isSafeInteger(value.revision)||value.revision<1||typeof value.stateText!=='string'||value.stateText.length>30_000_000||
     !/^[a-f0-9]{64}$/.test(value.sha256)||await sha256(value.stateText)!==value.sha256)throw Error('קובץ Finance או בדיקת התקינות שלו אינם תקינים');
-  return financialState(JSON.parse(value.stateText));
+  const state=JSON.parse(value.stateText);
+  if(!object(state))throw Error('מבנה מסמך Finance אינו תקין');
+  return state;
 }
 export async function financeBackup(row){
   const value={format:'netunim-finance-backup',version:1,document:'main',revision:Number(row.revision),exportedAt:new Date().toISOString(),stateText:row.state_text,sha256:row.state_hash};
@@ -39,7 +42,7 @@ export function creditEvidence(state){
   return rows;
 }
 function key(row){const tx=row.tx;return JSON.stringify([row.profile,row.provider,row.card,row.month,tx.id||'',tx.date,tx.processedDate,tx.type,tx.status,tx.originalAmount,tx.originalCurrency,tx.chargedAmount,tx.chargedCurrency,tx.installments?.number??null,tx.installments?.total??null,tx.foreignTransaction,tx.chargeAmountStatus,tx.id?'':tx.description])}
-export function creditVersionDiff(before,after){
+export function creditVersionDiff(before,after,options={}){
   const old=creditEvidence(before),next=creditEvidence(after),available=new Map(),changes=[];
   for(const row of next){const id=key(row);if(!available.has(id))available.set(id,[]);available.get(id).push(row)}
   for(const row of old){const same=available.get(key(row));if(same?.length)same.pop();else changes.push({...row,kind:'removed'})}
@@ -51,5 +54,5 @@ export function creditVersionDiff(before,after){
     const group=groups.get(id)[side];group.count++;
     if(typeof row.tx.chargedAmount==='number'&&Number.isFinite(row.tx.chargedAmount)&&row.tx.chargedCurrency==='ILS')group.ilsCents+=Math.round(row.tx.chargedAmount*100);else group.unknown++;
   }
-  return {beforeCount:old.length,afterCount:next.length,groups:[...groups.values()],changes};
+  return {beforeCount:old.length,afterCount:next.length,groups:[...groups.values()],changes,...creditRestoreImpact(before,after,options)};
 }
