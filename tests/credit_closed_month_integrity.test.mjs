@@ -129,14 +129,15 @@ for (const [name, merge] of [['Kupa', kupaMerge], ['Orders', ordersMerge]]) {
     assert.equal(restored.profiles[0].accounts[0].months.find(row=>row.month==='2026-11').status,'fresh');
   });
 
-  test(`${name} accepts complete reordered history, late charges and refunds; current month stays mutable`, () => {
+  test(`${name} accepts complete reordered history, late charges and refunds; posted current-month history is retained`, () => {
     const late = {...completed('2026-10', 'refund'), chargedAmount: 25};
     const result = merge(initial(), envelope([original[1], late, {...original[0], description:'Updated label'}]));
     assert.equal(result.profiles[0].accounts[0].months[0].transactions.length, 3);
     assert.equal(result.errors.length, 0);
     const open = merge({cardMappings:{'P:0042':{included:true}}},envelope(original,'2026-10-09T12:00:00Z'));
     const current = merge(open, envelope([], '2026-10-09T18:00:00Z'));
-    assert.deepEqual(monthlyIds(current.profiles[0].accounts[0], '2026-10'), []);
+    assert.deepEqual(monthlyIds(current.profiles[0].accounts[0], '2026-10'), ['first','second']);
+    assert.equal(current.errors[0].code,'CREDIT_HISTORICAL_MONTH_REGRESSION');
     const elapsed = merge(initial(), envelope([], '2026-10-29T12:00:00Z'));
     assert.deepEqual(monthlyIds(elapsed.profiles[0].accounts[0], '2026-10'), ['first','second']);
     assert.equal(elapsed.errors[0].code,'CREDIT_HISTORICAL_MONTH_REGRESSION');

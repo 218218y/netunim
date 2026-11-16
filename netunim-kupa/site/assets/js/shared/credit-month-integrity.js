@@ -29,8 +29,8 @@ function billingObservationDay(at){
 }
 
 /** Calendar history is protected conservatively: the protocol has no issuer
- * statement-closed flag. Also protect completed rows whose billing day has
- * arrived within the current month (inclusive of the current billing day). Never infer removal authority from success,
+ * statement-closed flag. Protect every retained completed row, including future
+ * billing dates. A scheduled debit does not make posted evidence disposable. Never infer removal authority from success,
  * recovery mode or an empty array. Late additions/refunds remain supported.
  * @param {Month|undefined} prior @param {Month} next @param {string|null} [reference]
  * @returns {Month} */
@@ -42,8 +42,7 @@ export function mergeCreditMonthSnapshot(prior,next,reference=null){
     const at=[reference,prior.fetchedAt,next.fetchedAt].filter(Boolean).sort().at(-1)||new Date().toISOString();
     const day=billingObservationDay(at);
     const protectedRows=prior.month<day.slice(0,7)?prior.transactions:prior.transactions.filter(tx=>
-      tx.status==='completed'&&/^\d{4}-\d{2}-\d{2}/.test(String(tx.processedDate||''))&&
-      String(tx.processedDate).slice(0,10)<=day);
+      tx.status==='completed');
     if(protectedRows.length){
       const available=new Map();
       for(const tx of next.transactions){const key=financialKey(tx);available.set(key,(available.get(key)||0)+1)}

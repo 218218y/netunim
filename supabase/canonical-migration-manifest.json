@@ -298,5 +298,10 @@
     "version": "20261115213000",
     "name": "credit_profile_identity",
     "sha256": "a820c1908afdb92456c09703574a3b716dd965dd3405890a5aa444d1dc7eb0d9"
+  },
+  {
+    "version": "20261116080000",
+    "name": "credit_posted_retention",
+    "sha256": "8a38790fe86ef911f5e260215e77431472ca25e2ea38c7a6220ab095a3f2ad01"
   }
 ]
