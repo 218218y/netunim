@@ -320,7 +320,7 @@ export function normalizeMaxRawTransaction(raw = {}, categories = new Map()) {
     original = maxNumber(raw.originalAmount),
     timeEvidence = maxRawTransactionTime(raw),
     foreignTransaction = maxForeignSignalLabels(raw).length > 0;
-  if (completed && !paymentDate)
+  if (completed && !paymentDate || paymentRaw != null && typeof paymentRaw !== 'string')
     throw safeError('MAX החזירה תאריך חיוב שאינו תקין. העסקה לא תועבר לרשימה ללא חודש חיוב.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });
   return {
     identifier: maxRawIdentifier(raw, installments),

@@ -43,7 +43,7 @@ test('MAX schema failures preserve saved pending and completed rows in both real
  }
 });
 test('MAX rejects nonempty invalid or impossible billing dates instead of completing an unassigned row',()=>{
- for(const paymentDate of ['not-a-date','2026-02-30','2026-04-31','2026-11-20T24:00:00','31/02/2026',true,0])
+ for(const paymentDate of ['not-a-date','2026-02-30','2026-04-31','2026-11-20T24:00:00','31/02/2026',true,false,0,[],{}])
   assert.throws(()=>normalizeMaxRawTransaction(raw({paymentDate})),schema,String(paymentDate));
 });
 test('MAX explicit empty transaction lists remain authoritative with recognized nonfinancial metadata',async()=>{
