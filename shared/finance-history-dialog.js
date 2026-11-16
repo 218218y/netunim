@@ -11,7 +11,15 @@ function settingValue(value){
   return typeof value==='object'?JSON.stringify(value):String(value);
 }
 function purchaseEvidence(tx){
-  return `<strong>${esc(tx.description||'בית עסק לא נמסר')}</strong><br>מזהה מנפיק: ${esc(tx.id||tx.identifier||'לא נמסר')}<br>תאריך מקור: ${esc(tx.date||'לא נמסר')}<br>תאריך רכישה: ${esc(tx.transactionDate||'לא נמסר')}<br>שעת רכישה: ${esc(tx.transactionTime||'לא נמסרה')}<br>תאריך חיוב: ${esc(tx.processedDate||'ללא שיוך')}<br>סוג: ${esc(tx.type||'לא נמסר')} · מט״ח: ${tx.foreignTransaction===true?'כן':tx.foreignTransaction===false?'לא':'לא נמסר'}<br>מצב: ${esc(tx.status||'לא נמסר')} · ${esc(tx.chargeAmountStatus||'ללא תווית סכום')}<br>תשלום: ${esc(tx.installments?.number??'—')}/${esc(tx.installments?.total??'—')}${tx.memo?`<br>הערה: ${esc(tx.memo)}`:''}`;
+  return `<strong>${esc(tx.description||'בית עסק לא נמסר')}</strong>
+<br>מזהה מנפיק: ${esc(tx.id||tx.identifier||'לא נמסר')}
+<br>תאריך מקור: ${esc(tx.date||'לא נמסר')}
+<br>תאריך רכישה: ${esc(tx.transactionDate||'לא נמסר')}
+<br>שעת רכישה: ${esc(tx.transactionTime||'לא נמסרה')}
+<br>תאריך חיוב: ${esc(tx.processedDate||'ללא שיוך')}
+<br>סוג: ${esc(tx.type||'לא נמסר')} · מט״ח: ${tx.foreignTransaction===true?'כן':tx.foreignTransaction===false?'לא':'לא נמסר'}
+<br>מצב: ${esc(tx.status||'לא נמסר')} · ${esc(tx.chargeAmountStatus||'ללא תווית סכום')}
+<br>תשלום: ${esc(tx.installments?.number??'—')}/${esc(tx.installments?.total??'—')}${tx.memo?`<br>הערה: ${esc(tx.memo)}`:''}`;
 }
 export function createFinanceHistoryDialog(ports){
   const tasks=createRuntimeTaskOwner(),leases=createFinanceLeaseOwner({leases:ports.leases,authority:{capture:ports.capture}});
