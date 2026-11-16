@@ -1,0 +1,14 @@
+{
+  "netunim-kupa/site/assets/js/composition/credit.js": [
+    {
+      "before": "      refresh:(...args)=>cloud.refresh(...args),leases:{claim:(...args)=>cloud.claimLease(...args),release:(...args)=>cloud.releaseLease(...args)}};\n    connections=createCreditConnectionOwner({\n      protocol:{minimumBridgeVersion:73,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},\n      pairing:{token:()=>bridge.getBridgeToken()},\n      transport:{readStatus:()=>bridge.creditStatus(),readDiagnostics:()=>bridge.creditDiagnostics(),\n",
+      "after": "      refresh:(...args)=>cloud.refresh(...args),leases:{claim:(...args)=>cloud.claimLease(...args),release:(...args)=>cloud.releaseLease(...args)}};\n    connections=createCreditConnectionOwner({\n      protocol:{minimumBridgeVersion:84,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},\n      pairing:{token:()=>bridge.getBridgeToken()},\n      transport:{readStatus:()=>bridge.creditStatus(),readDiagnostics:()=>bridge.creditDiagnostics(),\n"
+    }
+  ],
+  "netunim-orders/site/assets/js/composition/finance.js": [
+    {
+      "before": "      presentation:{toast:(...args) => { if (!disposed) toast(...args); }},\n      effects:connectionEffects,\n      protocol:{minimumBridgeVersion:73,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},\n    });\n    bankConnections = createOrdersBankConnectionOwner({\n",
+      "after": "      presentation:{toast:(...args) => { if (!disposed) toast(...args); }},\n      effects:connectionEffects,\n      protocol:{minimumBridgeVersion:84,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},\n    });\n    bankConnections = createOrdersBankConnectionOwner({\n"
+    }
+  ]
+}

@@ -31,7 +31,7 @@ FLOW = r"""(async()=>{
  };
  cloudTransport.readSupabaseDocument=async()=>({revision:session.dbRevision,financeRevision:session.financeRevision,state:structuredClone(state)});
  globalThis.fetch=(url,options)=>{
-   if(String(url).includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]})));
+   if(String(url).includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:84,contractVersion:2,profiles:[{profileId:'P'}]})));
    if(String(url).includes('/v2/credit/sync')){entered.resolve();return provider.promise}
    return originalFetch(url,options);
  };

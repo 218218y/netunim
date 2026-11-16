@@ -40,6 +40,7 @@ const fixture = JSON.parse(
 );
 const httpReceiptPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/credit-http-receipt-policies.json',import.meta.url),'utf8'));
 const providerUpdatePolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/credit-provider-updates-policies.json',import.meta.url),'utf8'));
+const observationPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/credit-provider-observation-policies.json',import.meta.url),'utf8'));
 const monthIntegrityPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/credit-month-integrity-policies.json',import.meta.url),'utf8'));
 
 test('credit provider methods, normalization, wire constants and fallback policy match the reviewed baseline', () => {
@@ -72,6 +73,9 @@ test('credit provider methods, normalization, wire constants and fallback policy
     assert.equal(reviewed[name],before,name);
     reviewed[name]=after;
   }
+  // Match the same retained observations used by both feeds and the billing engine.
+  assert.deepEqual(Object.keys(observationPolicies).sort(),['genericMonthlyAccount','parseVisaCalMonthData'].sort());
+  for(const [name,{before,after}] of Object.entries(observationPolicies)){assert.equal(reviewed[name],before,name);reviewed[name]=after}
   assert.deepEqual(creditAdapterPolicyHashes(sources()).policies,reviewed);
   assert.equal(Object.keys(fixture.policies).length, 118);
 });

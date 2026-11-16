@@ -10,7 +10,7 @@ function fixture(){
   const preferences={read:()=>({ok:true,value:{enabled:false,mode:'smart',attemptAt:0}}),setEnabled:noop,setMode:noop,markAttempt:noop,reset:noop};
   const effects={writeText:async()=>events.push('clipboard'),saveJson:()=>events.push('download'),dispose:()=>events.push('effects disposed')};
   const credit=createKupaCreditRuntime({model,ui:{},platform:{effects,preferences,timers}});
-  const bridge={getBridgeToken:()=> 'paired',creditStatus:async()=>({bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]})};
+  const bridge={getBridgeToken:()=> 'paired',creditStatus:async()=>({bridgeVersion:84,contractVersion:2,profiles:[{profileId:'P'}]})};
   const ports={bridge,authority:{scope:{capture:()=>noop},automaticAccess:()=> 'local'},
     cloud:{refresh:async()=>({verified:true,state:model.state}),commit:async mutate=>{events.push('commit');return {saved:true,row:{state:mutate(model.state)}}},
       claimLease:async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1}),releaseLease:async(_kind,_token,{assertCurrent})=>{assertCurrent();events.push('release')}},
@@ -140,4 +140,12 @@ test('accepted Credit profile save cannot close a replacement connection form',a
     modal:(_title,_body,_label,save)=>{nodes=Object.fromEntries(fieldIds.map(id=>[id,Object.assign(new EventTarget(),{value:id==='ccProvider'?'max':''})]));for(const selector of ['.cc-username','.cc-id','.cc-card6','.cc-isracard-note'])nodes[selector]={hidden:false};nodes.creditConnectionForm=Object.assign(new EventTarget(),{isConnected:true});nodes.modalBackdrop={classList:{contains:()=>true}};forms.push(save)}});
   dialog.open();const pending=forms[0]();await entered.promise;dialog.open();held.resolve();await pending;
   assert.ok(!f.events.includes('closed replacement'),'completion of old form closed replacement modal');dialog.dispose();f.credit.runtime.dispose();
+});
+
+test('production Credit composition refuses Bridge 83 before scraping or saving',async()=>{
+ const f=fixture();let providerRuns=0;
+ f.ports.bridge.creditStatus=async()=>({bridgeVersion:83,contractVersion:2,profiles:[{profileId:'P'}]});
+ f.ports.bridge.syncCreditCards=async()=>{providerRuns++;return {profiles:[]}};
+ f.bind();await f.credit.commands.refreshCreditSync();
+ assert.equal(providerRuns,0);assert.ok(!f.events.includes('commit'));f.credit.runtime.dispose();
 });

@@ -17,6 +17,7 @@ const pure = {
     './credit-adapter-wire.mjs',
     './credit-transaction-model.mjs',
     './credit-core-values.mjs',
+    './credit-transaction-identity.mjs',
   ],
   'max-model': [
     './credit-value-codec.mjs',

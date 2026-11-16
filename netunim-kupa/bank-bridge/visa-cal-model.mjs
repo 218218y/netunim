@@ -9,6 +9,7 @@ import {
 import { CAL_FRAMES_NOT_RELEVANT_STATUS, CAL_TRANSACTION_TYPES } from './credit-adapter-wire.mjs';
 import { normalizeCreditScrapeTransaction } from './credit-transaction-model.mjs';
 import {assertCreditNumericInput} from './credit-core-values.mjs';
+import {creditObservationKey} from './credit-transaction-identity.mjs';
 
 function shiftMonthDate(value, delta) {
   const iso = safeDate(value);
@@ -177,7 +178,7 @@ export function parseVisaCalMonthData(data, { startDate = null } = {}) {
         const seen = new Set(),
           known = ilsRows.reduce((sum, tx) => {
             if (tx.chargeAmountStatus !== 'reported') return sum;
-            const key = tx.id ? `${tx.id}|${tx.installments?.number || 1}` : '';
+            const key = tx.id ? creditObservationKey(tx) : '';
             if (key && seen.has(key)) return sum;
             if (key) seen.add(key);
             return sum - Math.round(tx.chargedAmount * 100);
@@ -198,7 +199,7 @@ export function parseVisaCalMonthData(data, { startDate = null } = {}) {
         const seen = new Set(),
           knownCents = dayRows.reduce((sum, tx) => {
             if (!calIsIls(tx.chargedCurrency)) return sum;
-            const key = tx.id ? `${tx.id}|${tx.processedDate}|${tx.installments?.number || 1}` : '';
+            const key = tx.id ? creditObservationKey(tx) : '';
             if (key && seen.has(key)) return sum;
             if (key) seen.add(key);
             return sum - Math.round(tx.chargedAmount * 100);
