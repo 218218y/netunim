@@ -19,6 +19,8 @@ with IsolatedPostgres(schema_files=sorted((ROOT/'supabase/migrations').glob('*.s
     assert len(restored['state']['creditSync']['profiles'][0]['accounts'][0]['months'][0]['transactions'])==2
     anonymous={**tx,'id':'','processedDate':None}
     reject('overlap',state([{**anonymous,'processedDate':tx['processedDate']}],[anonymous]),0,'credit_duplicate_placement')
+    assert save('downgrade',state([], [{**tx,'processedDate':None}]),0,'seed')['revision']==1
+    reject('downgrade',state([{**tx,'status':'pending'}]),1,'credit_unassigned_regression')
     precise={**anonymous,'transactionTime':'12:34'}
     assert save('anonymous',state([], [precise]),0,'seed')['revision']==1
     assert save('anonymous',state([{**precise,'processedDate':tx['processedDate']}]),1,'transfer')['revision']==2

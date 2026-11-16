@@ -13,7 +13,7 @@ language sql immutable set search_path=pg_catalog as $f$
  select coalesce(nullif(old_tx->>'id',''),old_tx->>'identifier','')=coalesce(nullif(new_tx->>'id',''),new_tx->>'identifier','')
  and coalesce(old_tx->>'date','')<>'' and old_tx->>'date'=new_tx->>'date'
  and coalesce(nullif(old_tx->>'transactionDate',''),old_tx->>'date','')=coalesce(nullif(new_tx->>'transactionDate',''),new_tx->>'date','')
- and (coalesce(nullif(old_tx->>'id',''),old_tx->>'identifier','')<>'' or coalesce(old_tx->>'description','')<>'')
+
  and coalesce(old_tx->>'description','')=coalesce(new_tx->>'description','')
  and coalesce(old_tx->>'transactionTime','')=coalesce(new_tx->>'transactionTime','')
  and old_tx->>'originalAmount' is not null and coalesce(old_tx->>'originalCurrency','')<>''
@@ -24,8 +24,13 @@ language sql immutable set search_path=pg_catalog as $f$
 $f$;
 create or replace function netunim_internal.credit_source_matches(old_tx jsonb,new_tx jsonb) returns boolean
 language sql immutable set search_path=pg_catalog,netunim_internal as $f$
- select netunim_internal.credit_source_evidence(old_tx,new_tx) and
- (coalesce(nullif(old_tx->>'id',''),old_tx->>'identifier','')<>'' or coalesce(old_tx->>'transactionTime','')~'^([01][0-9]|2[0-3]):[0-5][0-9]$')
+ select coalesce(old_tx->>'status','completed')=coalesce(new_tx->>'status','completed')
+ and coalesce(old_tx->>'type','normal')=coalesce(new_tx->>'type','normal')
+ and coalesce(old_tx->'foreignTransaction','false')=coalesce(new_tx->'foreignTransaction','false')
+ and (old_tx->>'chargeAmountStatus' is distinct from 'not_billed' or new_tx->>'chargeAmountStatus'='not_billed')
+ and (old_tx->>'chargeAmountStatus' is distinct from 'missing' or new_tx->>'chargedAmount' is null or new_tx->>'chargeAmountStatus'='reported')
+ and netunim_internal.credit_source_evidence(old_tx,new_tx) and
+ (coalesce(nullif(old_tx->>'id',''),old_tx->>'identifier','')<>'' or coalesce(old_tx->>'description','') not in ('','עסקת אשראי') and coalesce(old_tx->>'transactionTime','')~'^([01][0-9]|2[0-3]):[0-5][0-9]$')
 $f$;
 create function netunim_internal.credit_placement_overlap(source jsonb,assigned jsonb) returns boolean
 language sql immutable set search_path=pg_catalog,netunim_internal as $f$

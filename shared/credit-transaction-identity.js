@@ -25,7 +25,7 @@ export function creditObservationKey(tx){
  * @param {Transaction} old @param {Transaction} next */
 export function sameCreditSource(old,next){
   return id(old)===id(next)&&!!old.date&&old.date===next.date&&purchase(old)===purchase(next)&&
-    (!!id(old)||!!merchant(old))&&merchant(old)===merchant(next)&&
+    merchant(old)===merchant(next)&&
     (old.transactionTime||'')===(next.transactionTime||'')&&
     old.originalAmount!=null&&!!old.originalCurrency&&old.originalAmount===next.originalAmount&&
     old.originalCurrency===next.originalCurrency&&parts(old)===parts(next)&&
@@ -34,9 +34,15 @@ export function sameCreditSource(old,next){
 /** ID-less date/merchant/amount equality alone is ambiguous. Only an explicit
  * purchase minute can authorize an automatic anonymous transfer.
  * @param {Transaction} tx */
-export function preciseCreditSource(tx){return !!id(tx)||/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(tx.transactionTime||''))}
+export function preciseCreditSource(tx){return !!id(tx)||!!merchant(tx)&&merchant(tx)!=='עסקת אשראי'&&/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(tx.transactionTime||''))}
 /** @param {Transaction} old @param {Transaction} next */
-export function creditSourceTransfer(old,next){return sameCreditSource(old,next)&&preciseCreditSource(old)}
+export function creditSourceTransfer(old,next){
+  return (old.status||'completed')===(next.status||'completed')&&(old.type||'normal')===(next.type||'normal')&&
+    (old.foreignTransaction===true)===(next.foreignTransaction===true)&&
+    (old.chargeAmountStatus!=='not_billed'||next.chargeAmountStatus==='not_billed')&&
+    (old.chargeAmountStatus!=='missing'||next.chargedAmount==null||next.chargeAmountStatus==='reported')&&
+    sameCreditSource(old,next)&&preciseCreditSource(old);
+}
 /** This detects suspicion, not authority to delete either source.
  * @param {Transaction} source @param {Transaction} assigned */
 export function creditPlacementOverlap(source,assigned){return sameCreditSource(source,assigned)||sameCreditSource(assigned,source)}

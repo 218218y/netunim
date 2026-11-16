@@ -76,3 +76,9 @@ for(const [name,merge] of [['kupa',kupa],['orders',orders]]){
   assert.equal(bill(reviewed).reduce((sum,r)=>sum+r.amount,0),100);
  });
 }
+for(const [name,merge] of [['kupa',kupa],['orders',orders]])test(name+' an assignment cannot downgrade retained completed evidence to a pending authorization',()=>{
+ const source=tx({processedDate:null}),old=merge(seed,payload([],[source]));
+ const next=merge(old,payload([{...source,status:'pending',processedDate:'2026-11-20'}]));
+ assert.equal(next.profiles[0].coreComplete,false);
+ assert.equal(next.profiles[0].accounts[0].unassignedTransactions[0].status,'completed');
+});
