@@ -1,0 +1,14 @@
+{
+  "MAX_PROVIDER_SCHEMA_VERSION": {
+    "before": "3d3cd471d88f86613a42c624c52638892eeac43b6f721c6d4a951c72998abb62",
+    "after": "141ef93fe13186410621953227453c1fa0d63177d1a15a276c1d2eb7ebc8e09e"
+  },
+  "maxCandidateKey": {
+    "before": "775059001eb56a2cf5449d75686f3b9b3aff5c5347d2e10be8f0f629ae21cc2d",
+    "after": "e3ed7c2f4d9b5a73207bb510254d2ee0c32d17e83e52f0171a27925a451c089d"
+  },
+  "extractMaxTransactionCandidates": {
+    "before": "863b173558f03679c35365f2ffd3a8ecc41dc436a602dd67afb322efb029c518",
+    "after": "e579afbce5654c3fe7363b2e80a28bcc72144feaff396bb2887190831c5cb62b"
+  }
+}
