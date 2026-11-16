@@ -18,28 +18,19 @@ function maxNumber(value) {
 }
 
 function maxProviderDate(value) {
-  if (value === null || value === undefined || String(value).trim() === '') return null;
-  const raw = String(value).trim(),
-    dmy = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(raw);
-  if (dmy) {
-    const [, day, month, year, hour = '0', minute = '0', second = '0'] = dmy,
-      time = Date.UTC(
-        Number(year),
-        Number(month) - 1,
-        Number(day),
-        Number(hour),
-        Number(minute),
-        Number(second)
-      ),
-      date = new Date(time);
-    if (
-      date.getUTCFullYear() === Number(year) &&
-      date.getUTCMonth() === Number(month) - 1 &&
-      date.getUTCDate() === Number(day)
-    )
-      return date.toISOString();
-  }
-  return safeDate(raw);
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const raw = value.trim(),
+    dmy = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(raw),
+    iso = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/.exec(raw),
+    match = dmy || iso;
+  if (!match) return null;
+  const year = Number(dmy ? match[3] : match[1]), month = Number(match[2]), day = Number(dmy ? match[1] : match[3]),
+    hour = Number(match[4] || 0), minute = Number(match[5] || 0), second = Number(match[6] || 0),
+    leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0),
+    days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > days[month - 1] || hour > 23 || minute > 59 || second > 59) return null;
+  const pad = n => String(n).padStart(2, '0');
+  return safeDate(dmy ? `${match[3]}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}:${pad(second)}Z` : raw.replace(' ', 'T'));
 }
 
 function maxChargedCurrency(value) {
@@ -106,15 +97,41 @@ function maxRawLooksLikeTransaction(raw) {
   );
 }
 
+function maxMetadataArray(path, rows) {
+  // These non-transaction array shapes were verified in actual MAX diagnostic
+  // structure evidence. New nonempty shapes need review, never a guessed empty.
+  const fields = {
+    'result.totalCycle': ['currency', 'futureDebit', 'pastDebit', 'totalAmount'],
+    'result.categories': ['currency', 'id', 'ilsSum', 'sum'],
+    'result.barsGraphDetailsResult.monthlySummary': ['actualDebitSumNIS', 'date', 'isFutureDebit'],
+    'result.cancelDenialData.cancelDenialReasons': ['reasonId', 'reasonText'],
+  }[path];
+  return !!fields && rows.every(row => row && typeof row === 'object' && !Array.isArray(row) &&
+    Object.keys(row).every(key => fields.includes(key)) &&
+    Object.values(row).every(value => value === null || ['string', 'number', 'boolean'].includes(typeof value)));
+}
+
 function maxWalkTransactionCandidates(
   value,
   path = 'result',
   out = [],
   arrayEvidence = [],
-  depth = 0
+  depth = 0,
+  transactionLists = []
 ) {
-  if (depth > 10 || value === null || value === undefined) return { out, arrayEvidence };
+  if (value === null || value === undefined) return { out, arrayEvidence, transactionLists };
+  if (depth > 10) {
+    if (typeof value === 'object' && Object.keys(value).length)
+      throw safeError('מבנה פירוט MAX חורג מעומק הפענוח הנתמך. הריענון נעצר.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });
+    return { out, arrayEvidence, transactionLists };
+  }
   if (Array.isArray(value)) {
+    const knownList = path.endsWith('.transactions') || path === 'result.foreignAndCurrency.chargedNow',
+      recognizedRows = value.length > 0 && value.every(maxRawLooksLikeTransaction);
+    if (value.length && !recognizedRows && (knownList || !maxMetadataArray(path, value)))
+      throw safeError('MAX החזירה רשימה שאינה ריקה אך לא ניתן לפענח את כל רשומותיה. הנתונים הקודמים נשמרו.',
+        'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });
+    if (knownList || recognizedRows) transactionLists.push(path);
     const firstObject = value.find(
       (item) => item && typeof item === 'object' && !Array.isArray(item)
     );
@@ -124,16 +141,19 @@ function maxWalkTransactionCandidates(
       sampleKeys: firstObject ? Object.keys(firstObject).sort().slice(0, 50) : [],
     });
     value.forEach((item, index) =>
-      maxWalkTransactionCandidates(item, `${path}[${index}]`, out, arrayEvidence, depth + 1)
+      maxWalkTransactionCandidates(item, `${path}[${index}]`, out, arrayEvidence, depth + 1, transactionLists)
     );
-    return { out, arrayEvidence };
+    return { out, arrayEvidence, transactionLists };
   }
-  if (typeof value !== 'object') return { out, arrayEvidence };
+  if (typeof value !== 'object') return { out, arrayEvidence, transactionLists };
   if (maxRawLooksLikeTransaction(value))
     out.push({ raw: value, path: text(path.replace(/\[\d+\]/g, '[]'), 180) });
-  for (const [key, child] of Object.entries(value))
-    maxWalkTransactionCandidates(child, `${path}.${key}`, out, arrayEvidence, depth + 1);
-  return { out, arrayEvidence };
+  for (const [key, child] of Object.entries(value)) {
+    if ((key === 'transactions' || path === 'result.foreignAndCurrency' && key === 'chargedNow') && !Array.isArray(child))
+      throw safeError('רשימת התנועות בפירוט MAX אינה מערך תקין. הנתונים הקודמים נשמרו.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });
+    maxWalkTransactionCandidates(child, `${path}.${key}`, out, arrayEvidence, depth + 1, transactionLists);
+  }
+  return { out, arrayEvidence, transactionLists };
 }
 
 function maxCandidateKey(raw = {}, tx = normalizeCreditScrapeTransaction(normalizeMaxRawTransaction(raw))) {
@@ -194,25 +214,12 @@ function maxCandidateAudit(item = {}) {
 
 export function extractMaxTransactionCandidates(data = {}) {
   const result = data && typeof data === 'object' && !Array.isArray(data) ? data.result : null;
-  if (!result || typeof result !== 'object')
-    return {
-      transactions: [],
-      evidence: {
-        resultPresent: false,
-        resultKeys: [],
-        arrayPaths: [],
-        legacyTransactionsCount: 0,
-        candidateCount: 0,
-        candidatePaths: [],
-        candidateAccountSummary: [],
-        foreignSignalCandidateCount: 0,
-        offCycleCandidateCount: 0,
-        candidateAuditSamples: [],
-        candidateAuditTruncated: false,
-      },
-    };
-  const { out, arrayEvidence } = maxWalkTransactionCandidates(result),
-    seen = new Set(),
+  if (!result || typeof result !== 'object' || Array.isArray(result))
+    throw safeError('MAX לא החזירה מעטפת פירוט מזוהה. הריענון נעצר ללא החלפת הנתונים הקודמים.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });
+  const { out, arrayEvidence, transactionLists } = maxWalkTransactionCandidates(result);
+  if (!transactionLists.length)
+    throw safeError('לא נמצאה רשימת תנועות מזוהה בתשובת MAX. אין ראיה לחודש ריק.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });
+  const seen = new Set(),
     sources = new Map(),
     cards = new Map(),
     anonymousPaths = new Map(),
@@ -313,6 +320,8 @@ export function normalizeMaxRawTransaction(raw = {}, categories = new Map()) {
     original = maxNumber(raw.originalAmount),
     timeEvidence = maxRawTransactionTime(raw),
     foreignTransaction = maxForeignSignalLabels(raw).length > 0;
+  if (completed && !paymentDate)
+    throw safeError('MAX החזירה תאריך חיוב שאינו תקין. העסקה לא תועבר לרשימה ללא חודש חיוב.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });
   return {
     identifier: maxRawIdentifier(raw, installments),
     type: installments ? 'installments' : 'normal',

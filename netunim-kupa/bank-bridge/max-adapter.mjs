@@ -23,7 +23,8 @@ import {
   normalizeMaxRawTransaction,
 } from './max-model.mjs';
 import { maxGetJsonWithinPage } from './credit-http.mjs';
-import { coverageError } from './credit-coverage.mjs';
+import { coverageError, monthlyCoverageFailure } from './credit-coverage.mjs';
+import { normalizeCreditScrapeAccount } from './credit-transaction-model.mjs';
 import { maxRawTransactionTime } from './credit-data-diagnostics.mjs';
 import { CreditProviderAdapter } from './credit-adapter-base.mjs';
 
@@ -60,6 +61,7 @@ function maxMonthlyAccounts({
   futureMonths,
   now,
   excludedAccountNumbers,
+  monthFailures,
 }) {
   const allNumbers = new Set([...homeCards.keys(), ...rawByCard.keys()]),
     accounts = [];
@@ -69,14 +71,16 @@ function maxMonthlyAccounts({
     }
     const card = homeCards.get(accountNumber) || {},
       txns = rawByCard.get(accountNumber) || [];
-    accounts.push(
-      genericMonthlyAccount(
+    const account = genericMonthlyAccount(
         { ...card, accountNumber, txns },
         profile.provider,
         { startDate, futureMonths, now },
         MAX_PROVIDER_SCHEMA_VERSION
-      )
-    );
+      );
+    account.months = account.months.map(slice => monthFailures.has(slice.month)
+      ? { ...monthlyCoverageFailure(slice, monthFailures.get(slice.month), now.toISOString()), providerSchemaVersion: MAX_PROVIDER_SCHEMA_VERSION }
+      : slice);
+    accounts.push(normalizeCreditScrapeAccount(account, profile.provider));
   }
   return accounts;
 }
@@ -158,6 +162,8 @@ async function scrapeMaxDirect(adapter) {
       ),
       homeCards = maxHomeCards(homeData),
       rawByCard = new Map(),
+      monthFailures = new Map(),
+      errors = [],
       dataDiagnostics = [];
     for (const entry of plan) {
       const monthStarted = Date.now(),
@@ -166,8 +172,22 @@ async function scrapeMaxDirect(adapter) {
           maxTransactionsUrl(entry.month),
           `MaxTransactions ${entry.month}`,
           adapter.now().getTime()
-        ),
-        parsed = extractMaxTransactionCandidates(data || {});
+        );
+      let parsed;
+      try { parsed = extractMaxTransactionCandidates(data); }
+      catch (error) {
+        if (error?.code === 'CREDIT_PROVIDER_SCHEMA_ERROR') {
+          error.stage = `MaxTransactions ${entry.month}`;
+          error.message += ` (חודש ${entry.month})`;
+          if (entry.tier === 'forecast') {
+            monthFailures.set(entry.month, error);
+            errors.push(coverageError(profile, error, { month: entry.month, tier: entry.tier, at: adapter.now().toISOString() }));
+            adapter.event({ stage: error.stage, month: entry.month, errorClass: error.code });
+            continue;
+          }
+        }
+        throw error;
+      }
       dataDiagnostics.push(
         maxResponseEvidence(
           profile.profileId,
@@ -185,7 +205,8 @@ async function scrapeMaxDirect(adapter) {
       for (const raw of parsed.transactions) {
         const tx = normalizeMaxRawTransaction(raw, categories),
           accountNumber = safeSuffix(raw?.shortCardNumber);
-        if (!tx || !accountNumber) continue;
+        if (!tx || !accountNumber)
+          throw safeError('רשומת MAX שזוהתה לא ניתנת לנרמול. הנתונים הקודמים נשמרו.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: `MaxTransactions ${entry.month}` });
         if (!rawByCard.has(accountNumber)) rawByCard.set(accountNumber, []);
         rawByCard.get(accountNumber).push(tx);
       }
@@ -233,6 +254,7 @@ async function scrapeMaxDirect(adapter) {
         futureMonths: scope.futureMonths,
         now: adapter.now(),
         excludedAccountNumbers: adapter.excludedAccountNumbers,
+        monthFailures,
       }),
       rawSamples = [];
     for (const accountNumber of discoveredNumbers) {
@@ -259,7 +281,7 @@ async function scrapeMaxDirect(adapter) {
       attemptedAt: syncedAt,
       coreComplete: true,
       accounts,
-      errors: [],
+      errors,
       _dataDiagnostics: dataDiagnostics,
     };
   } catch (error) {

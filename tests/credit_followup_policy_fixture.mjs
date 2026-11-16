@@ -1,3 +1,4 @@
+const maxResponseRuntime=JSON.parse(readFileSync(new URL('./fixtures/max-response-runtime-reviewed-changes.json',import.meta.url),'utf8'));
 const maxRuntime=JSON.parse(readFileSync(new URL('./fixtures/max-candidate-runtime-reviewed-changes.json',import.meta.url),'utf8'));
 const providerRuntime=JSON.parse(readFileSync(new URL('./fixtures/credit-provider-runtime-reviewed-changes.json',import.meta.url),'utf8'));
 const purchase=JSON.parse(readFileSync(new URL('./fixtures/credit-purchase-reviewed-changes.json',import.meta.url),'utf8'));
@@ -8,6 +9,7 @@ const review=JSON.parse(readFileSync(new URL('./fixtures/credit-followup-reviewe
 const identity=JSON.parse(readFileSync(new URL('./fixtures/credit-identity-reviewed-changes.json',import.meta.url),'utf8'));
 export function restoreCreditFollowupChanges(source,file){
   source=source.replaceAll('\r\n','\n');
+  for(const change of maxResponseRuntime[file]||[])source=source.replace(change.after,change.before);
   for(const change of maxRuntime[file]||[])source=source.replace(change.after,change.before);
   for(const change of providerRuntime[file]||[])source=source.replace(change.after,change.before);
   for(const change of purchase[file]||[])source=source.replace(change.after,change.before);

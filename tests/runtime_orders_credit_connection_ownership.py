@@ -33,7 +33,7 @@ FLOW = r"""(async()=>{
    if(path==='/v2/credit/reset'){resets++;return new Response('{}')}
    if(path==='/v2/credit/status'){
      if(caseName==='status'||caseName==='status-error'){entered.resolve();await held.promise;if(caseName==='status-error')return new Response(JSON.stringify({ok:false,message:'private former-device error',code:'fixture'}),{status:400})}
-     return new Response(JSON.stringify({bridgeVersion:85,contractVersion:2,profiles:[{profileId:'former',ownerLabel:'private former-device profile'}]}));
+     return new Response(JSON.stringify({bridgeVersion:86,contractVersion:2,profiles:[{profileId:'former',ownerLabel:'private former-device profile'}]}));
    }
    if(path==='/v2/credit/data-diagnostics'){entered.resolve();await held.promise;return new Response(JSON.stringify({available:true,filename:'former.json',data:{private:'former-device'},cardCount:1}))}
    throw Error('unexpected Orders connection request '+path);

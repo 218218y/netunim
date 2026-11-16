@@ -1,0 +1,34 @@
+{
+  "MAX_PROVIDER_SCHEMA_VERSION": {
+    "before": "141ef93fe13186410621953227453c1fa0d63177d1a15a276c1d2eb7ebc8e09e",
+    "after": "9c03c29840a0d09dc15efb31064e07e23aaadeabcc47aae032b0fe2656984d44"
+  },
+  "maxProviderDate": {
+    "before": "011b3fdc75895b7788564d97c5047cb81419415720e7e848a51023bc987de097",
+    "after": "afde2be50a1cf9889dcae944bab9348a229fc7a4db4eeca1f0773022490b9bcf"
+  },
+  "maxMetadataArray": {
+    "before": null,
+    "after": "395c7997dd22f8ec378763f5526d078b4c7c4d886afb2a0a342df4c55ff08c51"
+  },
+  "maxWalkTransactionCandidates": {
+    "before": "3051f3ebeab1bc5153c3feaa13bfd449b6252fb6d560936090bd46024b4c6aab",
+    "after": "b5c1118cbbff68eb2980ab57a9b2871bae8fb94da3d9d07ccf21641afb6ae633"
+  },
+  "extractMaxTransactionCandidates": {
+    "before": "e579afbce5654c3fe7363b2e80a28bcc72144feaff396bb2887190831c5cb62b",
+    "after": "764c8c3329aa26c341f4c6f69a4bbe840bc758c6530458374c32db481906d7e4"
+  },
+  "normalizeMaxRawTransaction": {
+    "before": "5f3067863e73c9b3394778c9f4acfc0ea6172bd94c78eae0c53488a6a325ce40",
+    "after": "96b55040634004f971fece5bf052fb9651e18c6804cc0b31f2e4d2240963646f"
+  },
+  "maxMonthlyAccounts": {
+    "before": "fb8718c6ed4f4bc31f0e59c7279626993d04878e6eb0679253f65305bd385234",
+    "after": "1026d7c96f30a14c61a4e7885a61bcb2779505c50fb0ef7474f40a187d96c367"
+  },
+  "scrapeMaxDirect": {
+    "before": "dd75a0a0126616eadf025be224795726756edbee9ee825e799d984a70cb67032",
+    "after": "e506a25332ce09e7a113f54310bbabc406153f676d717a2b779f9eef863520a9"
+  }
+}

@@ -50,7 +50,7 @@ FLOW = r"""(async()=>{
  if(kupa)cloudAuth.supaRest=request;else cloudAuth.supaFetch=request;
  globalThis.fetch=(url,options)=>{
    const path=String(url);
-   if(path.includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:85,contractVersion:2,profiles:[{profileId:'P'}]})));
+   if(path.includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:86,contractVersion:2,profiles:[{profileId:'P'}]})));
    if(path.endsWith('/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:74,configured:true})));
    if(path.includes('/balance')||path.includes('/v2/credit/sync')){providers++;if(caseName==='renewal')return new Promise((_resolve,reject)=>{failProvider=()=>reject(Error('fixture provider stopped before any side effect'));providerEntered()});return Promise.reject(Error('fixture provider stopped before any side effect'))}
    if(path.includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));
