@@ -1,21 +1,10 @@
-import {creditSourceTransfer,creditPlacementOverlap,creditAmountEnrichment} from './credit-transaction-identity.js';
+import {creditSourceTransfer,creditPlacementOverlap,creditAmountEnrichment,creditHistoryKey as financialKey} from './credit-transaction-identity.js';
 // @ts-check
 /** Normalized retained records, after the current-response evidence boundary.
  * @typedef {Record<string,unknown> & {installments?:{number?:unknown,total?:unknown}|null}} Transaction
  * @typedef {{month:string,tier:string,fetchStatus:string,status:string,fetchedAt:string|null,transactions:Transaction[],lastErrorCode:string,lastErrorAt:string|null}} Month
  */
 export const CREDIT_HISTORICAL_MONTH_REGRESSION='CREDIT_HISTORICAL_MONTH_REGRESSION';
-
-/** Compare financial evidence, including multiplicity; labels/categories are
- * cosmetic. IDs alone or net sums cannot detect replacements/cancelling rows.
- * @param {Transaction} tx */
-function financialKey(tx){
-  return JSON.stringify([tx.id||'',tx.type,tx.status,tx.processedDate,tx.date,
-    tx.chargedAmount,tx.chargedCurrency,tx.originalAmount,tx.originalCurrency,
-    tx.foreignTransaction,tx.chargeAmountStatus,
-    tx.installments?.number??null,tx.installments?.total??null,
-    tx.id?'':tx.description]);
-}
 
 /** @type {Intl.DateTimeFormat|undefined} */
 let billingDayFormat;

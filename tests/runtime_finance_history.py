@@ -90,3 +90,25 @@ for app in ('kupa','orders'):
         assert browser.evaluate(invalid.replace('__APP__',repr(app)),timeout=60)
         assert not browser.drain_serious_errors()
         print('PASS',app,'invalid retained version remains exportable and ordinary restore stays disabled')
+
+    with BrowserSession(ROOT/f'netunim-{app}/site',app+'-purchase-evidence-history') as browser:
+        source_flow=FLOW.replace(" live.state.creditSync.cardMappings['P:1234'].included=true;", """
+ live.state.creditSync.cardMappings['P:1234'].included=true;target.creditSync.cardMappings['P:1234'].included=true;
+ const priorA={...tx,id:'REUSED',description:'Merchant A',transactionDate:'2026-09-01T00:00:00.000Z',transactionTime:'09:05'},commonB={...priorA,description:'Merchant B',transactionDate:'2026-09-02T00:00:00.000Z',transactionTime:'10:06'},nextC={...priorA,description:'Merchant C',transactionDate:'2026-09-03T00:00:00.000Z',transactionTime:'11:07'};
+ live.state.creditSync.profiles[0].accounts[0].months[0].transactions=[priorA,commonB];
+ target.creditSync.profiles[0].accounts[0].months[0].transactions=[commonB,nextC];
+""")
+        source_flow=source_flow.replace(" check(document.querySelector('[data-history-preview]').textContent.includes('הכללה בחישוב'),'missing mapping comparison');", """
+ const evidence=document.querySelector('[data-history-preview]').textContent;
+ check(evidence.includes('2 שינויי רשומות')&&evidence.includes('שינויי הגדרות (0)'),'source-only changes missing');
+ for(const value of ['Merchant A','Merchant C','2026-09-01T00:00:00.000Z','2026-09-03T00:00:00.000Z','09:05','11:07','REUSED','תאריך רכישה','תאריך חיוב'])check(evidence.includes(value),'hidden source evidence: '+value);
+""")
+        source_flow=source_flow.replace("includes('365.00'),'365 to zero calculated impact is invisible'", "includes('730.00'),'unchanged calculated sum is missing'")
+        browser.call('Emulation.setDeviceMetricsOverride',{'width':390,'height':900,'deviceScaleFactor':1,'mobile':False})
+        assert browser.evaluate(source_flow.replace('__APP__',repr(app)),timeout=60)
+        assert browser.evaluate("(()=>{document.querySelector('[data-history-preview] details').open=true;const root=document.querySelector('[data-finance-history]');return root.scrollWidth<=root.clientWidth+1})()")
+        image=ROOT/'.work/screenshots'/f'{app}-purchase-evidence.png';image.parent.mkdir(parents=True,exist_ok=True)
+        image.write_bytes(base64.b64decode(browser.call('Page.captureScreenshot',{'format':'png'})['result']['data']))
+        assert browser.evaluate('finishHistoryFixture()',timeout=60)
+        assert not browser.drain_serious_errors()
+        print('PASS',app,'source-only purchase replacement shown and explicitly reviewed; current Bank retained')

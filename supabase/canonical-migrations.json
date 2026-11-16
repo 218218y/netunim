@@ -251,6 +251,10 @@
     {
       "version": "20261116120000",
       "name": "credit_occurrence_integrity"
+    },
+    {
+      "version": "20261116140000",
+      "name": "credit_purchase_evidence"
     }
   ]
 }

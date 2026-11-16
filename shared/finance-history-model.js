@@ -1,4 +1,5 @@
 import {creditRestoreImpact} from './finance-history-impact.js';
+import {creditObservationKey} from './credit-transaction-identity.js';
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 export function financialState(value){
   if(!object(value)||!object(value.creditSync)||!Array.isArray(value.creditSync.profiles))throw Error('מבנה נתוני האשראי אינו תקין');
@@ -41,7 +42,9 @@ export function creditEvidence(state){
   }
   return rows;
 }
-function key(row){const tx=row.tx;return JSON.stringify([row.profile,row.provider,row.card,row.month,tx.id||'',tx.date,tx.processedDate,tx.type,tx.status,tx.originalAmount,tx.originalCurrency,tx.chargedAmount,tx.chargedCurrency,tx.installments?.number??null,tx.installments?.total??null,tx.foreignTransaction,tx.chargeAmountStatus,tx.id?'':tx.description])}
+// Diff every retained observation, including purchase evidence and annotations.
+// Added/removed pairs are deliberately not guessed to be one changed purchase.
+function key(row){return JSON.stringify([row.profile,row.provider,row.card,row.month,creditObservationKey(row.tx)])}
 export function creditVersionDiff(before,after,options={}){
   const old=creditEvidence(before),next=creditEvidence(after),available=new Map(),changes=[];
   for(const row of next){const id=key(row);if(!available.has(id))available.set(id,[]);available.get(id).push(row)}

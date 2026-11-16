@@ -284,7 +284,7 @@ export function mergeCreditSyncResult(current,payload={}){
         errors.push({profileId:id,provider:profile.provider,label:profile.label,code:account.unassignedErrorCode,
           stage:'UnassignedIntegrity',component:'core_transactions',severity:'error',accountSuffix:account.accountNumber.slice(-4),
           at:account.unassignedErrorAt,correlationId:payload.correlationId||'',
-          message:'עדכון עסקאות ללא חודש חיוב הושהה: חסרות עסקאות או שהשיוך לחודש אינו חד משמעי. יש להשוות לפירוט המנפיק; אם השיוך נשאר עמום, יש לייצא ולהשוות גרסאות Finance לפני תיקון מאושר.'});
+          message:'עדכון עסקאות ללא חודש חיוב הושהה: חסרות עסקאות, השתנו ראיות רכישה או שהשיוך לחודש אינו חד משמעי. יש להשוות לפירוט המנפיק; אם השיוך נשאר עמום, יש לייצא ולהשוות דרך ״גרסאות וגיבוי אשראי״ לפני תיקון מאושר.'});
       }
       for(const slice of account.months){
       if(slice.lastErrorCode!==CREDIT_HISTORICAL_MONTH_REGRESSION)continue;
@@ -294,7 +294,7 @@ export function mergeCreditSyncResult(current,payload={}){
         component:'core_transactions',severity:'error',month:slice.month,tier:'core',
         accountSuffix:account.accountNumber.slice(-4),at:slice.lastErrorAt,
         correlationId:payload.correlationId||'',
-        message:'עדכון חודש אשראי קודם הושהה כי חסרות עסקאות או השתנו נתונים כספיים. הנתונים הקודמים נשמרו; יש להשוות לפירוט החברה ולבצע שחזור מלא.'});
+        message:'עדכון חודש האשראי הושהה: חסרות עסקאות או שלא הוכחה זהות ראיות הרכישה והחיוב. הנתונים הקודמים נשמרו. יש להשוות את החודש לפירוט המנפיק; תיקון מקור נעשה דרך ״גרסאות וגיבוי אשראי״ ושחזור מאושר.'});
     }
     }
     if(blocked)byId.set(id,normalizeCreditProfile({...profile,coreComplete:false,
