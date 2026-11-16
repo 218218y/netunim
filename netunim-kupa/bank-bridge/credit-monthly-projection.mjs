@@ -28,20 +28,15 @@ export function genericMonthlyAccount(
     plan = buildCreditMonthPlan({ startDate, futureMonths, now }),
     byMonth = new Map(plan.map((entry) => [entry.month, []])),
     pending = [],
-    pendingSeen = new Set(),
     unassigned = [];
   for (const tx of normalized.txns) {
     // Provider status is authoritative. MAX and Isracard-group DigitalV3 intentionally set
     // processedDate on approvals to the purchase date, so processedDate must never promote
     // a pending authorization into a finalized billing-month transaction.
     if (tx.status === 'pending') {
-      const key = tx.id
-        ? `${tx.id}|${tx.date || ''}|${tx.chargedAmount ?? tx.originalAmount ?? ''}`
-        : '';
-      if (!key || !pendingSeen.has(key)) {
-        pending.push(tx);
-        if (key) pendingSeen.add(key);
-      }
+      // The canonical boundary already deduplicates full observations with IDs.
+      // A second, narrower ID/date/amount key would discard distinct approvals.
+      pending.push(tx);
       continue;
     }
     // Membership in the planned calendar months is the only date cutoff.

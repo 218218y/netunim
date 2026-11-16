@@ -188,7 +188,7 @@ export function createOrdersFinanceCapability({
       },
       presentation:{toast:(...args) => { if (!disposed) toast(...args); }},
       effects:connectionEffects,
-      protocol:{minimumBridgeVersion:73,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},
+      protocol:{minimumBridgeVersion:84,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},
     });
     bankConnections = createOrdersBankConnectionOwner({
       pairing:{token:() => bridge.getBridgeToken()},
