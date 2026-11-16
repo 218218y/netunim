@@ -42,3 +42,14 @@ test('flattened pending/unassigned cache is not counted as a second active sourc
  a.pendingTransactions=[{...tx,status:'pending'}];a.unassignedTransactions=[{...tx,processedDate:null}];a.txns=[...a.pendingTransactions,...a.unassignedTransactions];
  assert.equal(creditRestorePreflight(state).ok,true);
 });
+test('retained issuer currency symbols stay valid without guessing a foreign conversion',()=>{
+ const state=source(),row=state.creditSync.profiles[0].accounts[0].months[0].transactions[0];
+ row.originalCurrency='$';row.chargedCurrency='₪';
+ assert.equal(creditRestorePreflight(state).ok,true);
+ assert.equal(creditVersionDiff(state,state).calculated[0].before.cents,36500);
+ row.chargedAmount=null;
+ assert.equal(creditRestorePreflight(state).ok,true);
+ const foreign=creditVersionDiff(state,state).calculated[0];assert.equal(foreign.currency,'₪');assert.equal(foreign.before.unknown,1);assert.equal(foreign.before.cents,0,'missing conversion cannot become invented billed money');
+ row.chargedAmount=-365;row.chargedCurrency='invalid currency';
+ assert.ok(creditRestorePreflight(state).issues.some(issue=>issue.code==='invalid_currency'));
+});

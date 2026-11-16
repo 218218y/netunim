@@ -55,7 +55,9 @@ begin
      if v is not null and v<>'null'::jsonb then
       if jsonb_typeof(v) is distinct from 'number' then raise exception 'finance_credit_invalid_version: invalid_amount' using errcode='23514';end if;
       if abs(round((v#>>'{}')::numeric*100))>9007199254740991 then raise exception 'finance_credit_invalid_version: invalid_amount' using errcode='23514';end if;
-      if coalesce(t->>replace(field,'Amount','Currency'),'')!~'^[A-Z]{3}$' then raise exception 'finance_credit_invalid_version: invalid_currency' using errcode='23514';end if;
+      if coalesce(t->>replace(field,'Amount','Currency'),'')!~'^[A-Z]{3}$'
+        and coalesce(t->>replace(field,'Amount','Currency'),'') not in ('₪','ש״ח','שח','ש"ח','$','€','£','¥','₽','₹','₩','₺','₴','₫','฿','R$') then
+       raise exception 'finance_credit_invalid_version: invalid_currency' using errcode='23514';end if;
      end if;
     end loop;
     foreach field in array array['date','processedDate'] loop

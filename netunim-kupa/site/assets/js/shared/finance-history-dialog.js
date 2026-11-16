@@ -59,7 +59,7 @@ export function createFinanceHistoryDialog(ports){
 ${!preview.validation.ok?`<p role="alert">הגרסה אינה תקינה לשחזור רגיל. נשמרת אפשרות הייצוא לצורך בדיקה ותיקון מבוקר.</p><ul>${preview.validation.issues.slice(0,100).map(issue=>`<li>${esc(creditRestoreIssueLabel(issue.code))}</li>`).join('')}</ul>`:''}
 <h4>השפעה מחושבת — אשראי מסונכרן בלבד</h4>
 <p>ליום ${esc(diff.asOf)}; חיובים ידניים בקופה אינם משתנים ואינם כלולים בסיכום זה. סכום ידוע אינו אישור לשלמות נתוני המנפיק.</p>
-<div class="finance-history-table"><table><thead><tr><th>חודש / שיוך</th><th>מטבע / מצב</th><th>כיום</th><th>אחרי שחזור</th><th>הפרש</th><th>לא נכלל בשקלים / כיסוי חסר</th></tr></thead>
+<div class="finance-history-table"><table><thead><tr><th>חודש / שיוך</th><th>מטבע / מצב</th><th>שקלים כיום</th><th>שקלים אחרי שחזור</th><th>הפרש בשקלים</th><th>לא נכלל בשקלים / כיסוי חסר</th></tr></thead>
 <tbody>${diff.calculated.map(row=>`<tr><td>${esc(row.date||row.month)} / ${esc(row.account)}${row.hidden?' · מוסתר':''}</td><td>${esc(row.currency)} / ${row.pending?'ממתין':'הושלם'}</td><td>${money(row.before.cents)}</td><td>${money(row.after.cents)}</td><td>${money(row.after.cents-row.before.cents)}</td><td>${row.before.unknown}/${row.before.incomplete} ← ${row.after.unknown}/${row.after.incomplete}</td></tr>`).join('')}</tbody></table></div>
 <h4>שינויי הגדרות (${diff.settingChanges.length})</h4>
 <div class="finance-history-table"><table><thead><tr><th>הגדרה</th><th>כיום</th><th>אחרי שחזור</th></tr></thead><tbody>${diff.settingChanges.slice(0,500).map(row=>`<tr><td>${esc(row.label)}</td><td>${esc(settingValue(row.before))}</td><td>${esc(settingValue(row.after))}</td></tr>`).join('')}</tbody></table></div>

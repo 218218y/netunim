@@ -8,7 +8,7 @@ migrations=sorted((ROOT/'supabase/migrations').glob('*.sql'))
 with IsolatedPostgres(schema_files=[p for p in migrations if p.name<boundary]) as db:
     db.auth_sql("select public.claim_finance_sync_lease('credit','validate',120)")
     epoch=db.auth_sql("select fence_epoch from public.finance_sync_leases where owner_id=auth.uid() and lease_name='credit'").strip()
-    tx={'id':'T','status':'completed','date':'2026-11-10','processedDate':'2026-11-20','originalAmount':-365,'originalCurrency':'ILS','chargedAmount':-365,'chargedCurrency':'ILS'}
+    tx={'id':'T','status':'completed','date':'2026-11-10','processedDate':'2026-11-20','originalAmount':-365,'originalCurrency':'$','chargedAmount':-365,'chargedCurrency':'₪'}
     valid={'bank':{'balance':900},'creditSync':{'version':4,'profiles':[{'profileId':'P','accounts':[{'accountNumber':'C','months':[{'month':'2026-11','transactions':[tx]}]}]}],'cardMappings':{'P:C':{'included':True,'account':'עסקי'}}}}
     cases={}
     def altered(name,change):

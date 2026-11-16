@@ -8,6 +8,10 @@ function day(value){
   const date=new Date(text+'T00:00:00Z');return Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===text;
 }
 const money=value=>typeof value==='number'&&Number.isFinite(value)&&Number.isSafeInteger(Math.round(value*100));
+// Retained providers also use currency symbols. Other symbols remain explicit,
+// unconverted foreign money rather than being guessed to mean an ISO currency.
+const currencyLabels=new Set(['₪','ש״ח','שח','ש"ח','$','€','£','¥','₽','₹','₩','₺','₴','₫','฿','R$']);
+const currency=value=>typeof value==='string'&&(/^[A-Z]{3}$/.test(value)||currencyLabels.has(value));
 const labels={invalid_profiles:'מבנה רשימת הפרופילים אינו תקין',
   invalid_profile:'זהות פרופיל חסרה או פגומה',
   duplicate_profile:'מזהה פרופיל מופיע יותר מפעם אחת',
@@ -54,8 +58,8 @@ export function creditRestorePreflight(state){
           if(!object(t)){add('invalid_transaction',tp);continue}
           for(const field of ['originalAmount','chargedAmount']){
             if(t[field]!=null&&!money(t[field]))add('invalid_amount',`${tp}.${field}`);
-            const currency=field.replace('Amount','Currency');
-            if(t[field]!=null&&(typeof t[currency]!=='string'||!/^[A-Z]{3}$/.test(t[currency])))add('invalid_currency',`${tp}.${currency}`);
+            const currencyField=field.replace('Amount','Currency');
+            if(t[field]!=null&&!currency(t[currencyField]))add('invalid_currency',`${tp}.${currencyField}`);
           }
           for(const field of ['date','processedDate'])if(t[field]!=null&&t[field]!==''&&!day(t[field]))add('invalid_date',`${tp}.${field}`);
           if(t.status!==undefined&&!['completed','pending'].includes(t.status))add('invalid_status',tp);

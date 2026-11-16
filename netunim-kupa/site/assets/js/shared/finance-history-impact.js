@@ -54,7 +54,9 @@ export function creditRestoreImpact(before,after,{asOf,projectCredit=value=>valu
       const key=JSON.stringify([row.date||'ללא חודש',row.account,currency,row.status==='pending',row.hidden]);
       if(!groups.has(key))groups.set(key,{date:row.date||'',month:row.billingMonth||'ללא חודש',account:row.account,currency,pending:row.status==='pending',hidden:row.hidden,before:empty(),after:empty()});
       const target=groups.get(key)[side];target.count++;
-      const amount=row.isShekel?row.amount:row.displayAmount;
+      // Use the engine's actual ILS contribution, including zero for a missing
+      // conversion. Original foreign amounts are not billed shekel amounts.
+      const amount=row.amount;
       if(Number.isFinite(amount))target.cents+=Math.round(amount*100);
       if(!row.includedInIlsTotal)target.unknown++;
       if(row.coverageIncomplete)target.incomplete++;
