@@ -239,6 +239,10 @@
     {
       "version": "20261115213000",
       "name": "credit_profile_identity"
+    },
+    {
+      "version": "20261116080000",
+      "name": "credit_posted_retention"
     }
   ]
 }
