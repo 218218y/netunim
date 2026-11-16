@@ -10,6 +10,9 @@ function settingValue(value){
   if(Array.isArray(value)&&value.every(row=>row?.effectiveDate&&row.fromAccount&&row.toAccount))return value.map(row=>`${row.effectiveDate}: ${row.fromAccount} ← ${row.toAccount}`).join('; ');
   return typeof value==='object'?JSON.stringify(value):String(value);
 }
+function purchaseEvidence(tx){
+  return `<strong>${esc(tx.description||'בית עסק לא נמסר')}</strong><br>מזהה מנפיק: ${esc(tx.id||tx.identifier||'לא נמסר')}<br>תאריך מקור: ${esc(tx.date||'לא נמסר')}<br>תאריך רכישה: ${esc(tx.transactionDate||'לא נמסר')}<br>שעת רכישה: ${esc(tx.transactionTime||'לא נמסרה')}<br>תאריך חיוב: ${esc(tx.processedDate||'ללא שיוך')}<br>סוג: ${esc(tx.type||'לא נמסר')} · מט״ח: ${tx.foreignTransaction===true?'כן':tx.foreignTransaction===false?'לא':'לא נמסר'}<br>מצב: ${esc(tx.status||'לא נמסר')} · ${esc(tx.chargeAmountStatus||'ללא תווית סכום')}<br>תשלום: ${esc(tx.installments?.number??'—')}/${esc(tx.installments?.total??'—')}${tx.memo?`<br>הערה: ${esc(tx.memo)}`:''}`;
+}
 export function createFinanceHistoryDialog(ports){
   const tasks=createRuntimeTaskOwner(),leases=createFinanceLeaseOwner({leases:ports.leases,authority:{capture:ports.capture}});
   const service=createFinanceHistoryService({...ports,leases});
@@ -50,7 +53,7 @@ export function createFinanceHistoryDialog(ports){
 <td>${row.kind==='removed'?'ייגרע':'יתווסף'}</td>
 <td>${esc(row.provider)} ••${esc(row.card.slice(-4))}</td>
 <td>${esc(row.month)}</td>
-<td>${esc(String(row.tx.date||'').slice(0,10))}<br>${esc(row.tx.description||row.tx.id||'')}</td>
+<td>${purchaseEvidence(row.tx)}</td>
 <td>${esc(row.tx.chargedAmount??'לא ידוע')} ${esc(row.tx.chargedCurrency||'')}</td>
 <td>${esc(row.tx.originalAmount??'')} ${esc(row.tx.originalCurrency||'')}</td>
 </tr>`).join('');
@@ -84,14 +87,14 @@ ${!preview.validation.ok?`<p role="alert">הגרסה אינה תקינה לשח�
 </table>
 </div>
 <details>
-<summary>פירוט רשומות שיוחלפו (${diff.changes.length})</summary>${(diff.changes.length>500||diff.settingChanges.length>500)?'<p>מוצגות 500 רשומות ראשונות. יש לייצא את הגרסה לבדיקה מלאה לפני אישור.</p>':''}<div class="finance-history-table">
+<summary>פירוט רשומות שיוחלפו (${diff.changes.length})</summary>${(diff.changes.length>500||diff.settingChanges.length>500)?'<p>מוצגות 500 רשומות ראשונות. יש לייצא את דוח ההשוואה המלא ולבדוק אותו לפני אישור.</p>':''}<div class="finance-history-table">
 <table>
 <thead>
 <tr>
 <th>שינוי</th>
 <th>כרטיס</th>
 <th>חודש</th>
-<th>עסקה</th>
+<th>עסקה וראיות רכישה</th>
 <th>חיוב</th>
 <th>מקור</th>
 </tr>

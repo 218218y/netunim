@@ -313,5 +313,10 @@
     "version": "20261116120000",
     "name": "credit_occurrence_integrity",
     "sha256": "e802dbeb3bcad06be302635d28bdf050d410e93b7135e76790c0381276fe94ff"
+  },
+  {
+    "version": "20261116140000",
+    "name": "credit_purchase_evidence",
+    "sha256": "2612470374bb0c90a62109be07e8637d5aebfa05ca57264e8e2b6a0a1f165bb5"
   }
 ]

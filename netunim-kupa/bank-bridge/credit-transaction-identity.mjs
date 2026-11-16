@@ -11,6 +11,18 @@ const merchant=tx=>String(tx.description||'');
 /** @param {Transaction} tx */
 const parts=tx=>JSON.stringify([tx.installments?.number??null,tx.installments?.total??null]);
 
+/** History protects purchase evidence even when an issuer reuses IDs. Memo and
+ * category are editable annotations; merchant/date/time are source evidence.
+ * The SQL credit_financial_key mirrors this tuple, including multiplicity.
+ * @param {Transaction} tx */
+export function creditHistoryKey(tx){
+  return JSON.stringify([id(tx),value(tx.type),value(tx.status),value(tx.processedDate),value(tx.date),
+    value(tx.chargedAmount),value(tx.chargedCurrency),value(tx.originalAmount),value(tx.originalCurrency),
+    value(tx.foreignTransaction),value(tx.chargeAmountStatus),
+    tx.installments?.number??null,tx.installments?.total??null,
+    value(tx.description),value(tx.transactionDate),value(tx.transactionTime)]);
+}
+
 /** A provider ID identifies a source, not a unique monetary occurrence.
  * Exact repeated observations with an ID may be pagination mirrors at the feed
  * boundary. Anonymous observations retain their multiplicity. @param {Transaction} tx */
@@ -25,6 +37,7 @@ export function creditObservationKey(tx){
  * @param {Transaction} old @param {Transaction} next */
 export function sameCreditSource(old,next){
   return id(old)===id(next)&&!!old.date&&old.date===next.date&&purchase(old)===purchase(next)&&
+    value(old.transactionDate)===value(next.transactionDate)&&
     merchant(old)===merchant(next)&&
     (old.transactionTime||'')===(next.transactionTime||'')&&
     old.originalAmount!=null&&!!old.originalCurrency&&old.originalAmount===next.originalAmount&&
@@ -54,7 +67,9 @@ export function creditAmountEnrichment(old,next){
     old.chargeAmountStatus==='missing'&&next.chargeAmountStatus==='reported'&&
     typeof next.chargedAmount==='number'&&Number.isFinite(next.chargedAmount)&&
     old.processedDate===next.processedDate&&old.type===next.type&&
-    old.foreignTransaction===next.foreignTransaction&&sameCreditSource(old,next);
+    old.foreignTransaction===next.foreignTransaction&&sameCreditSource(old,next)&&
+    creditHistoryKey(old)===creditHistoryKey({...next,chargedAmount:old.chargedAmount,
+      chargedCurrency:old.chargedCurrency,chargeAmountStatus:old.chargeAmountStatus});
 }
 /** Pending/final correlation requires purchase evidence in addition to an ID.
  * Anonymous correlation requires the precise minute. Consume occurrences once.
