@@ -8,8 +8,9 @@ const read = (name) =>
 const models = {
   'credit-core-values': [],
   'credit-profile-model': ['./credit-core-values.mjs','./credit-transaction-evidence.mjs'],
-  'credit-transaction-model': ['./credit-core-values.mjs','./credit-transaction-evidence.mjs'],
+  'credit-transaction-model': ['./credit-transaction-identity.mjs','./credit-core-values.mjs','./credit-transaction-evidence.mjs'],
   'credit-transaction-evidence': [],
+  'credit-transaction-identity': [],
   'credit-failure-policy': ['./credit-core-values.mjs', './credit-profile-model.mjs', './credit-cooldown-policy.mjs'],
 };
 const effects = new Set([
