@@ -43,7 +43,7 @@ export function createKupaCreditRuntime({model,ui,platform={}}){
       ['effects',effects,['writeText','saveJson','dispose']],
     ])for(const method of methods)if(typeof port?.[method]!=='function')throw new TypeError(`credit_${name}_${method}_required`);
     if(typeof authority?.automaticAccess!=='function')throw new TypeError('credit_automatic_access_required');
-    historyPorts={subscribeAccountScope:cloud.subscribeAccountScope,request:(...args)=>cloud.historyRequest(...args),readHead:(...args)=>cloud.readHistoryHead(...args),capture:()=>authority.scope.capture(),
+    historyPorts={projectCredit:normalizeCreditSync,subscribeAccountScope:cloud.subscribeAccountScope,request:(...args)=>cloud.historyRequest(...args),readHead:(...args)=>cloud.readHistoryHead(...args),capture:()=>authority.scope.capture(),
       refresh:(...args)=>cloud.refresh(...args),leases:{claim:(...args)=>cloud.claimLease(...args),release:(...args)=>cloud.releaseLease(...args)}};
     connections=createCreditConnectionOwner({
       protocol:{minimumBridgeVersion:73,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},

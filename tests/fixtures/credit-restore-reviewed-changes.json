@@ -1,0 +1,26 @@
+{
+  "netunim-kupa/site/assets/js/composition/credit.js": [
+    {
+      "before": "historyPorts={subscribeAccountScope:",
+      "after": "historyPorts={projectCredit:normalizeCreditSync,subscribeAccountScope:"
+    }
+  ],
+  "netunim-orders/site/assets/js/composition/finance.js": [
+    {
+      "before": "historyPorts={subscribeAccountScope:",
+      "after": "historyPorts={projectCredit:normalizeCreditSync,subscribeAccountScope:"
+    }
+  ],
+  "netunim-kupa/site/assets/js/domains/credit/sync-feed.js": [
+    {
+      "before": "  const pendingOk=next.pendingStatus",
+      "after": "  // A rejected month replacement invalidates this account transaction snapshot.\n  // Do not mix the retained placement with a proposed placement in another month.\n  if([...monthMap.values()].some(slice=>slice.lastErrorCode===CREDIT_HISTORICAL_MONTH_REGRESSION))\n    return normalizeCreditAccount({...old,months:old.months.map(slice=>{\n      const blocked=monthMap.get(slice.month);return blocked?.lastErrorCode===CREDIT_HISTORICAL_MONTH_REGRESSION\n        ?{...slice,status:blocked.status,fetchStatus:blocked.fetchStatus,lastErrorCode:blocked.lastErrorCode,lastErrorAt:blocked.lastErrorAt}:slice;\n    })});\n  const pendingOk=next.pendingStatus"
+    }
+  ],
+  "netunim-orders/site/assets/js/domains/finance/credit-feed.js": [
+    {
+      "before": "  const pendingOk=next.pendingStatus",
+      "after": "  // A rejected month replacement invalidates this account transaction snapshot.\n  // Do not mix the retained placement with a proposed placement in another month.\n  if([...monthMap.values()].some(slice=>slice.lastErrorCode===CREDIT_HISTORICAL_MONTH_REGRESSION))\n    return normalizeCreditAccount({...old,months:old.months.map(slice=>{\n      const blocked=monthMap.get(slice.month);return blocked?.lastErrorCode===CREDIT_HISTORICAL_MONTH_REGRESSION\n        ?{...slice,status:blocked.status,fetchStatus:blocked.fetchStatus,lastErrorCode:blocked.lastErrorCode,lastErrorAt:blocked.lastErrorAt}:slice;\n    })});\n  const pendingOk=next.pendingStatus"
+    }
+  ]
+}

@@ -61,7 +61,9 @@ for(const [name,merge] of [['Kupa',kupaMerge],['Orders',ordersMerge]]){
     const empty=merge(initial,readCreditRefreshResult(result({months:[{...month,transactions:[]}],pendingStatus:'success',pendingTransactions:[]})));
     assert.equal(empty.profiles[0].accounts[0].months[0].transactions.length,1,'an explicit empty array cannot erase completed evidence');
     assert.equal(empty.profiles[0].accounts[0].months[0].fetchStatus,'schema_error');
-    assert.equal(empty.profiles[0].accounts[0].pendingTransactions.length,0);
+    assert.equal(empty.profiles[0].accounts[0].pendingTransactions.length,1,'rejected account snapshots cannot mix old completed data with new pending placement');
+    const accepted=merge(initial,readCreditRefreshResult(result({months:[month],pendingStatus:'success',pendingTransactions:[]})));
+    assert.equal(accepted.profiles[0].accounts[0].pendingTransactions.length,0,'pending can expire in an accepted account snapshot');
     const failed=merge(initial,readCreditRefreshResult(result({months:[{...month,fetchStatus:'schema_error',transactions:[]}],pendingStatus:'schema_error'})));
     assert.equal(failed.profiles[0].accounts[0].months[0].transactions[0].id,'T');
     assert.equal(failed.profiles[0].accounts[0].pendingTransactions[0].id,'pending');

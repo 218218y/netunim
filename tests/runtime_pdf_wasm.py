@@ -25,6 +25,17 @@ for app in ('orders', 'kupa'):
         wait_for_worker_control(browser)
         browser.evaluate("localStorage.setItem('pdf-denial-sentinel','preserved')")
         blocked = render_colors(browser, MODULE, verify_color=False)
+        # ServiceWorker message delivery and PDF worker rendering use independent
+        # task queues. A painted fallback canvas is not a notification barrier.
+        blocked['notice']=browser.evaluate("""(async()=>{
+          const end=performance.now()+5000;
+          while(performance.now()<end){
+            const text=document.getElementById('vendor-version-notice')?.textContent;
+            if(text)return text;
+            await new Promise(resolve=>setTimeout(resolve,20));
+          }
+          throw Error('Controlled-worker denial notice was not delivered');
+        })()""")
         assert 'HTTP 418' in blocked['notice'] and QCMS in blocked['notice'] and 'ספק הסינון' in blocked['notice'], blocked
         assert len(requests) == 1, 'Denied bytes must not be retried on alternative routes'
         assert browser.evaluate("(async()=>{for(const name of await caches.keys()){if(await(await caches.open(name)).match('"+QCMS+"'))return false}return true})()")
