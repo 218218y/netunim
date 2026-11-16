@@ -1,3 +1,4 @@
+import {creditSourceTransfer,creditPlacementOverlap,creditAmountEnrichment} from './credit-transaction-identity.js';
 // @ts-check
 /** Normalized retained records, after the current-response evidence boundary.
  * @typedef {Record<string,unknown> & {installments?:{number?:unknown,total?:unknown}|null}} Transaction
@@ -45,13 +46,17 @@ export function mergeCreditMonthSnapshot(prior,next,reference=null){
       tx.status==='completed'&&!(tx.type==='statement_adjustment'&&
         /^\d{4}-\d{2}-\d{2}/.test(String(tx.processedDate||''))&&String(tx.processedDate).slice(0,10)>day));
     if(protectedRows.length){
-      const available=new Map();
-      for(const tx of next.transactions){const key=financialKey(tx);available.set(key,(available.get(key)||0)+1)}
-      for(const tx of protectedRows){
-        const key=financialKey(tx),count=available.get(key)||0;
-        if(!count)return {...prior,status:'stale',fetchStatus:'schema_error',
-          lastErrorCode:CREDIT_HISTORICAL_MONTH_REGRESSION,lastErrorAt:at};
-        available.set(key,count-1);
+      const consumed=new Set(),remaining=[];
+      for(const old of protectedRows){
+        const index=next.transactions.findIndex((tx,index)=>!consumed.has(index)&&financialKey(old)===financialKey(tx));
+        if(index>=0)consumed.add(index);else remaining.push(old);
+      }
+      for(const old of remaining){
+        const matches=next.transactions.map((tx,index)=>({tx,index})).filter(({tx,index})=>!consumed.has(index)&&creditAmountEnrichment(old,tx));
+        const match=matches.length===1?matches[0]:null;
+        if(!match||remaining.filter(row=>creditAmountEnrichment(row,match.tx)).length!==1)
+          return {...prior,status:'stale',fetchStatus:'schema_error',lastErrorCode:CREDIT_HISTORICAL_MONTH_REGRESSION,lastErrorAt:at};
+        consumed.add(match.index);
       }
     }
   }
@@ -59,19 +64,7 @@ export function mergeCreditMonthSnapshot(prior,next,reference=null){
 }
 
 
-/** Same issuer/account is supplied by the merge owner. A nonempty issuer ID,
- * purchase date, original money and installment part must all agree. A missing
- * conversion may become reported money; an existing reported charge cannot change.
- * @param {Transaction} old @param {Transaction} next */
-function sameUnassignedEvidence(old,next){
-  if(!old.id||old.id!==next.id||!old.date||old.date!==next.date||
-    old.originalAmount==null||!old.originalCurrency||
-    old.originalAmount!==next.originalAmount||old.originalCurrency!==next.originalCurrency||
-    (old.installments?.number??null)!==(next.installments?.number??null)||
-    (old.installments?.total??null)!==(next.installments?.total??null))return false;
-  return old.chargedAmount==null||old.chargedAmount===next.chargedAmount&&old.chargedCurrency===next.chargedCurrency;
-}
-export {sameUnassignedEvidence};
+export {creditSourceTransfer as sameUnassignedEvidence};
 
 /** Unassigned absence never proves deletion. Consume matching observations once
  * so duplicate issuer IDs and anonymous multiplicity cannot erase a source row.
@@ -82,7 +75,7 @@ export {sameUnassignedEvidence};
 export function reconcileUnassignedCredit(previous,incoming,months,reference){
   const candidates=[...incoming.map(tx=>({tx,month:''})),
     ...months.flatMap(month=>month.transactions.map(tx=>({tx,month:month.month})))];
-  if(incoming.some(source=>months.some(month=>month.transactions.some(tx=>sameUnassignedEvidence(source,tx)))))
+  if(incoming.some(source=>months.some(month=>month.transactions.some(tx=>creditPlacementOverlap(source,tx)))))
     return {blocked:true,transactions:previous,transfers:[]};
   const consumed=new Set(),transfers=[],remaining=[];
   // Reserve unchanged financial evidence first, including repeated issuer IDs.
@@ -93,8 +86,8 @@ export function reconcileUnassignedCredit(previous,incoming,months,reference){
   }
   for(const old of remaining){
     const matches=candidates.map((row,index)=>({row,index})).filter(({row,index})=>
-      !consumed.has(index)&&(old.id?(!row.month&&financialKey(old)===financialKey(row.tx)||sameUnassignedEvidence(old,row.tx)):!row.month&&financialKey(old)===financialKey(row.tx)));
-    if(!matches.length||old.id&&matches.length!==1)return {blocked:true,transactions:previous,transfers:[]};
+      !consumed.has(index)&&(!row.month&&financialKey(old)===financialKey(row.tx)||creditSourceTransfer(old,row.tx)));
+    if(matches.length!==1||remaining.filter(source=>creditSourceTransfer(source,matches[0]?.row.tx||{})).length!==1)return {blocked:true,transactions:previous,transfers:[]};
     const match=matches[0];
     if(!match)return {blocked:true,transactions:previous,transfers:[]};
     const {row,index}=match;consumed.add(index);

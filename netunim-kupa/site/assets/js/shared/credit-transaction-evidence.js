@@ -98,7 +98,9 @@ export function assertCreditTransactionEvidence(tx){
   amounts(tx,['originalAmount','chargedAmount']);
   if(tx.foreignTransaction!==undefined&&typeof tx.foreignTransaction!=='boolean')invalid();
   optionalEnum(tx.chargeAmountStatus,['reported','missing','not_billed']);
-  if(tx.chargeAmountStatus==='reported'&&tx.chargedAmount==null)invalid();
+  if(tx.chargeAmountStatus==='reported'&&tx.chargedAmount==null||
+    tx.chargeAmountStatus==='missing'&&tx.chargedAmount!=null||
+    tx.chargeAmountStatus==='not_billed'&&tx.chargedAmount!=null&&Number(tx.chargedAmount)!==0)invalid();
   if(tx.installments!=null){
     const parts=tx.installments;
     if(!object(parts)||!integer(parts.number)||!integer(parts.total)||parts.number===0||parts.number>parts.total)invalid();

@@ -143,8 +143,8 @@ test('pending ILS estimates, FX exclusions, freshness and transition deduplicati
     {id:'zero-ils',status:'pending',transactionDate:'2026-09-03',chargedAmount:0,chargedCurrency:'ILS',originalAmount:-237.4,originalCurrency:'ILS'},
     {id:'converted',status:'completed',processedDate:'2026-09-10',chargedAmount:-250,chargedCurrency:'ILS',originalAmount:-10000,originalCurrency:'JPY'},
     {id:'foreign-only',status:'completed',processedDate:'2026-09-10',chargedAmount:-40,chargedCurrency:'USD',originalAmount:-40,originalCurrency:'USD'},
-    {id:'transition',status:'completed',processedDate:'2026-09-10',chargedAmount:-70,chargedCurrency:'ILS'},
-    {id:'transition',status:'pending',transactionDate:'2026-09-09',chargedAmount:-70,chargedCurrency:'ILS'},
+    {id:'transition',status:'completed',transactionDate:'2026-09-02',description:'Proven purchase',originalAmount:-70,originalCurrency:'ILS',processedDate:'2026-09-10',chargedAmount:-70,chargedCurrency:'ILS'},
+    {id:'transition',status:'pending',transactionDate:'2026-09-02',description:'Proven purchase',originalAmount:-70,originalCurrency:'ILS',chargedAmount:-70,chargedCurrency:'ILS'},
   ]}]);
   const rows=kupaEngine.creditBillingRowsData(state,{asOf:'2026-09-03'}),pending=rows.find(row=>row.status==='pending'),converted=rows.find(row=>row.creditId.includes('converted')),foreign=rows.find(row=>row.creditId.includes('foreign-only'));
   assert.equal(pending.amount,237.4);assert.equal(pending.amountSource,'original_ils_estimate');assert.equal(pending.amountEstimated,true);

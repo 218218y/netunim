@@ -17,7 +17,7 @@ with IsolatedPostgres(schema_files=[p for p in migrations if p.name<boundary]) a
     altered('duplicate_account',lambda s:s['creditSync']['profiles'][0]['accounts'].append(s['creditSync']['profiles'][0]['accounts'][0]))
     altered('duplicate_month',lambda s:s['creditSync']['profiles'][0]['accounts'][0]['months'].append(s['creditSync']['profiles'][0]['accounts'][0]['months'][0]))
     altered('invalid_month',lambda s:s['creditSync']['profiles'][0]['accounts'][0]['months'][0].update(month='2026-13'))
-    altered('ambiguous_billing_identity',lambda s:s['creditSync']['profiles'][0]['accounts'][0]['months'][0]['transactions'].append({**tx,'chargedAmount':-20}))
+    altered('ambiguous_billing_identity',lambda s:s['creditSync']['profiles'][0]['accounts'][0]['months'][0]['transactions'].append({**tx}))
     altered('duplicate_placement',lambda s:s['creditSync']['profiles'][0]['accounts'][0].update(unassignedTransactions=[{**tx,'processedDate':None}]))
     altered('invalid_amount',lambda s:s['creditSync']['profiles'][0]['accounts'][0]['months'][0]['transactions'][0].update(chargedAmount='365'))
     altered('invalid_date',lambda s:s['creditSync']['profiles'][0]['accounts'][0]['months'][0]['transactions'][0].update(date='2026-02-30'))

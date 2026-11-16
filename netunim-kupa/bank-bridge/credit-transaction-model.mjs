@@ -1,3 +1,4 @@
+import {creditObservationKey} from './credit-transaction-identity.mjs';
 // @ts-check
 import { creditNumber, creditText, creditTransactionTime } from './credit-core-values.mjs';
 import {assertCreditTransactionEvidence,assertCreditProfileTransactions} from './credit-transaction-evidence.mjs';
@@ -59,24 +60,7 @@ function dedupeCreditScrapeTransactions(values = []) {
       rows.push(tx);
       continue;
     }
-    const key = JSON.stringify([
-      tx.id,
-      tx.status,
-      tx.type,
-      tx.date,
-      tx.processedDate,
-      tx.transactionDate,
-      tx.transactionTime,
-      tx.originalAmount,
-      tx.originalCurrency,
-      tx.chargedAmount,
-      tx.chargedCurrency,
-      tx.foreignTransaction,
-      tx.description,
-      tx.memo,
-      tx.installments?.number ?? null,
-      tx.installments?.total ?? null,
-    ]);
+    const key = creditObservationKey(tx);
     if (seen.has(key)) continue;
     seen.add(key);
     rows.push(tx);

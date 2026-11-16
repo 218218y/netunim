@@ -68,6 +68,7 @@ hapoalim-failure-policy.mjs
 bank-diagnostics.mjs
 credit-core-values.mjs
 credit-profile-model.mjs
+credit-transaction-identity.mjs
 credit-transaction-model.mjs
 credit-transaction-evidence.mjs
 credit-failure-policy.mjs

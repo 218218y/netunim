@@ -308,5 +308,10 @@
     "version": "20261116100000",
     "name": "credit_restore_preflight",
     "sha256": "99f591868b6b749b3512f27cdd228b4ba30c776e7e99f48e58345fa78ea4ad23"
+  },
+  {
+    "version": "20261116120000",
+    "name": "credit_occurrence_integrity",
+    "sha256": "e802dbeb3bcad06be302635d28bdf050d410e93b7135e76790c0381276fe94ff"
   }
 ]

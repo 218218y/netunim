@@ -1,4 +1,4 @@
-import {sameUnassignedEvidence} from './credit-month-integrity.js';
+import {creditObservationKey,creditPlacementOverlap} from './credit-transaction-identity.js';
 const object=value=>!!value&&typeof value==='object'&&!Array.isArray(value);
 const role=value=>['עסקי','ביתי','business','home'].includes(value);
 const month=value=>typeof value==='string'&&/^(?!0000)[0-9]{4}-(0[1-9]|1[0-2])$/.test(value);
@@ -25,6 +25,7 @@ const labels={invalid_profiles:'מבנה רשימת הפרופילים אינו 
   invalid_currency:'סכום ללא מטבע תקין',
   invalid_date:'תאריך לא תקין',
   invalid_status:'מצב עסקה לא תקין',
+  invalid_evidence:'סכום העסקה אינו תואם את מצב הראיות',
   invalid_installments:'פרטי תשלומים לא תקינים',
   ambiguous_billing_identity:'מזהה חיוב עמום עלול להיספר באופן שגוי',
   duplicate_placement:'מקור עסקה מופיע גם בחודש וגם ללא שיוך',
@@ -63,9 +64,10 @@ export function creditRestorePreflight(state){
           }
           for(const field of ['date','processedDate'])if(t[field]!=null&&t[field]!==''&&!day(t[field]))add('invalid_date',`${tp}.${field}`);
           if(t.status!==undefined&&!['completed','pending'].includes(t.status))add('invalid_status',tp);
+          if(t.foreignTransaction!==undefined&&typeof t.foreignTransaction!=='boolean'||t.chargeAmountStatus!==undefined&&!['reported','missing','not_billed'].includes(t.chargeAmountStatus)||t.chargeAmountStatus==='reported'&&t.chargedAmount==null||t.chargeAmountStatus==='missing'&&t.chargedAmount!=null||t.chargeAmountStatus==='not_billed'&&t.chargedAmount!=null&&t.chargedAmount!==0)add('invalid_evidence',tp);
           if(t.installments!=null&&(!object(t.installments)||!Number.isSafeInteger(t.installments.number)||!Number.isSafeInteger(t.installments.total)||t.installments.number<1||t.installments.total<t.installments.number))add('invalid_installments',tp);
-          if(t.id){
-            const id=JSON.stringify([t.status==='pending',t.id,String(t.processedDate||'').slice(0,10),t.installments?.number??1]);
+          if(t.id||t.identifier){
+            const id=creditObservationKey(t);
             if(identities.has(id))add('ambiguous_billing_identity',tp);identities.add(id);
           }
           destination.push(t);
@@ -82,7 +84,7 @@ export function creditRestorePreflight(state){
       }
       inspect(a.unassignedTransactions,ap+'.unassignedTransactions',unassigned);
       inspect(a.pendingTransactions,ap+'.pendingTransactions',[]);
-      if(unassigned.some(source=>assigned.some(tx=>sameUnassignedEvidence(source,tx))))add('duplicate_placement',ap);
+      if(unassigned.some(source=>assigned.some(tx=>creditPlacementOverlap(source,tx))))add('duplicate_placement',ap);
     }
   }
   if(sync.cardMappings!==undefined&&!object(sync.cardMappings))add('invalid_mappings','cardMappings');

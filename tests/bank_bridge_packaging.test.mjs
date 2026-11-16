@@ -9,7 +9,10 @@ const root=fileURLToPath(new URL('../netunim-kupa/bank-bridge/',import.meta.url)
 test('Bank installer stages every transitive configuration/platform dependency before activation',()=>{
   const installer=fs.readFileSync(path.join(root,'runtime-files.txt'),'utf8');
   const list=installer.trim();assert.ok(list);
-  const staged=new Set(list.split(/\s+/)),seen=new Set();
+  const files=list.split(/\r?\n/);
+  for(const file of files)assert.ok(/^[A-Za-z0-9_.-]+$/.test(file)&&fs.existsSync(path.join(root,file)),`one existing runtime file per line: ${file}`);
+  assert.equal(new Set(files).size,files.length,'runtime files cannot be duplicated');
+  const staged=new Set(files),seen=new Set();
   function visit(file){
     if(seen.has(file))return;seen.add(file);assert.ok(staged.has(file),`unstaged Bank runtime dependency: ${file}`);
     const ast=parse(fs.readFileSync(path.join(root,file),'utf8'),{ecmaVersion:'latest',sourceType:'module'});
