@@ -19,4 +19,9 @@ with IsolatedPostgres(schema_files=[p for p in sorted((ROOT/'supabase/migrations
     else:raise AssertionError('completed future charge was silently erased')
     state['creditSync']['profiles'][0]['accounts'][0]['months'][0]['transactions'].append({**tx,'id':'refund','chargedAmount':365,'originalAmount':365})
     assert save(state,1,'explicit-refund')['revision']==2
+    rows=state['creditSync']['profiles'][0]['accounts'][0]['months'][0]['transactions']
+    rows.append({**tx,'id':'cal-statement','type':'statement_adjustment','chargedAmount':2.89})
+    assert save(state,2,'derived-difference')['revision']==3
+    rows.pop()
+    assert save(state,3,'recomputed-open-statement')['revision']==4
     print('PASS future posted retention, explicit refund addition and exact v6 revision')

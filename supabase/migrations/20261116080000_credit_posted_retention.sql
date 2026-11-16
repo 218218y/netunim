@@ -42,7 +42,7 @@ begin
    n:=case when jsonb_array_length(v_accounts)=1 then v_accounts->0 else '{}'::jsonb end;
    if exists(
      (select month,netunim_internal.credit_financial_key(tx) from netunim_internal.credit_month_rows(a)
-       where month<left(v_day,7) or coalesce(tx->>'status','completed')='completed')
+       where month<left(v_day,7) or coalesce(tx->>'status','completed')='completed' and (coalesce(tx->>'type','')<>'statement_adjustment' or not coalesce(tx->>'processedDate'~'^[0-9]{4}-[0-9]{2}-[0-9]{2}',false) or left(tx->>'processedDate',10)<=v_day))
      except all
      (select month,netunim_internal.credit_financial_key(tx) from netunim_internal.credit_month_rows(n))
    ) then raise exception 'credit_history_regression' using errcode='23514';end if;

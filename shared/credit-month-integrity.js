@@ -42,7 +42,8 @@ export function mergeCreditMonthSnapshot(prior,next,reference=null){
     const at=[reference,prior.fetchedAt,next.fetchedAt].filter(Boolean).sort().at(-1)||new Date().toISOString();
     const day=billingObservationDay(at);
     const protectedRows=prior.month<day.slice(0,7)?prior.transactions:prior.transactions.filter(tx=>
-      tx.status==='completed');
+      tx.status==='completed'&&!(tx.type==='statement_adjustment'&&
+        /^\d{4}-\d{2}-\d{2}/.test(String(tx.processedDate||''))&&String(tx.processedDate).slice(0,10)>day));
     if(protectedRows.length){
       const available=new Map();
       for(const tx of next.transactions){const key=financialKey(tx);available.set(key,(available.get(key)||0)+1)}
