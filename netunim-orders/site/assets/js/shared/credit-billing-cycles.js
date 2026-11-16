@@ -1,3 +1,4 @@
+import {creditObservationKey,creditPendingSourceKey,creditPlacementOverlap} from './credit-transaction-identity.js';
 import {creditCardAccountForDateData} from './credit-card-account.js';
 /** @typedef {import('./credit-calculation-contracts.js').CreditCalculation} Calculation */
 /** @typedef {import('./credit-calculation-contracts.js').Transaction} Transaction */
@@ -226,7 +227,7 @@ function transactionTotalAmount(tx,amountData){
 
 /** @type {Calculation['transactionIdentity']} */
 function transactionIdentity(profile,account,tx,index,date,amountData){
-  const id=String(tx?.id||tx?.identifier||'').trim(),part=transactionPart(tx),stable=id?`${id}|${date}|${part}`:`idless-${index}|${transactionOriginDate(tx)}|${date}|${amountData.rawAmount}|${String(tx?.description||'')}`;
+  const id=String(tx?.id||tx?.identifier||'').trim(),part=transactionPart(tx),stable=`${id||'idless'}|${date}|${part}|${creditObservationKey(tx)}|${index}`;
   return `${String(profile?.profileId||'')}|${String(account?.accountNumber||'')}|${stable}`;
 }
 
@@ -243,13 +244,23 @@ function correlationKey(tx){
 
 /** @type {Calculation['matchedPendingIndexes']} */
 function matchedPendingIndexes(entries){
-  const ids=new Set(entries.flatMap(({tx})=>tx&&tx.status!=='pending'?[tx.id,tx.identifier].map(value=>String(value||'').trim()).filter(Boolean):[]));
   /** @type {Map<string,{pending:number[],final:number[]}>} */ const groups=new Map();
   /** @type {Set<number>} */ const matched=new Set();
+  const consumedFinal=new Set();
+  // Multisets: an old completed occurrence cannot hide all pending rows sharing
+  // its issuer ID. Consume one purchase observation for each completed row.
   for(const [index,{tx}] of entries.entries()){
     if(!tx)continue;
-    if(tx.status==='pending'&&[tx.id,tx.identifier].some(value=>value&&ids.has(String(value).trim())))matched.add(index);
-    const key=correlationKey(tx);if(!key)continue;
+    const key=creditPendingSourceKey(tx);if(!key)continue;
+    let group=groups.get(key);if(!group){group={pending:[],final:[]};groups.set(key,group)}
+    group[tx.status==='pending'?'pending':'final'].push(index);
+  }
+  for(const group of groups.values()){const count=Math.min(group.pending.length,group.final.length);for(const index of group.pending.slice(0,count))matched.add(index);for(const index of group.final.slice(0,count))consumedFinal.add(index)}
+  // Existing strict minute/merchant correlation supports an issuer changing IDs
+  // between authorization and posting, only when each side is unique.
+  groups.clear();
+  for(const [index,{tx}] of entries.entries()){
+    if(!tx||matched.has(index)||consumedFinal.has(index))continue;const key=correlationKey(tx);if(!key)continue;
     let group=groups.get(key);if(!group){group={pending:[],final:[]};groups.set(key,group)}
     group[tx.status==='pending'?'pending':'final'].push(index);
   }
@@ -271,7 +282,7 @@ function synchronizedRows(state, asOf, includeHidden) {
             const hidden = mapping.hidden === true;
             if (hidden && !includeHidden)
                 continue;
-            const transactions = accountTransactionEntries(account), matchedPending = matchedPendingIndexes(transactions), seen = new Set(), cardName = mapping.cardName || [PROVIDER_LABELS[String(profile.provider||'')] || profile.label || profile.provider || 'כרטיס אשראי', account.accountNumber ? `••${String(account.accountNumber).slice(-4)}` : ''].filter(Boolean).join(' '), pendingFresh = creditPendingFreshData(account, asOf);
+            const transactions = accountTransactionEntries(account), matchedPending = matchedPendingIndexes(transactions), occurrences = new Map(), cardName = mapping.cardName || [PROVIDER_LABELS[String(profile.provider||'')] || profile.label || profile.provider || 'כרטיס אשראי', account.accountNumber ? `••${String(account.accountNumber).slice(-4)}` : ''].filter(Boolean).join(' '), pendingFresh = creditPendingFreshData(account, asOf);
             for (const [index, entry] of transactions.entries()) {
                 if (entry.coveragePlaceholder) {
                     const projection = creditFinalizedBillingDateData(account, {}, entry.billingMonthHint), date = projection.date, role = creditCardAccountForDateData(mapping, profile.defaultAccount, date), identity = `coverage|${String(profile.profileId || '')}|${String(account.accountNumber || '')}|${entry.billingMonthHint || index}`;
@@ -320,7 +331,9 @@ function synchronizedRows(state, asOf, includeHidden) {
                     });
                     continue
                 }
-                const tx=entry.tx,pending = tx.status === 'pending';
+                const tx=entry.tx,pending = tx.status === 'pending',observation=creditObservationKey(tx),ordinal=occurrences.get(observation)||0;
+                occurrences.set(observation,ordinal+1);
+                const placementAmbiguous=!pending&&!entry.billingMonthHint&&!tx.processedDate&&transactions.some(other=>other.tx&&(other.billingMonthHint||other.tx.processedDate)&&creditPlacementOverlap(tx,other.tx));
                 if (matchedPending.has(index))
                     continue;
                 const projection = pending ? creditPendingBillingDateData(account, tx, asOf) : creditFinalizedBillingDateData(account, tx, entry.billingMonthHint),
@@ -328,23 +341,21 @@ function synchronizedRows(state, asOf, includeHidden) {
                       role = creditCardAccountForDateData(mapping, profile.defaultAccount, date),
                       amountData = creditTransactionAmountData(tx),
                       freshEnough = !pending || pendingFresh,
-                      includedInIlsTotal = !!date && amountData.included && freshEnough,
+                      includedInIlsTotal = !!date && amountData.included && freshEnough && !placementAmbiguous,
                       amount = includedInIlsTotal ? amountData.amount : 0,
-                      identity = transactionIdentity(profile, account, tx, index, date, amountData),
-                      coverageIncomplete = entry.coverageIncomplete === true || (pending && !pendingFresh),
-                      coverageStatus = entry.coverageStatus || (pending && !pendingFresh ? String(account.pendingStatus || 'missing') : '');
-                if (seen.has(identity))
-                    continue;
-                seen.add(identity);
+                      identity = transactionIdentity(profile, account, tx, ordinal, date, amountData),
+                      coverageIncomplete = placementAmbiguous || entry.coverageIncomplete === true || (pending && !pendingFresh),
+                      coverageStatus = placementAmbiguous?'ambiguous_credit_placement':entry.coverageStatus || (pending && !pendingFresh ? String(account.pendingStatus || 'missing') : '');
                 const original = finite(tx?.originalAmount),
                       foreignCurrency = tx?.foreignTransaction === true || (!!normalizedCurrency(tx?.originalCurrency) && !creditBillingIsShekelCurrency(tx.originalCurrency)) || (!!normalizedCurrency(tx?.chargedCurrency) && !creditBillingIsShekelCurrency(tx.chargedCurrency)),
                       part = pending ? 1 : transactionPart(tx),
                       totalParts = pending ? 1 : transactionTotalParts(tx),
-                      source = pending ? 'credit_pending' : amountData.included ? 'credit_sync' : amountData.source === 'foreign_only' ? 'credit_foreign' : 'credit_unknown',
-                      amountStatus = amountData.included ? 'known_ils' : amountData.source === 'foreign_only' ? 'foreign_unconverted' : 'unknown_amount';
+                      source = placementAmbiguous ? 'credit_unknown' : pending ? 'credit_pending' : amountData.included ? 'credit_sync' : amountData.source === 'foreign_only' ? 'credit_foreign' : 'credit_unknown',
+                      amountStatus = placementAmbiguous ? 'unknown_amount' : amountData.included ? 'known_ils' : amountData.source === 'foreign_only' ? 'foreign_unconverted' : 'unknown_amount';
                 rows.push({
                     source,
                     creditId: `${pending ? 'PENDING' : 'SYNC'}:${identity}`,
+                    seriesSourceKey: JSON.stringify([profile.profileId,account.accountNumber,String(tx.id||tx.identifier||'').replace(/_\d+$/,''),transactionOriginDate(tx),tx.description,tx.originalAmount,tx.originalCurrency,transactionTotalParts(tx),ordinal]),
                     profileId: String(profile.profileId || ''),
                     provider: String(profile.provider || ''),
                     accountNumber: String(account.accountNumber || ''),
@@ -459,6 +470,7 @@ function manualRows(state, asOf) {
 /** @type {Calculation['seriesKey']} */
 function seriesKey(row){
   if(row.source!=='credit_sync'||row.totalParts<=1)return row.creditId;
+  if(row.seriesSourceKey)return row.seriesSourceKey;
   const raw=String(row.creditId||'').replace(/\|[^|]*\|\d+$/,'').replace(/_\d+$/,'');
   return `${raw}|${row.totalParts}|${row.transactionDate}|${row.description}`;
 }

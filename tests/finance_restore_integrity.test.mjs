@@ -27,7 +27,7 @@ for(const [name,mutate] of [
  ['duplicate_account',s=>s.creditSync.profiles[0].accounts.push(structuredClone(s.creditSync.profiles[0].accounts[0]))],
  ['duplicate_month',s=>s.creditSync.profiles[0].accounts[0].months.push(structuredClone(s.creditSync.profiles[0].accounts[0].months[0]))],
  ['invalid_month',s=>s.creditSync.profiles[0].accounts[0].months[0].month='2026-13'],
- ['ambiguous_billing_identity',s=>s.creditSync.profiles[0].accounts[0].months[0].transactions.push({...tx,chargedAmount:-20})],
+ ['ambiguous_billing_identity',s=>s.creditSync.profiles[0].accounts[0].months[0].transactions.push({...tx})],
  ['duplicate_placement',s=>s.creditSync.profiles[0].accounts[0].unassignedTransactions=[{...tx,processedDate:null}]],
  ['invalid_amount',s=>s.creditSync.profiles[0].accounts[0].months[0].transactions=[{...tx,chargedAmount:'365'}]],
  ['invalid_date',s=>s.creditSync.profiles[0].accounts[0].months[0].transactions=[{...tx,date:'2026-02-30'}]],

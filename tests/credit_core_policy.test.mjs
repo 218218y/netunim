@@ -1,3 +1,4 @@
+import {restoreCreditFollowupChanges} from './credit_followup_policy_fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -17,7 +18,7 @@ const fixture = JSON.parse(
   fs.readFileSync(new URL('./fixtures/credit-core-policy.json', import.meta.url), 'utf8')
 );
 test('all 34 Credit core declarations match the reviewed contract', () => {
-  assert.deepEqual(creditAdapterPolicyHashes(modules.map(name=>restoreCreditCooldown(restoreCreditProfileAuthority(restoreCreditPendingStatus(read(name).replaceAll('\r\n','\n')))))).policies, typedFinancialPolicies(fixture.creditPolicies,'creditPolicies'));
+  assert.deepEqual(creditAdapterPolicyHashes(modules.map(name=>restoreCreditCooldown(restoreCreditProfileAuthority(restoreCreditPendingStatus(restoreCreditFollowupChanges(read(name),'netunim-kupa/bank-bridge/'+name+'.mjs')))))).policies, typedFinancialPolicies(fixture.creditPolicies,'creditPolicies'));
 });
 
 test('policy fixture detects changed charge signs, login identity, transaction status and cooldown', () => {

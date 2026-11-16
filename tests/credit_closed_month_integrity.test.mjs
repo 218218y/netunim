@@ -210,7 +210,8 @@ for (const [name, merge] of [['Kupa', kupaMerge], ['Orders', ordersMerge]]) {
 test('disabling the actual shared history guard recreates silent loss in both real merge implementations', async()=>{
   const file=new URL('../shared/credit-month-integrity.js',import.meta.url);
   const source=readFileSync(file,'utf8');
-  const changed=source.replace('if(protectedRows.length)','if(false)');
+  const changed=source.replace('if(protectedRows.length)','if(false)')
+    .replace(/(['"])(\.\.?\/[^'"]+)\1/g,(_,q,relative)=>JSON.stringify(new URL(relative,file).href));
   assert.notEqual(source,changed);
   const mutated='data:text/javascript;base64,'+Buffer.from(changed).toString('base64');
   for(const path of ['../netunim-kupa/site/assets/js/domains/credit/sync-feed.js','../netunim-orders/site/assets/js/domains/finance/credit-feed.js']){

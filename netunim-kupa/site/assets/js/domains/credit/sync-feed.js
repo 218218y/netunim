@@ -1,3 +1,4 @@
+import {creditObservationKey} from '../../shared/credit-transaction-identity.js';
 import {reconcileUnassignedCredit,mergeCreditMonthSnapshot,CREDIT_HISTORICAL_MONTH_REGRESSION} from '../../shared/credit-month-integrity.js';
 import {creditRetryAfterAt} from '../../shared/credit-cooldown-policy.js';
 import {todayISO} from '../../core/dates.js';
@@ -45,7 +46,7 @@ export function normalizeCreditTransaction(txn={}){
 }
 
 function transactionMonth(tx){const value=tx?.processedDate;return /^\d{4}-\d{2}/.test(String(value||''))?String(value).slice(0,7):''}
-function dedupeCreditTransactions(values=[]){const rows=[],seen=new Set();for(const value of Array.isArray(values)?values:[]){const tx=normalizeCreditTransaction(value);if(!tx.id){rows.push(tx);continue}const key=JSON.stringify([tx.id,tx.status,tx.type,tx.date,tx.processedDate,tx.transactionDate,tx.transactionTime,tx.originalAmount,tx.originalCurrency,tx.chargedAmount,tx.chargedCurrency,tx.foreignTransaction,tx.description,tx.memo,tx.installments?.number??null,tx.installments?.total??null]);if(seen.has(key))continue;seen.add(key);rows.push(tx)}return rows}
+function dedupeCreditTransactions(values=[]){const rows=[],seen=new Set();for(const value of Array.isArray(values)?values:[]){const tx=normalizeCreditTransaction(value);if(!tx.id){rows.push(tx);continue}const key=creditObservationKey(tx);if(seen.has(key))continue;seen.add(key);rows.push(tx)}return rows}
 function normalizeCreditMonthSlice(slice={}){
   const month=/^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(slice.month||''))?String(slice.month):'',fetchStatus=['success','provider_error','schema_error','network_error'].includes(String(slice.fetchStatus))?String(slice.fetchStatus):slice.status==='fresh'?'success':'provider_error',status=['fresh','stale','missing'].includes(String(slice.status))?String(slice.status):fetchStatus==='success'?'fresh':'missing';
   return {month,tier:slice.tier==='forecast'?'forecast':'core',status,fetchStatus,fetchedAt:iso(slice.fetchedAt),transactions:dedupeCreditTransactions(slice.transactions),providerSchemaVersion:text(slice.providerSchemaVersion||'',80),lastErrorCode:fetchStatus==='success'?'':text(slice.lastErrorCode||'CREDIT_PROVIDER_DATA_ERROR',80),lastErrorAt:fetchStatus==='success'?null:iso(slice.lastErrorAt)};
@@ -71,7 +72,7 @@ export function normalizeCreditAccount(account={},fallbackFetchedAt=null){
     frameFetchedAt:iso(account.frameFetchedAt||(frameStatus==='fresh'?fallbackFetchedAt:null)),frameErrorCode:text(account.frameErrorCode||'',80),frameErrorAt:iso(account.frameErrorAt),
     months,pendingTransactions,pendingStatus:['success','provider_error','schema_error','network_error','missing'].includes(String(account.pendingStatus))?String(account.pendingStatus):pendingTransactions.length?'success':'missing',pendingFetchedAt:iso(account.pendingFetchedAt),pendingErrorCode:text(account.pendingErrorCode||'',80),pendingErrorAt:iso(account.pendingErrorAt),unassignedTransactions,
   };
-  return withAccountTransactions(result,txns.filter(tx=>{if(!tx.id)return true;const key=`${tx.id}|${tx.date}|${tx.processedDate}|${tx.chargedAmount}|${tx.description}|${tx.installments?.number||0}`;if(seen.has(key))return false;seen.add(key);return true}).sort((a,b)=>String(b.processedDate||b.date||'').localeCompare(String(a.processedDate||a.date||''))));
+  return withAccountTransactions(result,txns.filter(tx=>{if(!tx.id)return true;const key=creditObservationKey(tx);if(seen.has(key))return false;seen.add(key);return true}).sort((a,b)=>String(b.processedDate||b.date||'').localeCompare(String(a.processedDate||a.date||''))));
 }
 
 export function normalizeCreditProfile(profile={}){
@@ -131,7 +132,10 @@ function preferredCreditMapping(mappings,profileIds,accountNumber,defaultAccount
 }
 function newerISO(a,b){const aa=iso(a),bb=iso(b);if(!aa)return bb;if(!bb)return aa;return aa>=bb?aa:bb}
 function mergeCreditAccountSnapshot(previous,incoming,reference=null){
-  if(!previous)return normalizeCreditAccount(incoming);
+  if(!previous){
+    const account=normalizeCreditAccount(incoming),check=reconcileUnassignedCredit([],account.unassignedTransactions,account.months,reference);
+    return check.blocked?normalizeCreditAccount({...account,unassignedErrorCode:'CREDIT_UNASSIGNED_REGRESSION',unassignedErrorAt:reference||new Date().toISOString()}):account;
+  }
   const old=normalizeCreditAccount(previous),next=normalizeCreditAccount(incoming),monthMap=new Map(old.months.map(slice=>[slice.month,slice]));
   for(const slice of next.months)monthMap.set(slice.month,mergeCreditMonthSnapshot(monthMap.get(slice.month),slice,reference));
   // A rejected month replacement invalidates this account transaction snapshot.
@@ -305,7 +309,7 @@ export function mergeCreditSyncResult(current,payload={}){
         errors.push({profileId:id,provider:profile.provider,label:profile.label,code:account.unassignedErrorCode,
           stage:'UnassignedIntegrity',component:'core_transactions',severity:'error',accountSuffix:account.accountNumber.slice(-4),
           at:account.unassignedErrorAt,correlationId:payload.correlationId||'',
-          message:'עדכון עסקאות ללא חודש חיוב הושהה: חסרות עסקאות או שהשיוך לחודש אינו חד משמעי. הנתונים הקודמים נשמרו; יש לבצע שחזור ולהשוות לפירוט החברה.'});
+          message:'עדכון עסקאות ללא חודש חיוב הושהה: חסרות עסקאות או שהשיוך לחודש אינו חד משמעי. יש להשוות לפירוט המנפיק; אם השיוך נשאר עמום, יש לייצא ולהשוות גרסאות Finance לפני תיקון מאושר.'});
       }
       for(const slice of account.months){
       if(slice.lastErrorCode!==CREDIT_HISTORICAL_MONTH_REGRESSION)continue;
