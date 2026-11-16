@@ -23,6 +23,8 @@ const pure = {
     './credit-value-codec.mjs',
     './credit-data-diagnostics.mjs',
     './credit-core-values.mjs',
+    './credit-transaction-model.mjs',
+    './credit-transaction-identity.mjs',
   ],
   'credit-monthly-projection': [
     './credit-adapter-wire.mjs',

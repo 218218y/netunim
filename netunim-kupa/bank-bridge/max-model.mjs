@@ -1,7 +1,9 @@
 // @ts-nocheck
-import { hasOwn, safeDate, safeSuffix, text } from './credit-value-codec.mjs';
+import { hasOwn, safeDate, safeSuffix, safeError, text } from './credit-value-codec.mjs';
 import { maxRawTransactionTime } from './credit-data-diagnostics.mjs';
 import { creditDebitAmount,assertCreditNumericInput } from './credit-core-values.mjs';
+import { normalizeCreditScrapeTransaction } from './credit-transaction-model.mjs';
+import { creditObservationKey, creditPendingSourceKey } from './credit-transaction-identity.mjs';
 
 function maxNumber(value) {
   assertCreditNumericInput(value);
@@ -134,21 +136,8 @@ function maxWalkTransactionCandidates(
   return { out, arrayEvidence };
 }
 
-function maxCandidateKey(raw = {}) {
-  const arn = text(raw?.dealData?.arn || raw?.transactionId || raw?.dealId || '', 120);
-  if (arn) return `id:${arn}|${text(raw.comments, 80)}`;
-  return JSON.stringify([
-    safeSuffix(raw.shortCardNumber),
-    text(raw.purchaseDate, 60),
-    text(raw.paymentDate, 60),
-    text(raw.merchantName || raw.businessName, 120),
-    maxNumber(raw.originalAmount),
-    text(raw.originalCurrency, 12),
-    maxNumber(raw.actualPaymentAmount),
-    String(raw.paymentCurrency ?? ''),
-    text(raw.planName, 80),
-    text(raw.comments, 120),
-  ]);
+function maxCandidateKey(raw = {}, tx = normalizeCreditScrapeTransaction(normalizeMaxRawTransaction(raw))) {
+  return JSON.stringify([text(raw.shortCardNumber, 80), creditObservationKey(tx)]);
 }
 
 function maxForeignSignalLabels(raw = {}) {
@@ -224,12 +213,37 @@ export function extractMaxTransactionCandidates(data = {}) {
     };
   const { out, arrayEvidence } = maxWalkTransactionCandidates(result),
     seen = new Set(),
+    sources = new Map(),
+    cards = new Map(),
+    anonymousPaths = new Map(),
     transactions = [],
     uniqueItems = [],
     candidatePaths = new Set();
   for (const item of out) {
-    const key = maxCandidateKey(item.raw);
-    if (seen.has(key)) continue;
+    const tx = normalizeCreditScrapeTransaction(normalizeMaxRawTransaction(item.raw)),
+      card = text(item.raw.shortCardNumber, 80), suffix = safeSuffix(card),
+      key = maxCandidateKey(item.raw, tx),
+      sourceKey = creditPendingSourceKey(tx),
+      ambiguous = () => safeError(
+        'MAX החזירה תצפיות שלא ניתן להכריע אם הן רכישות נפרדות. הריענון נעצר; יש להשוות לפירוט המקור לפני ניסיון נוסף.',
+        'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });
+    // Do not merge two supplied card identities merely because their suffix matches.
+    if (cards.has(suffix) && cards.get(suffix) !== card) throw ambiguous();
+    cards.set(suffix, card);
+    if (tx.id && seen.has(key)) continue;
+    if (tx.id) {
+      const id = JSON.stringify([card, tx.id]), previous = sources.get(id) || new Set(),
+        purchase = sourceKey ? JSON.stringify([sourceKey, tx.status]) : '';
+      // Different complete purchase witnesses may share an issuer ID. A
+      // conflicting observation of one purchase is not a second charge.
+      if (previous.size && (!sourceKey || previous.has('') || previous.has(purchase))) throw ambiguous();
+      previous.add(purchase); sources.set(id, previous);
+    } else {
+      // Anonymous multiplicity within an issuer list is real input. Identical
+      // anonymous observations in separate views lack authority to deduplicate.
+      if (anonymousPaths.has(key) && anonymousPaths.get(key) !== item.path) throw ambiguous();
+      anonymousPaths.set(key, item.path);
+    }
     seen.add(key);
     transactions.push(item.raw);
     uniqueItems.push(item);
