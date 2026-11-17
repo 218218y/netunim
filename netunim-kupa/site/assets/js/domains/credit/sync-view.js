@@ -1,7 +1,6 @@
-import {creditDiagnosticKey,creditDiagnosticMarkup} from '../../shared/credit-diagnostics-view.js';
 import {esc} from '../../core/values.js';
 import {CREDIT_PROVIDER_LABELS} from './sync-feed.js';
-import {financeSyncProgressMeta,filterCurrentSyncEvents,syncEventCurrent} from '../../shared/sync-status.js';
+import {creditDiagnosticKey,creditDiagnosticMarkup,financeSyncProgressMeta,filterCurrentSyncEvents,syncEventCurrent} from '../../shared/sync-status.js';
 
 function syncDate(value){if(!value)return 'עדיין לא סונכרן';try{return new Intl.DateTimeFormat('he-IL',{dateStyle:'short',timeStyle:'short'}).format(new Date(value))}catch{return String(value)}}
 function creditErrorRows(syncUi,summary){

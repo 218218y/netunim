@@ -1,9 +1,8 @@
-import {creditDiagnosticMarkup} from '../../shared/credit-diagnostics-view.js';
 import {automationWarningMarkup} from './automation-status-view.js';
 import {esc} from '../../core/values.js';
 import {CREDIT_PROVIDER_LABELS} from './credit-feed.js';
 import {creditErrors} from './reporting.js';
-import {financeSyncProgressMeta,syncEventCurrent} from '../../shared/sync-status.js';
+import {creditDiagnosticMarkup,financeSyncProgressMeta,syncEventCurrent} from '../../shared/sync-status.js';
 
 function syncDate(value){if(!value)return 'טרם בוצע עדכון';const d=new Date(value);return Number.isFinite(d.getTime())?`${d.toLocaleDateString('he-IL')} · ${d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}`:'זמן לא זמין'}
 

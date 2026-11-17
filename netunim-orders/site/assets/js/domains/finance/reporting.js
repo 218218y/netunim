@@ -1,8 +1,7 @@
-import {creditDiagnosticKey} from '../../shared/credit-diagnostics-view.js';
 import {immutableProjection} from '../../shared/revision-selector.js';
 import {checkAddMonthsISO,checkMonthKey,checkTodayISO} from '../../core/dates.js';
 import {creditCardMappingKey,CREDIT_PROVIDER_LABELS,creditFrameStatus,creditUpcomingCharge,normalizeCreditSync} from './credit-feed.js';
-import {filterCurrentSyncEvents} from '../../shared/sync-status.js';
+import {creditDiagnosticKey,filterCurrentSyncEvents} from '../../shared/sync-status.js';
 import {creditBillingRowsData} from '../../shared/credit-billing-cycles.js';
 import {kupaCardDisplayBillingDateFromRowsData,kupaReconciledCreditDetailMonthsData,kupaReconciledCreditRowsData,kupaReconciledCreditUpcomingDetailData,kupaCardUpcomingChargeFromRowsData} from '../../shared/kupa-cashflow.js';
 
