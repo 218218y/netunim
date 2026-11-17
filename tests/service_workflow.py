@@ -14,7 +14,7 @@ def run():
           const common={openedAt:'2026-11-01',description:'דלת הארון אינה נסגרת היטב. יש לתאם הגעת טכנאי.',phone:'050-1234567',address:'רחוב הדוגמה 12, ירושלים'};
           state=normalizeState({version:4,serviceCalls:[
             {...common,id:'urgent',customerName:'משפחת כהן',orderNumber:'1042',assignee:'דוד',nextFollowUp:todayISO(),escalated:true,note:'לתאם עם הלקוח לפני הגעה',source:{sheet:'שירות',rows:[8]}},
-            {...common,id:'late',customerName:'משפחת לוי',orderNumber:'1087',assignee:'משה',nextFollowUp:'2020-01-01',sent:true},
+            {...common,id:'late',customerName:'משפחת לוי',orderNumber:'1087',assignee:'משה',nextFollowUp:'2020-01-01',sent:true,description:'תיקון מגירה במסילה'},
             {...common,id:'future',customerName:'משפחת ישראלי',orderNumber:'1103',assignee:'דוד',nextFollowUp:'2099-01-01',followUp:true},
             {...common,id:'plain',customerName:'משפחת אברהם',orderNumber:'1129'},
             {...common,id:'closed',customerName:'משפחת מזרחי',closed:true,closedAt:'2026-11-15T10:00:00Z',nextFollowUp:'2020-01-01'}
@@ -29,6 +29,11 @@ def run():
             output.mkdir(parents=True,exist_ok=True)
             shot=browser.call('Page.captureScreenshot', {'format':'png'})['result']['data']
             (output/'desktop.png').write_bytes(base64.b64decode(shot))
+            browser.evaluate("(()=>{openServiceModal('urgent');return true})()")
+            browser.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+            shot=browser.call('Page.captureScreenshot', {'format':'png'})['result']['data']
+            (output/'editor.png').write_bytes(base64.b64decode(shot))
+            browser.evaluate('(()=>{closeModal();return true})()')
         result=browser.evaluate(r"""(async()=>{
           const assert=(value,message)=>{if(!value)throw Error(message)};
           const el=selector=>{const node=document.querySelector(selector);assert(node,'missing '+selector);return node};
@@ -41,13 +46,20 @@ def run():
           assert(el('[data-service-summary="all"]').textContent==='4'&&el('[data-service-summary="due"]').textContent==='2','all and due counts');
           assert(el('.service-table').getBoundingClientRect().width<=el('.view-scroll').clientWidth,'table fits desktop');
           click('service-filter','due');assert(JSON.stringify(ids())===JSON.stringify(['urgent','late']),'today includes overdue and excludes completed');
-          click('service-filter','all');const search=el('[data-input="service-search"]');search.value='משה';search.dispatchEvent(new Event('input',{bubbles:true}));
+          click('service-filter','all');const search=el('[data-input="service-search"]');search.value='מגירה';search.dispatchEvent(new Event('input',{bubbles:true}));
           await wait(()=>ids().join(',')==='late');assert(document.activeElement!==null,'search completed');
           search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));await wait(()=>ids().length===4);
-          click('open-service-modal-2','future');assert(el('#svcFollow').checked,'preserved follow-up flag');
-          el('#svcAssignee').value='אחראי מעודכן';el('#svcNote').value='נקבע ביקור';el('#svcUrgent').checked=true;click('save-service','future');
+          click('open-service-modal-2','future');assert(!document.querySelector('#svcAssignee,#svcNote,#svcSent,#svcFollow'),'compact editor omits removed and inline fields');
+          assert(!document.querySelector('#modal [data-action="open-service-gmail"]'),'email belongs to the row');
+          el('#svcDesc').value='נקבע ביקור לתיקון הדלת';el('#svcUrgent').checked=true;click('save-service','future');
           await wait(()=>!document.getElementById('modalBackdrop')?.classList.contains('open'));
-          assert(state.serviceCalls.find(c=>c.id==='future').followUp,'edit retains flag');assert(el('[data-service-bulk-id="future"]').textContent.includes('אחראי מעודכן'),'assignee is visible');
+          assert(state.serviceCalls.find(c=>c.id==='future').followUp,'edit retains flag');assert(el('[data-service-bulk-id="future"]').textContent.includes('נקבע ביקור'),'updated description is visible');
+          const untouched=el('[data-service-bulk-id="urgent"]'),sent=el('[data-service-bulk-id="future"] [data-click-arg1="sent"]');sent.focus();sent.click();
+          assert(state.serviceCalls.find(c=>c.id==='future').sent,'inline sent toggle updates record');assert(el('[data-service-bulk-id="future"] [data-click-arg1="sent"]').getAttribute('aria-pressed')==='true','sent state is visible');
+          assert(document.activeElement.dataset.clickArg1==='sent'&&el('[data-service-bulk-id="urgent"]')===untouched,'sent toggle retains focus and other rows');
+          let draft=null;const originalOpen=window.open;window.open=(...args)=>{draft=args;return null};
+          try{click('open-service-gmail','future')}finally{window.open=originalOpen}
+          assert(new URL(draft[0]).searchParams.get('body').includes('נקבע ביקור'),'row email uses saved description');
           const close=el('[data-service-bulk-id="urgent"] [data-click-arg1="closed"]');close.focus();close.click();
           assert(!ids().includes('urgent'),'closing removes call from active queue');assert(state.serviceCalls.find(c=>c.id==='urgent').closedAt,'closure timestamp saved');
           assert(el('[data-service-summary="all"]').textContent==='3','summary refreshes after closing');assert(document.activeElement.matches('.service-customer-link'),'focus moves to next result');
@@ -59,11 +71,23 @@ def run():
           click('toggle-service-bulk-mode');assert(!document.querySelector('[data-service-bulk-check]'),'selection controls removed');
           await Promise.all([mainStorageV2.commitPromise]);
           const saved=(await mainStorageV2.recover()).state.serviceCalls;
-          assert(saved.find(c=>c.id==='future').assignee==='אחראי מעודכן'&&!saved.find(c=>c.id==='urgent').closed,'changes durably saved');
-          return {filters:true,search:true,editor:true,close:true,reopen:true,selection:true,persistence:true};
+          assert(saved.find(c=>c.id==='future').description==='נקבע ביקור לתיקון הדלת'&&saved.find(c=>c.id==='future').sent&&!saved.find(c=>c.id==='urgent').closed,'changes durably saved');
+          assert(saved.find(c=>c.id==='urgent').assignee==='דוד'&&saved.find(c=>c.id==='urgent').note==='לתאם עם הלקוח לפני הגעה','removed fields retain historical data');
+          return {filters:true,search:true,editor:true,inlineSent:true,inlineEmail:true,close:true,reopen:true,selection:true,persistence:true};
         })()""", timeout=30)
-        browser.call('Emulation.setDeviceMetricsOverride', {'width':390, 'height':844, 'deviceScaleFactor':1, 'mobile':True})
-        browser.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+        for width in [320,768,1024,1440,390]:
+            browser.call('Emulation.setDeviceMetricsOverride', {'width':width, 'height':844, 'deviceScaleFactor':1, 'mobile':width<761})
+            browser.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+            browser.evaluate(r"""(()=>{
+              const verify=()=>{
+                for(const row of document.querySelectorAll('.service-row')){
+                  const buttons=[...row.querySelectorAll('.service-row-actions .btn')],rects=buttons.map(b=>b.getBoundingClientRect()),cell=row.querySelector('.service-actions-cell').getBoundingClientRect();
+                  if(buttons.length!==4||rects.some(r=>Math.abs(r.top-rects[0].top)>1||r.left<cell.left-1||r.right>cell.right+1))throw Error('service buttons must fit a single row at '+innerWidth);
+                }
+              };
+              verify();document.querySelector('[data-action="service-filter"][data-click-arg0="closed"]').click();verify();
+              document.querySelector('[data-action="service-filter"][data-click-arg0="all"]').click();return true;
+            })()""")
         if os.environ.get('NETUNIM_SERVICE_SCREENSHOTS'):
             shot=browser.call('Page.captureScreenshot', {'format':'png'})['result']['data']
             (output/'mobile.png').write_bytes(base64.b64decode(shot))

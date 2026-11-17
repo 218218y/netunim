@@ -951,32 +951,31 @@ button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-v
 .service-table caption{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .service-table th{padding:10px 12px;text-align:start;background:var(--panel-soft);color:var(--muted);font-size:11px;font-weight:600;border-bottom:1px solid var(--line)}
 .service-table th:first-child{border-start-start-radius:12px}.service-table th:last-child{border-start-end-radius:12px}
-.service-table th:nth-last-child(5){width:21%}.service-table th:nth-last-child(4){width:33%}.service-table th:nth-last-child(3){width:20%}.service-table th:nth-last-child(2){width:10%}.service-table th:last-child{width:16%}
+.service-table th:nth-last-child(4){width:24%}.service-table th:nth-last-child(3){width:42%}.service-table th:nth-last-child(2){width:10%}.service-table th:last-child{width:24%}
 .service-table td{padding:12px;vertical-align:top;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
 .service-table tr:last-child td{border-bottom:0}.service-row:hover{background:var(--bg-2)}.service-row.is-closed{background:#fcfcfb}
 .service-customer-link{border:0;background:none;padding:0;font-size:14px;font-weight:750;color:var(--text);cursor:pointer;text-align:start;line-height:1.5}
 .service-customer-link:hover{text-decoration:underline;color:var(--primary)}
 .service-row-meta{font-size:11.5px;color:var(--muted);line-height:1.6;margin-top:3px}
 .service-phone{display:inline-block;margin-top:4px;color:var(--primary-strong);text-underline-offset:3px;font-variant-numeric:tabular-nums}
-.service-row-description{white-space:pre-wrap;line-height:1.65}.service-row-note{white-space:pre-wrap;font-size:12px;line-height:1.6;margin-top:6px;color:var(--warn)}
-.service-row-note>span{font-weight:650}.service-follow-up{font-size:12px;font-weight:650;line-height:1.6;margin-top:5px}
+.service-row-description{white-space:pre-wrap;line-height:1.65}
 .service-status-cell .badge{display:table;margin-bottom:5px;white-space:nowrap}
-.service-row-actions{display:flex;flex-wrap:wrap;gap:6px}.service-row-actions .btn{white-space:nowrap}
-.service-editor-options summary{cursor:pointer;color:var(--muted);font-size:12px;padding:4px 0}
-.service-editor-options label{display:flex;align-items:center;gap:7px;padding-top:7px;font-weight:400}.service-editor-options input{width:16px;min-height:16px;accent-color:var(--primary)}
-.service-editor-options small{color:var(--muted);font-size:11px;padding-top:5px}
+.service-row-actions{display:flex;flex-wrap:nowrap;gap:6px}.service-row-actions .btn{white-space:nowrap;min-width:0;padding:6px 8px;flex:0 0 auto}
+.service-sent-btn.is-sent{background:var(--good-soft);border-color:var(--good);color:var(--good)}
+#modal:has(.service-editor-form){width:min(660px,calc(100vw - 24px))}.service-editor-form{gap:10px}.service-editor-form #svcDesc{min-height:94px}
+.service-editor-options{align-self:end}.service-editor-options label{display:flex;align-items:center;gap:7px;min-height:34px;font-weight:400}.service-editor-options input{width:16px;min-height:16px;accent-color:var(--primary)}
+.service-source-details{font-size:11px;color:var(--muted)}.service-source-details summary{cursor:pointer}
 .service-customer-link:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
-@media(max-width:1000px) and (min-width:761px){.service-table td,.service-table th{padding:9px 7px}.service-table th:last-child{width:18%}.service-table th:nth-last-child(4){width:31%}}
+@media(max-width:1100px) and (min-width:761px){.service-table td,.service-table th{padding:9px 7px}.service-table th:last-child{width:34%}.service-table th:nth-last-child(3){width:32%}}
 @media(max-width:760px){
  .service-toolbar-top{flex-wrap:wrap}.service-toolbar .service-search{flex-basis:100%;max-width:none}.service-toolbar .module-toolbar-actions{width:100%}.service-toolbar .module-toolbar-actions>.btn{flex:1}
  .service-toolbar-bottom{flex-wrap:wrap}.service-toolbar .module-tabs{width:100%;overflow-x:auto}.service-toolbar-bottom .module-bulk-controls{margin-inline-start:0;flex-wrap:wrap}
  .service-table,.service-table tbody{display:block}.service-table thead{display:none}
  .service-table tr{display:grid;grid-template-columns:minmax(0,1fr) auto;padding:12px;gap:10px;border-bottom:1px solid var(--line);position:relative}.service-table tr:last-child{border-bottom:0}
  .service-table td{display:block;border:0;padding:0;min-width:0}.service-table .service-customer-cell{grid-column:1;grid-row:1}.service-table .service-status-cell{grid-column:2;grid-row:1;text-align:end}
- .service-table .service-details-cell,.service-table .service-treatment-cell,.service-table .service-actions-cell{grid-column:1/-1}
- .service-table .service-treatment-cell{border-top:1px solid var(--line);padding-top:7px}
+ .service-table .service-details-cell,.service-table .service-actions-cell{grid-column:1/-1}
  .service-table .bulk-check-col{position:absolute;inset-inline-start:12px;top:14px}.service-table tr:has(.bulk-check-col) .service-customer-cell{padding-inline-start:27px}
- .service-row-actions .btn{flex:1}.service-table .bulk-selected-row{background:var(--primary-soft)}
+ .service-row-actions .btn{flex:1 1 auto}.service-table .bulk-selected-row{background:var(--primary-soft)}
 }
 .warehouse-view-shell .source,#modal .field.full.source{white-space:normal;overflow-wrap:anywhere}
 .warehouse-filters select{border:1px solid var(--line);border-radius:8px;color:var(--text)}

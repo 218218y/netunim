@@ -18,8 +18,8 @@ function fixture(calls){
   const ids=html=>[...html.matchAll(/data-service-bulk-id="([^"]+)"/g)].map(m=>m[1]);
   const action=(name,id,arg)=>service.actions[name]({dataset:{clickArg0:id,clickArg1:arg}});
   function fill(record={}){
-    for(const [id,key] of Object.entries({svcName:'customerName',svcOrder:'orderNumber',svcPhone:'phone',svcAddress:'address',svcDesc:'description',svcOpened:'openedAt',svcNext:'nextFollowUp',svcAssignee:'assignee',svcNote:'note'}))fields[id]={value:record[key]||''};
-    for(const [id,key] of Object.entries({svcSent:'sent',svcFollow:'followUp',svcUrgent:'escalated'}))fields[id]={checked:!!record[key]};
+    for(const [id,key] of Object.entries({svcName:'customerName',svcOrder:'orderNumber',svcPhone:'phone',svcAddress:'address',svcDesc:'description',svcOpened:'openedAt',svcNext:'nextFollowUp'}))fields[id]={value:record[key]||''};
+    fields.svcUrgent={checked:!!record.escalated};
   }
   return {model,serviceUi,service,main,render,ids,action,fill,saves,messages,emails,get modal(){return modal},restore(){for(const [key,value]of Object.entries(previous)){if(value===undefined)delete globalThis[key];else globalThis[key]=value}}};
 }
@@ -32,6 +32,7 @@ test('service lifecycle includes all unfinished calls regardless of overlapping 
   try{
     assert.deepEqual(new Set(h.ids(h.render())),new Set(['plain','sent','follow','urgent']));
     h.service.renderService();assert.match(h.main.innerHTML,/<table class="service-table">/);assert.doesNotMatch(h.main.innerHTML,/service-card|workflow-btn|הקפצה/);
+    assert.equal(h.main.innerHTML.includes('<th>מעקב</th>'),false);assert.match(h.main.innerHTML,/>עריכה<\/button>/);assert.match(h.main.innerHTML,/>סגירה<\/button>/);
     assert.equal((h.main.innerHTML.match(/data-action="service-filter"/g)||[]).length,3);
     h.action('service-filter','closed');assert.deepEqual(h.ids(h.render()),['closed']);
   }finally{h.restore()}
@@ -58,12 +59,12 @@ test('priority sorting is deterministic and closed calls use closure date',()=>{
   assert.deepEqual(rows.sort(compareServiceCalls).map(c=>c.id),['urgent','late','later','undated','closedNew','closedOld']);
 });
 
-test('service search includes assignee and escapes imported text; paging can reveal a global-search target',()=>{
-  const h=fixture(Array.from({length:170},(_,i)=>call('s'+String(i).padStart(3,'0'),{assignee:i===169?'אחראי מיוחד':'',note:i===169?'<script>alert(1)</script>':''})));
+test('service search escapes request text; paging can reveal a global-search target',()=>{
+  const h=fixture(Array.from({length:170},(_,i)=>call('s'+String(i).padStart(3,'0'),{description:i===169?'תיקון מיוחד <script>alert(1)</script>':'תיקון'})));
   try{
     assert.equal(h.ids(h.render()).length,150);
     h.serviceUi.resultTarget='s169';assert.ok(h.ids(h.render()).includes('s169'));
-    h.serviceUi.serviceSearch='אחראי מיוחד';const html=h.render();assert.deepEqual(h.ids(html),['s169']);assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+    h.serviceUi.serviceSearch='תיקון מיוחד';const html=h.render();assert.deepEqual(h.ids(html),['s169']);assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
     h.serviceUi.serviceSearch='no-match';assert.equal(h.ids(h.render()).length,0);
   }finally{h.restore()}
 });
@@ -80,11 +81,13 @@ test('close and reopen persist only service and clear stale closure dates withou
 });
 
 test('editor preserves imported metadata and optional flags, and newly created calls become visible from a closed search',()=>{
-  const original=call('s1',{sent:true,followUp:true,source:{sheet:'שירות',rows:[8]},custom:'retained'}),h=fixture([original]);
+  const original=call('s1',{sent:true,followUp:true,assignee:'אחראי ישן',note:'הערה ישנה',source:{sheet:'שירות',rows:[8]},custom:'retained'}),h=fixture([original]);
   try{
-    h.action('open-service-modal-2','s1');assert.match(h.modal[1],/id="svcSent" type="checkbox" checked/);assert.match(h.modal[2],/הכנת מייל/);
-    h.fill({...original,assignee:'דוד',nextFollowUp:'2026-11-18',escalated:true});h.action('save-service','s1');
+    h.action('open-service-modal-2','s1');for(const name of ['svcSent','svcFollow','svcAssignee','svcNote'])assert.equal(h.modal[1].includes(name),false);assert.equal(h.modal[2].includes('open-service-gmail'),false);
+    h.fill({...original,nextFollowUp:'2026-11-18',escalated:true});h.action('save-service','s1');
     assert.equal(h.model.state.serviceCalls[0].custom,'retained');assert.deepEqual(h.model.state.serviceCalls[0].source,original.source);assert.equal(h.model.state.serviceCalls[0].sent,true);
+    assert.equal(h.model.state.serviceCalls[0].assignee,original.assignee);assert.equal(h.model.state.serviceCalls[0].note,original.note);
+    const html=h.render();assert.equal(html.includes(original.assignee),false);assert.equal(html.includes(original.note),false);assert.match(html,/data-action="open-service-gmail"/);assert.match(html,/aria-pressed="true"[^>]+data-click-arg1="sent"/);
     h.serviceUi.serviceFilter='closed';h.serviceUi.serviceSearch='old search';h.fill(call('new'));h.action('save-service','');
     assert.equal(h.serviceUi.serviceFilter,'all');assert.equal(h.serviceUi.serviceSearch,'');assert.match(h.main.innerHTML,/לקוח new/);
     const before=h.model.state.serviceCalls.length;h.action('save-service','missing');assert.equal(h.model.state.serviceCalls.length,before);assert.ok(h.messages.length);
