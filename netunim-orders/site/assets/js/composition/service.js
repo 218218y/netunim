@@ -39,7 +39,7 @@ export function createOrdersServiceRuntime({model,serviceUi,serviceRevision}={})
       toast:(...args)=>uiStatus.toast(...args),scheduleSave,
     });
     const editor=createDomainsServiceEditor({
-      model,modal:(...args)=>uiModal.modal(...args),
+      model,serviceUi,modal:(...args)=>uiModal.modal(...args),
       toast:(...args)=>uiStatus.toast(...args),scheduleSave,
       closeModal:(...args)=>uiModal.closeModal(...args),
       renderService,

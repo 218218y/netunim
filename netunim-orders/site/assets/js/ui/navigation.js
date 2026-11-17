@@ -1,6 +1,7 @@
 import {startupMark} from '../shared/startup-timing.js';
 import {beginMeasure} from '../shared/runtime-performance.js';
 import {createCleanViewCache} from '../shared/clean-view-cache.js';
+import {checkTodayISO} from '../core/dates.js';
 
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
@@ -10,7 +11,7 @@ const setKey=value=>[...(value||[])].map(String).sort().join(',');
 function viewStateKey(view){
   if(view==='supplier')return JSON.stringify([supplierUi.currentSupplierId,supplierUi.filterMode,supplierUi.searchText,supplierUi.supplierYearView,supplierUi.supplierBulkMode,setKey(supplierUi.supplierBulkSelected),supplierUi.supplierBulkAnchorId,supplierUi.supplierMoveTargetId]);
   if(view==='customers'||view==='customer-orders')return JSON.stringify([customerUi.customerTab,customerUi.customerFilter,customerUi.customerSearch,customerUi.customerBulkMode,setKey(customerUi.customerBulkSelected),customerUi.customerBulkAnchorId,customerUi.resultPages]);
-  if(view==='service')return JSON.stringify([serviceUi.serviceFilter,serviceUi.serviceSearch,serviceUi.serviceBulkMode,setKey(serviceUi.serviceBulkSelected),serviceUi.serviceBulkAnchorId,serviceUi.resultPages]);
+  if(view==='service')return JSON.stringify([checkTodayISO(),serviceUi.serviceFilter,serviceUi.serviceSearch,serviceUi.serviceBulkMode,setKey(serviceUi.serviceBulkSelected),serviceUi.serviceBulkAnchorId,serviceUi.resultPages]);
   if(view==='warehouse')return JSON.stringify([warehouseUi.warehouseTab,warehouseUi.inventoryLocation,warehouseUi.inventoryGrouping,warehouseUi.inventoryFilter,warehouseUi.inventoryHistoryItem,warehouseUi.warehouseSearch,warehouseUi.warehouseBulkMode,setKey(warehouseUi.warehouseBulkSelected),warehouseUi.warehouseBulkAnchorId,warehouseUi.warehouseOrdersPickedOpen,setKey(warehouseUi.inventoryCategoryOpen),setKey(warehouseUi.inventoryLocationOpen),warehouseUi.resultPages]);
   if(view==='checks')return JSON.stringify([ui.checkTab,ui.checkAccount,ui.checkYear,ui.checkSearchValue,ui.checksBulkMode,setKey(ui.checksBulkSelected),ui.checksBulkAnchorId]);
   if(view==='summary')return String(ui.summarySupplierYearView||'');

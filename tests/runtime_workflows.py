@@ -3,6 +3,7 @@ from browser_harness import BrowserSession, ROOT
 import json
 from notes_workbook_workflow import run as notes_workbook_workflow
 from shared_workbook_workflow import run as shared_workbook_workflow
+from service_workflow import run as service_workflow
 
 helpers=r"""
  const element=s=>{const e=document.querySelector(s);if(!e)throw new Error('Missing control '+s);return e};
@@ -92,7 +93,9 @@ flows={
  openDebtModal(state.customerDebts[0].id);fill({dPaid:'true',dInvoice:'true'});saveModal();await saved();assert(!!state.customerDebts[0].closedAt,'debt closed state');
  click('customer-filter-4');debtAmountCell=element('[data-customer-bulk-id="'+state.customerDebts[0].id+'"] .customer-debt-amount');assert(debtAmountCell.classList.contains('is-paid')&&!debtAmountCell.classList.contains('is-supplied'),'paid debt amount overrides supplied state in closed debts view');
  switchView('service');click('open-service-modal');fill({svcName:'Service customer',svcDesc:'Repair',svcOpened:'2026-08-27'});saveModal();await saved();assert(state.serviceCalls.length===1,'service create');
- const flag=element('[data-action="toggle-service-flag"]');flag.click();await saved();assert(state.serviceCalls[0].followUp,'service flag');
+ const flag=element('[data-action="toggle-service-flag"][data-click-arg1="closed"]');flag.click();await saved();assert(state.serviceCalls[0].closed&&state.serviceCalls[0].closedAt,'service close');
+ assert(!document.querySelector('[data-service-bulk-id]'),'closed service leaves active queue');
+ element('[data-action="service-filter"][data-click-arg0="closed"]').click();element('[data-action="toggle-service-flag"][data-click-arg1="closed"]').click();await saved();assert(!state.serviceCalls[0].closed&&!state.serviceCalls[0].closedAt,'service reopen clears closure date');
  switchView('warehouse');click('open-inventory-item-modal-2');fill({invName:'Chair',invCategory:'Furniture',invOpening:'10'});saveModal();await saved();assert(state.inventoryItems.length===0,'opening requires a real warehouse');fill({invLocation:'מחסן קטן'});saveModal();await saved();const item=state.inventoryItems[0];assert(inventoryStats(item.id).onHand===10,'inventory opening');
  openInventoryEventModal(item.id,'order');fill({evQty:'4',evLocation:''});saveModal();await saved();assert(inventoryStats(item.id).incoming===0,'new order cannot silently enter unknown warehouse');fill({evLocation:'מחסן קטן'});saveModal();await saved();assert(inventoryStats(item.id).incoming===4,'incoming inventory');
  const incoming=state.inventoryEvents.find(x=>x.type==='order');receiveIncoming(incoming.id);fill({receiveQty:'2'});saveModal();await saved();assert(inventoryStats(item.id).onHand===12&&inventoryStats(item.id).incoming===2,'partial receipt');
@@ -168,3 +171,4 @@ for label,flow in flows.items():
 
 notes_workbook_workflow()
 shared_workbook_workflow()
+service_workflow()

@@ -1,0 +1,112 @@
+"""Focused Service queue acceptance in an isolated, offline browser."""
+import base64
+import json
+import os
+from browser_harness import BrowserSession, ROOT
+
+
+def run():
+    with BrowserSession(ROOT/'netunim-orders/site', 'orders-service-queue') as browser:
+        browser.call('Emulation.setDeviceMetricsOverride', {'width':1440, 'height':1000, 'deviceScaleFactor':1, 'mobile':False})
+        browser.evaluate(r"""(async()=>{
+          Object.defineProperty(navigator,'onLine',{value:false,configurable:true});
+          const {todayISO}=await import('./assets/js/shared/calendar.js');
+          const common={openedAt:'2026-11-01',description:'דלת הארון אינה נסגרת היטב. יש לתאם הגעת טכנאי.',phone:'050-1234567',address:'רחוב הדוגמה 12, ירושלים'};
+          state=normalizeState({version:4,serviceCalls:[
+            {...common,id:'urgent',customerName:'משפחת כהן',orderNumber:'1042',assignee:'דוד',nextFollowUp:todayISO(),escalated:true,note:'לתאם עם הלקוח לפני הגעה',source:{sheet:'שירות',rows:[8]}},
+            {...common,id:'late',customerName:'משפחת לוי',orderNumber:'1087',assignee:'משה',nextFollowUp:'2020-01-01',sent:true,description:'תיקון מגירה במסילה'},
+            {...common,id:'future',customerName:'משפחת ישראלי',orderNumber:'1103',assignee:'דוד',nextFollowUp:'2099-01-01',followUp:true},
+            {...common,id:'plain',customerName:'משפחת אברהם',orderNumber:'1129'},
+            {...common,id:'closed',customerName:'משפחת מזרחי',closed:true,closedAt:'2026-11-15T10:00:00Z',nextFollowUp:'2020-01-01'}
+          ]});
+          const head=await mainStorageV2.cloudState();
+          await mainStorageV2.replaceLocalAuthoritativeState(state,{boundaryId:'service-queue-fixture',expectedSeq:head.seq});
+          switchView('service');return true;
+        })()""")
+        browser.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+        if os.environ.get('NETUNIM_SERVICE_SCREENSHOTS'):
+            output=ROOT/'.work/service-review'
+            output.mkdir(parents=True,exist_ok=True)
+            shot=browser.call('Page.captureScreenshot', {'format':'png'})['result']['data']
+            (output/'desktop.png').write_bytes(base64.b64decode(shot))
+            browser.evaluate("(()=>{openServiceModal('urgent');return true})()")
+            browser.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+            shot=browser.call('Page.captureScreenshot', {'format':'png'})['result']['data']
+            (output/'editor.png').write_bytes(base64.b64decode(shot))
+            browser.evaluate('(()=>{closeModal();return true})()')
+        result=browser.evaluate(r"""(async()=>{
+          const assert=(value,message)=>{if(!value)throw Error(message)};
+          const el=selector=>{const node=document.querySelector(selector);assert(node,'missing '+selector);return node};
+          const click=(action,id)=>el('[data-action="'+action+'"]'+(id?'[data-click-arg0="'+id+'"]':'')).click();
+          const ids=()=>[...document.querySelectorAll('[data-service-bulk-id]')].map(row=>row.dataset.serviceBulkId);
+          const wait=async predicate=>{const end=performance.now()+4000;while(!predicate()){if(performance.now()>end)throw Error('service update timed out');await new Promise(r=>setTimeout(r,20))}};
+          const frame=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+          assert(JSON.stringify(ids())===JSON.stringify(['urgent','late','future','plain']),'all unfinished calls, priority order');
+          assert(document.querySelectorAll('.service-toolbar [data-action="service-filter"]').length===3,'three meaningful views');
+          const searchRect=el('[data-input="service-search"]').getBoundingClientRect(),newRect=el('[data-action="open-service-modal"]').getBoundingClientRect(),tabsRect=el('.service-toolbar .module-tabs').getBoundingClientRect(),selectRect=el('[data-action="toggle-service-bulk-mode"]').getBoundingClientRect();
+          assert([newRect,tabsRect,selectRect].every(r=>Math.abs((r.top+r.height/2)-(searchRect.top+searchRect.height/2))<2),'search, views, selection and new call share a compact toolbar row');
+          assert(tabsRect.right<searchRect.left&&tabsRect.left>selectRect.right&&selectRect.left>newRect.right,'views and selection sit directly to the right of new call');
+          assert(el('[data-service-summary="all"]').textContent==='4'&&el('[data-service-summary="due"]').textContent==='2','all and due counts');
+          assert(el('.service-table').getBoundingClientRect().width<=el('.view-scroll').clientWidth,'table fits desktop');
+          click('service-filter','due');assert(JSON.stringify(ids())===JSON.stringify(['urgent','late']),'today includes overdue and excludes completed');
+          click('service-filter','all');const search=el('[data-input="service-search"]');search.value='מגירה';search.dispatchEvent(new Event('input',{bubbles:true}));
+          await wait(()=>ids().join(',')==='late');assert(document.activeElement!==null,'search completed');
+          search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));await wait(()=>ids().length===4);
+          click('open-service-modal-2','future');assert(!document.querySelector('#svcAssignee,#svcNote,#svcSent,#svcFollow'),'compact editor omits removed and inline fields');
+          assert(!document.querySelector('#modal [data-action="open-service-gmail"]'),'email belongs to the row');
+          el('#svcDesc').value='נקבע ביקור לתיקון הדלת';el('#svcUrgent').checked=true;click('save-service','future');
+          await wait(()=>!document.getElementById('modalBackdrop')?.classList.contains('open'));
+          assert(state.serviceCalls.find(c=>c.id==='future').followUp,'edit retains flag');assert(el('[data-service-bulk-id="future"]').textContent.includes('נקבע ביקור'),'updated description is visible');
+          const untouched=el('[data-service-bulk-id="urgent"]'),sent=el('[data-service-bulk-id="future"] [data-click-arg1="sent"]');sent.focus();sent.click();
+          assert(state.serviceCalls.find(c=>c.id==='future').sent,'inline sent toggle updates record');assert(el('[data-service-bulk-id="future"] [data-click-arg1="sent"]').getAttribute('aria-pressed')==='true','sent state is visible');
+          assert(document.activeElement.dataset.clickArg1==='sent'&&el('[data-service-bulk-id="urgent"]')===untouched,'sent toggle retains focus and other rows');
+          let draft=null;const originalOpen=window.open;window.open=(...args)=>{draft=args;return null};
+          try{click('open-service-gmail','future')}finally{window.open=originalOpen}
+          assert(new URL(draft[0]).searchParams.get('body').includes('נקבע ביקור'),'row email uses saved description');
+          const close=el('[data-service-bulk-id="urgent"] [data-click-arg1="closed"]');close.focus();close.click();
+          assert(!ids().includes('urgent'),'closing removes call from active queue');assert(state.serviceCalls.find(c=>c.id==='urgent').closedAt,'closure timestamp saved');
+          assert(el('[data-service-summary="all"]').textContent==='3','summary refreshes after closing');assert(document.activeElement.matches('.service-customer-link'),'focus moves to next result');
+          click('service-filter','closed');assert(ids().includes('urgent')&&ids().includes('closed'),'closed calls reachable');
+          el('[data-service-bulk-id="urgent"] [data-click-arg1="closed"]').click();
+          const reopened=state.serviceCalls.find(c=>c.id==='urgent');assert(!reopened.closed&&!reopened.closedAt,'reopen clears timestamp');assert(reopened.source.rows[0]===8,'import provenance retained');
+          click('service-filter','all');click('toggle-service-bulk-mode');click('toggle-service-bulk-visible');
+          assert(document.querySelectorAll('.service-row.bulk-selected-row').length===4,'select page highlights rows');assert(!el('#serviceBulkDelete').disabled,'bulk delete enabled');
+          click('toggle-service-bulk-mode');assert(!document.querySelector('[data-service-bulk-check]'),'selection controls removed');
+          await Promise.all([mainStorageV2.commitPromise]);
+          const saved=(await mainStorageV2.recover()).state.serviceCalls;
+          assert(saved.find(c=>c.id==='future').description==='נקבע ביקור לתיקון הדלת'&&saved.find(c=>c.id==='future').sent&&!saved.find(c=>c.id==='urgent').closed,'changes durably saved');
+          assert(saved.find(c=>c.id==='urgent').assignee==='דוד'&&saved.find(c=>c.id==='urgent').note==='לתאם עם הלקוח לפני הגעה','removed fields retain historical data');
+          return {filters:true,search:true,editor:true,inlineSent:true,inlineEmail:true,close:true,reopen:true,selection:true,persistence:true};
+        })()""", timeout=30)
+        for width in [320,768,1024,1440,390]:
+            browser.call('Emulation.setDeviceMetricsOverride', {'width':width, 'height':844, 'deviceScaleFactor':1, 'mobile':width<761})
+            browser.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+            browser.evaluate(r"""(()=>{
+              const verify=()=>{
+                for(const row of document.querySelectorAll('.service-row')){
+                  const buttons=[...row.querySelectorAll('.service-row-actions .btn')],rects=buttons.map(b=>b.getBoundingClientRect()),cell=row.querySelector('.service-actions-cell').getBoundingClientRect();
+                  if(buttons.length!==4||rects.some(r=>Math.abs(r.top-rects[0].top)>1||r.left<cell.left-1||r.right>cell.right+1))throw Error('service buttons must fit a single row at '+innerWidth);
+                  if(buttons[0].dataset.action!=='open-service-gmail'||buttons[1].dataset.clickArg1!=='sent'||buttons[2].textContent!=='עריכה'||buttons[3].dataset.clickArg1!=='closed'||rects.some((r,i)=>i&&r.right>rects[i-1].left+1))throw Error('service actions must run RTL: email, sent, edit, close');
+                  const padding=parseFloat(getComputedStyle(row.querySelector('.service-actions-cell')).paddingLeft)||0;
+                  if(Math.abs(Math.min(...rects.map(r=>r.left))-(cell.left+padding))>1)throw Error('service actions must align to the left edge at '+innerWidth);
+                }
+              };
+              verify();document.querySelector('[data-action="service-filter"][data-click-arg0="closed"]').click();verify();
+              document.querySelector('[data-action="service-filter"][data-click-arg0="all"]').click();return true;
+            })()""")
+        if os.environ.get('NETUNIM_SERVICE_SCREENSHOTS'):
+            shot=browser.call('Page.captureScreenshot', {'format':'png'})['result']['data']
+            (output/'mobile.png').write_bytes(base64.b64decode(shot))
+        mobile=browser.evaluate(r"""(()=>{
+          const root=document.documentElement,rows=[...document.querySelectorAll('.service-row')];
+          const fits=rows.every(row=>row.getBoundingClientRect().right<=innerWidth+1&&row.getBoundingClientRect().left>=-1);
+          if(root.scrollWidth>innerWidth+1||!fits)throw Error('service queue overflows mobile viewport '+JSON.stringify({width:innerWidth,scroll:root.scrollWidth,rows:rows.map(r=>({left:r.getBoundingClientRect().left,right:r.getBoundingClientRect().right})),overflow:[...document.querySelectorAll('body *')].filter(n=>n.getBoundingClientRect().right>innerWidth+1||n.getBoundingClientRect().left< -1).slice(0,12).map(n=>[n.tagName,n.className,n.getBoundingClientRect().left,n.getBoundingClientRect().right])}));
+          if(getComputedStyle(document.querySelector('.service-row')).display!=='grid')throw Error('mobile row layout missing');
+          return {width:innerWidth,scrollWidth:root.scrollWidth,rows:rows.length};
+        })()""")
+        assert not browser.drain_serious_errors()
+        print('PASS Service queue',json.dumps({**result,'mobile':mobile}))
+
+
+if __name__=='__main__':
+    run()

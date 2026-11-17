@@ -385,12 +385,12 @@ test('customer debt amount background gives paid precedence over supplied',()=>{
  assert.match(suppliedOpen,/data-click-arg1="supplied"/);
 });
 
-test('service status has explicit precedence when several flags are set',()=>{
+test('service lifecycle stays open until closed regardless of attention or sent flags',()=>{
  const flags={followUp:true,sent:true,escalated:true,closed:true};
  assert.equal(serviceStatus(flags).key,'closed');delete flags.closed;
- assert.equal(serviceStatus(flags).key,'escalated');delete flags.escalated;
- assert.equal(serviceStatus(flags).key,'sent');delete flags.sent;
- assert.equal(serviceStatus(flags).key,'follow');
+ assert.equal(serviceStatus(flags).key,'open');delete flags.escalated;
+ assert.equal(serviceStatus(flags).key,'open');delete flags.sent;
+ assert.equal(serviceStatus(flags).key,'open');
  assert.equal(serviceStatus({}).key,'open');
 });
 test('normalization keeps the Orders invoice marker while retiring obsolete supplier/debt fields',()=>{
