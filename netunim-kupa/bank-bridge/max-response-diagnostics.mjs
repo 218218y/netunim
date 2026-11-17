@@ -1,12 +1,13 @@
-// Structural metadata only. Never retain response values, URLs or HTTP bodies.
+// Structural metadata and bounded business codes only; no HTTP bodies or private values.
 const TYPES=['missing','null','array','object','string','number','boolean'];
-const OUTCOMES=['verified_rows','verified_empty','unrecognized_schema','transport_failure'];
+const OUTCOMES=['verified_rows','verified_empty','unrecognized_schema','transport_failure','provider_unavailable','provider_limit'];
 const REASONS=['verified','result_missing','result_null','result_wrong_type','transaction_list_missing','transaction_list_wrong_type',
   'unexpected_nonempty_array','depth_exceeded','invalid_billing_date','inconsistent_purchase_evidence','normalization_failed',
-  'schema_validation_failed','transport_failure','non_json','empty_body'];
+  'schema_validation_failed','transport_failure','non_json','empty_body','provider_no_transactions','provider_unavailable','provider_row_limit','provider_rejected','contradictory_empty_response'];
 const type=value=>value===undefined?'missing':value===null?'null':Array.isArray(value)?'array':typeof value;
 const keys=value=>value&&typeof value==='object'?Object.keys(value).filter(key=>/^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/.test(key)).sort().slice(0,40):[];
 const count=value=>Math.min(100000,Math.max(0,Number.isSafeInteger(value)?value:0));
+const businessCode=value=>Number.isInteger(value)&&Math.abs(value)<=999?value:null;
 export function maxResponseShape(data,{httpStatus=0,bodyType='unknown',contentType='',bodyLength=0}={}){
   const arrays=[];let visited=0,truncated=false;
   function walk(value,path,depth){
@@ -20,22 +21,26 @@ export function maxResponseShape(data,{httpStatus=0,bodyType='unknown',contentTy
   }
   walk(data,'$',0);
   const flags=[];
-  for(const [prefix,value]of [['$',data],['$.result',data?.result]])for(const key of ['success','isSuccess','hasData','hasTransactions'])
+  for(const [prefix,value]of [['$',data],['$.result',data?.result]])for(const key of ['success','isSuccess','hasData','hasTransactions','isMyMAXCardsFiltered'])
     if(typeof value?.[key]==='boolean')flags.push({path:prefix+'.'+key,value:value[key]});
   return {httpStatus:Number.isInteger(httpStatus)&&httpStatus>=100&&httpStatus<=599?httpStatus:0,
     contentType:/application\/(?:[\w.+-]*\+)?json/i.test(String(contentType))?'json':/text\/html/i.test(String(contentType))?'html':contentType?'other':'unknown',bodyLength:count(bodyLength),flags,
+    returnCode:businessCode(data?.returnCode),returnCodeType:type(data?.returnCode),descriptionType:type(data?.rcDesc),
     bodyType:['json','empty','non_json','transport_failure','invalid_transport'].includes(bodyType)?bodyType:'unknown',
     envelopeType:type(data),envelopeKeys:keys(data),resultType:type(data?.result),resultKeys:keys(data?.result),
     transactionsType:type(data?.result?.transactions),transactionsCount:Array.isArray(data?.result?.transactions)?count(data.result.transactions.length):null,
     arrays,truncated};
 }
 export function maxResponseDecision(shape,error,phase){
-  if(!error)return {outcome:'verified_empty',reason:'verified'};
+  if(!error)return {outcome:'verified_empty',reason:[10,11].includes(shape.returnCode)?'provider_no_transactions':'verified'};
+  if(error.diagnosticReason==='provider_unavailable')return {outcome:'provider_unavailable',reason:'provider_unavailable'};
+  if(error.diagnosticReason==='provider_row_limit')return {outcome:'provider_limit',reason:'provider_row_limit'};
   const transport=phase==='fetch';
+  if(REASONS.includes(error.diagnosticReason))return {outcome:transport?'transport_failure':'unrecognized_schema',reason:error.diagnosticReason};
   let reason=REASONS.includes(error.diagnosticReason)?error.diagnosticReason:transport?'transport_failure':phase==='normalize'?'normalization_failed':'schema_validation_failed';
   if(transport&&shape.bodyType==='non_json')reason='non_json';
   else if(shape.bodyType==='empty')reason='empty_body';
-  else if(!transport&&['missing','null'].includes(shape.resultType))reason='result_'+shape.resultType;
+  else if(!transport&&!REASONS.includes(error.diagnosticReason)&&['missing','null'].includes(shape.resultType))reason='result_'+shape.resultType;
   else if(!transport&&shape.resultType!=='object')reason='result_wrong_type';
   else if(!transport&&!['missing','array'].includes(shape.transactionsType))reason='transaction_list_wrong_type';
   return {outcome:transport?'transport_failure':'unrecognized_schema',reason};
@@ -46,7 +51,8 @@ export function safeMaxResponseEvidence(row){
   const safeKeys=value=>Array.isArray(value)?value.filter(key=>typeof key==='string'&&/^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/.test(key)).slice(0,40):[];
   return {httpStatus:Number.isInteger(row.httpStatus)&&row.httpStatus>=100&&row.httpStatus<=599?row.httpStatus:0,
     contentType:['json','html','other'].includes(row.contentType)?row.contentType:'unknown',bodyLength:count(row.bodyLength),
-    flags:(Array.isArray(row.flags)?row.flags:[]).filter(f=>/^\$(?:\.result)?\.(?:success|isSuccess|hasData|hasTransactions)$/.test(f?.path)&&typeof f.value==='boolean').slice(0,8).map(f=>({path:f.path,value:f.value})),
+    returnCode:businessCode(row.returnCode),returnCodeType:safeType(row.returnCodeType),descriptionType:safeType(row.descriptionType),
+    flags:(Array.isArray(row.flags)?row.flags:[]).filter(f=>/^\$(?:\.result)?\.(?:success|isSuccess|hasData|hasTransactions|isMyMAXCardsFiltered)$/.test(f?.path)&&typeof f.value==='boolean').slice(0,10).map(f=>({path:f.path,value:f.value})),
     bodyType:['json','empty','non_json','transport_failure','invalid_transport'].includes(row.bodyType)?row.bodyType:'unknown',
     envelopeType:safeType(row.envelopeType),envelopeKeys:safeKeys(row.envelopeKeys),resultType:safeType(row.resultType),resultKeys:safeKeys(row.resultKeys),
     transactionsType:safeType(row.transactionsType),transactionsCount:row.transactionsCount===null?null:count(row.transactionsCount),
@@ -55,6 +61,8 @@ export function safeMaxResponseEvidence(row){
     endpoint:'max_month_transactions',outcome:OUTCOMES.includes(row.outcome)?row.outcome:'unrecognized_schema',reason:REASONS.includes(row.reason)?row.reason:'schema_validation_failed'};
 }
 export function optionalMaxMonthFailure(error){
+  if(error?.code==='CREDIT_PROVIDER_PERIOD_UNAVAILABLE'&&error.diagnosticReason==='provider_unavailable')return true;
+  if(error?.code==='CREDIT_PROVIDER_ROW_LIMIT_EXCEEDED'&&error.diagnosticReason==='provider_row_limit')return true;
   if(['CREDIT_PROVIDER_SCHEMA_ERROR','CREDIT_PROVIDER_NETWORK_ERROR','CREDIT_PROVIDER_RESPONSE_NOT_JSON'].includes(error?.code))return true;
   return error?.code==='CREDIT_PROVIDER_HTTP_ERROR'&&(error.httpStatus===408||error.httpStatus>=500&&error.httpStatus<=599);
 }

@@ -212,7 +212,28 @@ function maxCandidateAudit(item = {}) {
   };
 }
 
+function maxProviderReply(data) {
+  if(!data||typeof data!=='object'||Array.isArray(data)||!Object.hasOwn(data,'returnCode'))return null;
+  const code=data.returnCode;
+  if(code===0)return null;
+  if(code===9||code===13)throw safeError(code===9?'MAX אינה יכולה להציג את פירוט התקופה כרגע. המידע הקודם נשמר.':'MAX דיווחה על ריבוי תנועות שאינו ניתן להצגה בבקשה זו. אין אישור לחודש ריק.',
+    code===9?'CREDIT_PROVIDER_PERIOD_UNAVAILABLE':'CREDIT_PROVIDER_ROW_LIMIT_EXCEEDED',
+    {stage:'MaxTransactions',diagnosticReason:code===9?'provider_unavailable':'provider_row_limit',providerReturnCode:String(code)});
+  if(code===10||code===11){
+    const fields=['returnCode','rcDesc','result','correlationID'];
+    if(Object.keys(data).length===fields.length&&fields.every(key=>Object.hasOwn(data,key))&&data.result===null&&
+      (data.rcDesc===null||typeof data.rcDesc==='string'&&data.rcDesc.length<=1000)&&
+      (data.correlationID===null||typeof data.correlationID==='string'&&data.correlationID.length<=128))return code;
+    throw safeError('MAX החזירה קוד היעדר תנועות במעטפת שאינה תואמת לחוזה המאומת. הנתונים הקודמים נשמרו.',
+      'CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'MaxTransactions',diagnosticReason:'contradictory_empty_response'});
+  }
+  throw safeError('MAX החזירה קוד דחייה לא מוכר. הסנכרון נעצר ושומר את הנתונים הקודמים.',
+    'CREDIT_PROVIDER_DATA_ERROR',{stage:'MaxTransactions',diagnosticReason:'provider_rejected'});
+}
+
 export function extractMaxTransactionCandidates(data = {}) {
+  const verifiedEmptyCode=maxProviderReply(data);
+  if(verifiedEmptyCode)return {transactions:[],evidence:{resultPresent:false,verifiedEmptyCode}};
   const result = data && typeof data === 'object' && !Array.isArray(data) ? data.result : null;
   if (!result || typeof result !== 'object' || Array.isArray(result))
     throw safeError('MAX לא החזירה מעטפת פירוט מזוהה. הריענון נעצר ללא החלפת הנתונים הקודמים.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });

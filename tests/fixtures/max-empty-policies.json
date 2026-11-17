@@ -1,0 +1,14 @@
+{
+  "MAX_PROVIDER_SCHEMA_VERSION": {
+    "before": "753d3bb0999fb42ea423d3c111f6b0de5591329757557f05d633a5f819cd59a5",
+    "after": "41dff93fa5f9928fd7c004b650ee6cd5f421f3ce37f520034fea3bf68dd1507e"
+  },
+  "maxProviderReply": {
+    "before": null,
+    "after": "7dc6f5a2ecca66fcf2a6be279022019a7ba88269ffb3512af6a4b585ce22524d"
+  },
+  "extractMaxTransactionCandidates": {
+    "before": "a304856b273c19e4765ed0d7cdc4290b002ceff31edb52f868456f7c0d6fd43b",
+    "after": "df2ed5e1c7967b4135d960f0d79a076b5b69accb79224d511536214acbc599ca"
+  }
+}

@@ -119,7 +119,7 @@ test(
     assert.equal(events.filter((row) => row.stage === 'request').length, 5);
     await fs.access(path.join(f.app, 'diagnostics', 'credit-data-latest.json'));
     const diagnostic=JSON.parse(await fs.readFile(path.join(f.app,'diagnostics','credit-data-latest.json'),'utf8'));
-    assert.equal(diagnostic.schemaVersion,4);
+    assert.equal(diagnostic.schemaVersion,5);
     const evidence=diagnostic.profiles[0].providerEvidence;
     assert.equal(evidence.length,3);
     assert.ok(evidence.every(row=>row.response.httpStatus===200&&row.response.outcome==='verified_rows'));

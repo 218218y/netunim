@@ -32,7 +32,7 @@ FLOW = r"""(async()=>{
  cloudTransport.readSupabaseDocument=async()=>({revision:main.revision,financeRevision:finance?2:session.financeRevision,state:{...structuredClone(main.state),...structuredClone(finance||{creditSync:state.creditSync})}});
  const originalFetch=globalThis.fetch;
  globalThis.fetch=(url,options)=>{
-   if(String(url).includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:87,contractVersion:2,profiles:[{profileId:'P'}]})));
+   if(String(url).includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:88,contractVersion:2,profiles:[{profileId:'P'}]})));
    if(String(url).includes('/v2/credit/reset')){resets++;return Promise.resolve(new Response(JSON.stringify({ok:true})))}
    if(String(url).includes('/v2/credit/sync')){providerRuns++;throw Error('preferences failure must not enter a provider')}
    return originalFetch(url,options);

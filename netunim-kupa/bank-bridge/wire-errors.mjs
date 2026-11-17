@@ -32,6 +32,8 @@ for (const [codes, message] of [
   [['INVALID_CONNECTION_IMPORT', 'INVALID_CONNECTION_IMPORT_BANK', 'INVALID_CONNECTION_IMPORT_CREDIT'], 'קובץ הגדרות החיבורים אינו תקין או אינו מתאים למחבר.'],
   [['CREDIT_SYNC_FAILED', 'CREDIT_SCRAPE_FAILED', 'CREDIT_UNKNOWN_ERROR', 'CREDIT_PROVIDER_DATA_ERROR', 'CREDIT_CAMOUFOX_FAILED'], 'סנכרון האשראי נכשל. בדוק את מצב החיבור ואת קוד התקלה.'],
   [['CREDIT_PROVIDER_RATE_LIMITED'], 'חברת האשראי הגבילה זמנית את קצב הבקשות. יש להמתין לפני ניסיון נוסף.'],
+  [['CREDIT_PROVIDER_PERIOD_UNAVAILABLE'], 'MAX אינה יכולה להציג את פירוט התקופה כרגע. מידע קודם נשמר; אפשר לנסות שוב מאוחר יותר.'],
+  [['CREDIT_PROVIDER_ROW_LIMIT_EXCEEDED'], 'MAX דיווחה על יותר מדי תנועות להצגה בבקשה זו. התקופה לא אומתה כחודש ריק ומידע קודם נשמר.'],
   [['CREDIT_AUTOMATION_BLOCKED'], 'חברת האשראי חסמה את החיבור האוטומטי. בדוק את החיבור באתר החברה לפני ניסיון נוסף.'],
   [['CREDIT_PROVIDER_NETWORK_ERROR', 'CREDIT_PROVIDER_UNAVAILABLE', 'CREDIT_PROVIDER_HTTP_ERROR'], 'שירות חברת האשראי אינו זמין כרגע. אפשר לנסות שוב מאוחר יותר.'],
   [['CREDIT_PROVIDER_SCHEMA_ERROR', 'CREDIT_PROVIDER_RESPONSE_NOT_JSON', 'CREDIT_LOGIN_HTML_RESPONSE', 'CREDIT_DATA_HTML_RESPONSE', 'CREDIT_LOGIN_UI_UNAVAILABLE', 'CREDIT_CONNECTOR_COMPATIBILITY_ERROR', 'CREDIT_BROWSER_IDENTITY_UNAVAILABLE', 'CREDIT_CAMOUFOX_IDENTITY_CORRUPT', 'CREDIT_CAMOUFOX_IDENTITY_UNAVAILABLE', 'CREDIT_CAMOUFOX_IDENTITY_UNSTABLE', 'CREDIT_CAMOUFOX_LOGIN_PROTOCOL', 'CREDIT_CAMOUFOX_UNSUPPORTED'], 'תגובת הספק אינה תואמת למחבר. בדוק אם זמין עדכון למחבר.'],
