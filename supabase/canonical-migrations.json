@@ -255,6 +255,10 @@
     {
       "version": "20261116140000",
       "name": "credit_purchase_evidence"
+    },
+    {
+      "version": "20261117070000",
+      "name": "bank_aggregate_cheque_transition"
     }
   ]
 }

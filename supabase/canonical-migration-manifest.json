@@ -318,5 +318,10 @@
     "version": "20261116140000",
     "name": "credit_purchase_evidence",
     "sha256": "2612470374bb0c90a62109be07e8637d5aebfa05ca57264e8e2b6a0a1f165bb5"
+  },
+  {
+    "version": "20261117070000",
+    "name": "bank_aggregate_cheque_transition",
+    "sha256": "502270a7bbca41776879c7a89e15125dc6f8c234d650474905349a1eddf3ac29"
   }
 ]

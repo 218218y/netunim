@@ -6,6 +6,7 @@ from supabase_authorization import run as authorization
 from morning_schema_contract import assert_morning_schema_contract
 from check_bank_reconciliation import run as check_bank_reconciliation
 from check_bank_items import run as check_bank_items
+from bank_aggregate_cheque_transition import run as bank_aggregate_cheque_transition
 from bank_instant_credit_name_prefix import run as bank_instant_credit_name_prefix
 from check_notification_retention import run as check_notification_retention
 from notes_workbook_delete import run as notes_workbook_delete
@@ -328,6 +329,7 @@ with IsolatedPostgres(schema_files=all_files) as db:
     check_bank_reconciliation(db)
 
 with IsolatedPostgres(schema_files=all_files) as db:
+    bank_aggregate_cheque_transition(db)
     check_bank_items(db)
     check_notification_retention(db)
 
