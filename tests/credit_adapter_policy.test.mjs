@@ -43,6 +43,7 @@ const providerUpdatePolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/cred
 const observationPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/credit-provider-observation-policies.json',import.meta.url),'utf8'));
 const maxCandidatePolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/max-candidate-policies.json',import.meta.url),'utf8'));
 const maxResponsePolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/max-response-policies.json',import.meta.url),'utf8'));
+const maxForecastPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/max-forecast-policies.json',import.meta.url),'utf8'));
 const monthIntegrityPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/credit-month-integrity-policies.json',import.meta.url),'utf8'));
 
 test('credit provider methods, normalization, wire constants and fallback policy match the reviewed baseline', () => {
@@ -82,6 +83,8 @@ test('credit provider methods, normalization, wire constants and fallback policy
   for(const [name,{before,after}] of Object.entries(maxCandidatePolicies)){assert.equal(reviewed[name],before,name);reviewed[name]=after}
   assert.deepEqual(Object.keys(maxResponsePolicies).sort(),['MAX_PROVIDER_SCHEMA_VERSION','maxProviderDate','maxMetadataArray','maxWalkTransactionCandidates','extractMaxTransactionCandidates','normalizeMaxRawTransaction','maxMonthlyAccounts','scrapeMaxDirect'].sort());
   for(const [name,{before,after}] of Object.entries(maxResponsePolicies)){assert.equal(reviewed[name]??null,before,name);reviewed[name]=after}
+  assert.deepEqual(Object.keys(maxForecastPolicies).sort(),['MAX_PROVIDER_SCHEMA_VERSION','maxWalkTransactionCandidates','extractMaxTransactionCandidates','normalizeMaxRawTransaction','maxGetJsonWithinPage','scrapeMaxDirect'].sort());
+  for(const [name,{before,after}] of Object.entries(maxForecastPolicies)){assert.equal(reviewed[name],before,name);reviewed[name]=after}
   assert.deepEqual(creditAdapterPolicyHashes(sources()).policies,reviewed);
   assert.equal(Object.keys(fixture.policies).length, 118);
 });

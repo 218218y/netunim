@@ -35,7 +35,7 @@ with BrowserSession(ROOT/'netunim-kupa/site', 'kupa-credit-capability') as brows
         const path=new URL(String(url)).pathname;
         check(['/v2/credit/data-diagnostics','/v2/credit/profiles','/v2/credit/status'].includes(path),'only synthetic local Credit requests are made');requests++;
         if(path==='/v2/credit/profiles'){connections.push(JSON.parse(options.body));return new Response('{}')}
-        if(path==='/v2/credit/status')return new Response(JSON.stringify({bridgeVersion:86,contractVersion:2,profiles:[]}));
+        if(path==='/v2/credit/status')return new Response(JSON.stringify({bridgeVersion:87,contractVersion:2,profiles:[]}));
         if(hold){entered.resolve();await release.promise}
         return new Response(JSON.stringify({available:true,filename:'fixture.json',data:{version:1,fixture:'safe'},cardCount:1}),{headers:{'Content-Type':'application/json'}});
       };
