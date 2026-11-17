@@ -5,7 +5,7 @@ import {bankMorningEligibility} from '../finance/bank-morning.js';
 function field(root,id){return root.querySelector?.('#'+id)||root.getElementById?.(id)||null}
 
 const MAX_RESULTS=80;
-const RECENT_DAYS=45;
+const RECENT_DAYS=60;
 function clean(value,max=260){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
 function bankDate(value){const text=String(value||'').slice(0,10),match=text.match(/^(\d{4})-(\d{2})-(\d{2})$/);return match?`${match[3]}/${match[2]}/${match[1].slice(2)}`:text||'—'}
 function amountLabel(row){const amount=readBankMoney(row?.amount);return amount===null?'סכום לא ידוע':money(amount)}
@@ -38,7 +38,7 @@ function rowMarkup(row,activeTransactionId){
 
 export function morningBankTransactionPickerMarkup({activeTransaction=null,loading=false}={}){
   const selected=activeTransaction&&Number(activeTransaction.archiveId)>0?activeTransaction:null;
-  return `<div class="morning-form-card morning-bank-transaction-link"><div class="morning-section-title"><span>קישור לתנועת בנק <small>(רשות)</small></span><small>מוצגות תנועות זכות עסקיות סופיות מ־45 הימים האחרונים שמתאימות להפקת קבלה</small></div>
+  return `<div class="morning-form-card morning-bank-transaction-link"><div class="morning-section-title"><span>קישור לתנועת בנק <small>(רשות)</small></span><small>מוצגות תנועות זכות עסקיות סופיות מ־${RECENT_DAYS} הימים האחרונים שמתאימות להפקת קבלה</small></div>
     <div class="morning-bank-transaction-selected" id="morningBankTransactionSelected" ${selected?'':'hidden'}>${selected?`<b>תנועה שנבחרה:</b> ${esc(label(selected))}`:''}</div>
     <div class="morning-bank-transaction-search-shell">
       <div class="morning-bank-transaction-toolbar"><input id="morningBankTransactionSearch" type="search" autocomplete="off" data-focus="select-input" placeholder="חפש לפי לקוח, פעולה, אסמכתא, תאריך או סכום…" data-input="morning-bank-transaction-search"><button type="button" class="btn small morning-bank-transaction-clear" data-action="morning-bank-transaction-clear" ${selected?'':'hidden'}>בטל קישור</button></div>
@@ -49,7 +49,9 @@ export function morningBankTransactionPickerMarkup({activeTransaction=null,loadi
 
 export function renderMorningBankTransactionPicker({rows=[],query='',activeTransactionId=null,root=globalThis.document}={}){
   if(!root)return 0;const all=morningLinkableBankTransactions(rows),needle=clean(query,180).toLocaleLowerCase('he'),filtered=needle?all.filter(row=>searchText(row).includes(needle)):all,shown=filtered.slice(0,MAX_RESULTS),host=field(root,'morningBankTransactionRows'),empty=field(root,'morningBankTransactionEmpty'),count=field(root,'morningBankTransactionCount');
-  if(host)host.innerHTML=shown.map(row=>rowMarkup(row,activeTransactionId)).join('');if(empty){empty.hidden=shown.length>0;empty.textContent=all.length?'אין תנועות שמתאימות לחיפוש.':'אין תנועות זכות מתאימות מ־45 הימים האחרונים.'}if(count)count.textContent=filtered.length>shown.length?`מציג ${shown.length} מתוך ${filtered.length} תנועות · צמצם את החיפוש כדי להגיע לתנועה הרצויה`:filtered.length?`מציג ${filtered.length} תנועות מתאימות`:'';return filtered.length;
+  if(host)host.innerHTML=shown.map(row=>rowMarkup(row,activeTransactionId)).join('');
+  if(empty){empty.hidden=shown.length>0;empty.textContent=all.length?'אין תנועות שמתאימות לחיפוש.':`אין תנועות זכות מתאימות מ־${RECENT_DAYS} הימים האחרונים.`}
+  if(count)count.textContent=filtered.length>shown.length?`מציג ${shown.length} מתוך ${filtered.length} תנועות · צמצם את החיפוש כדי להגיע לתנועה הרצויה`:filtered.length?`מציג ${filtered.length} תנועות מתאימות`:'';return filtered.length;
 }
 
 export function syncMorningBankTransactionSelection({transaction=null,root=globalThis.document}={}){
