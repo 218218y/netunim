@@ -5,8 +5,12 @@ export function serviceStatus(c){return c.closed?{key:'closed',text:'סגורה'
 export function serviceFollowUpDate(c){
   const date=String(c.nextFollowUp||'');
   if(c.closed||!/^\d{4}-\d{2}-\d{2}$/.test(date))return '';
-  const parsed=new Date(date+'T12:00:00');
+  const parsed=new Date(date+'T12:00:00Z');
   return !Number.isNaN(parsed.getTime())&&parsed.toISOString().slice(0,10)===date?date:'';
+}
+export function serviceDateLabel(value){
+  const text=String(value??'').trim(),date=serviceFollowUpDate({nextFollowUp:text.slice(0,10)});
+  return date?checkDateFmt(date):text||'ללא תאריך';
 }
 export function serviceFollowUp(c,today=checkTodayISO()){
   const date=serviceFollowUpDate(c);if(!date)return null;

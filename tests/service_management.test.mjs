@@ -95,3 +95,8 @@ test('preparing email never marks a call as sent and omits an obsolete closure d
   const h=fixture([call('s1',{closed:false,closedAt:'2026-01-01'})]);
   try{h.action('open-service-gmail','s1');assert.equal(h.emails.length,1);const body=new URL(h.emails[0][0]).searchParams.get('body');assert.match(body,/בטיפול/);assert.doesNotMatch(body,/תאריך סגירה/);assert.equal(h.saves.length,0);assert.equal(h.model.state.serviceCalls[0].sent,undefined)}finally{h.restore()}
 });
+
+test('imported records with unstructured opening or closure dates remain readable',()=>{
+  const h=fixture([call('legacy',{openedAt:'תאריך לא ידוע'}),call('closed',{closed:true,closedAt:'ללא תאריך סגירה'})]);
+  try{assert.match(h.render(),/תאריך לא ידוע/);h.action('service-filter','closed');assert.match(h.render(),/ללא תאריך סגירה/)}finally{h.restore()}
+});

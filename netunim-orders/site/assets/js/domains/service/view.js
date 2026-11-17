@@ -1,8 +1,8 @@
 import {createResultPages} from '../../shared/result-pages.js';
 import {createRevisionSelector} from '../../shared/revision-selector.js';
 import {esc} from '../../core/values.js';
-import {checkTodayISO,checkDateFmt} from '../../core/dates.js';
-import {serviceStatus,serviceFollowUp,serviceFollowUpDate,compareServiceCalls,serviceEmailValue} from './model.js';
+import {checkTodayISO} from '../../core/dates.js';
+import {serviceStatus,serviceFollowUp,serviceFollowUpDate,serviceDateLabel,compareServiceCalls,serviceEmailValue} from './model.js';
 import {$} from '../../state/constants.js';
 
 export function createDomainsServiceView({serviceRevision,model,serviceUi,mountViewLayout,serviceBulkControls,syncServiceBulkUi,toast,scheduleSave}){
@@ -50,9 +50,9 @@ export function createDomainsServiceView({serviceRevision,model,serviceUi,mountV
     return `<tr data-service-bulk-id="${esc(c.id)}" class="service-row ${c.closed?'is-closed':''} ${selected?'bulk-selected-row':''}">
       ${serviceUi.serviceBulkMode?`<td class="bulk-check-col"><input class="bulk-check" aria-label="בחירת הקריאה של ${esc(c.customerName)}" data-service-bulk-check type="checkbox" ${selected?'checked':''} data-action="toggle-service-bulk-row" data-change="toggle-service-bulk-row" data-click-arg0="${esc(c.id)}"></td>`:''}
       <td class="service-customer-cell"><button class="service-customer-link" data-action="open-service-modal-2" data-click-arg0="${esc(c.id)}">${esc(c.customerName||'ללא שם')}</button>${c.orderNumber?`<div class="service-row-meta">הזמנה ${esc(c.orderNumber)}</div>`:''}${phone?`<div>${dial?`<a class="service-phone" dir="ltr" href="tel:${esc(dial)}">${esc(phone)}</a>`:esc(phone)}</div>`:''}${c.address?`<div class="service-row-meta">${esc(c.address)}</div>`:''}</td>
-      <td class="service-details-cell"><div class="service-row-description">${esc(c.description||'ללא פירוט')}</div>${c.note?`<div class="service-row-note"><span>הערה:</span> ${esc(c.note)}</div>`:''}<div class="service-row-meta">נפתחה ${esc(c.openedAt?checkDateFmt(c.openedAt):'ללא תאריך')}</div></td>
+      <td class="service-details-cell"><div class="service-row-description">${esc(c.description||'ללא פירוט')}</div>${c.note?`<div class="service-row-note"><span>הערה:</span> ${esc(c.note)}</div>`:''}<div class="service-row-meta">נפתחה ${esc(serviceDateLabel(c.openedAt))}</div></td>
       <td class="service-treatment-cell"><div class="${c.assignee?'':'service-row-meta'}">${esc(c.assignee||'לא הוגדר אחראי')}</div>${follow?`<div class="service-follow-up ${follow.overdue?'badtext':follow.due?'warntext':''}">${esc(follow.text)}</div>`:!c.closed?`<div class="service-row-meta">${c.followUp?'נדרש מעקב · ללא מועד':'לא נקבע מועד מעקב'}</div>`:''}${c.sent?'<div class="service-row-meta">סומן כנשלח</div>':''}</td>
-      <td class="service-status-cell"><span class="badge ${s.cls}">${s.text}</span>${c.escalated&&!c.closed?'<span class="badge red">דחופה</span>':''}${c.closedAt&&c.closed?`<div class="service-row-meta">${esc(checkDateFmt(String(c.closedAt).slice(0,10)))}</div>`:''}</td>
+      <td class="service-status-cell"><span class="badge ${s.cls}">${s.text}</span>${c.escalated&&!c.closed?'<span class="badge red">דחופה</span>':''}${c.closedAt&&c.closed?`<div class="service-row-meta">${esc(serviceDateLabel(c.closedAt))}</div>`:''}</td>
       <td class="service-actions-cell"><div class="service-row-actions"><button class="btn small" data-action="open-service-modal-2" data-click-arg0="${esc(c.id)}" aria-label="עדכון הקריאה של ${esc(c.customerName)}">עדכון טיפול</button><button class="btn small ${c.closed?'':'primary'}" data-action="toggle-service-flag" data-click-arg0="${esc(c.id)}" data-click-arg1="closed" aria-label="${c.closed?'פתיחה מחדש':'סיום טיפול'} בקריאה של ${esc(c.customerName)}">${c.closed?'פתיחה מחדש':'סיום טיפול'}</button></div></td>
     </tr>`;
   }
