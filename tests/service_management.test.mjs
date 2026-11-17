@@ -33,6 +33,7 @@ test('service lifecycle includes all unfinished calls regardless of overlapping 
     assert.deepEqual(new Set(h.ids(h.render())),new Set(['plain','sent','follow','urgent']));
     h.service.renderService();assert.match(h.main.innerHTML,/<table class="service-table">/);assert.doesNotMatch(h.main.innerHTML,/service-card|workflow-btn|הקפצה/);
     assert.equal(h.main.innerHTML.includes('<th>מעקב</th>'),false);assert.match(h.main.innerHTML,/>עריכה<\/button>/);assert.match(h.main.innerHTML,/>סגירה<\/button>/);
+    assert.equal(h.main.innerHTML.includes('service-result-summary'),false);assert.equal(h.main.innerHTML.includes('דחופות ומועדי מעקב קרובים תחילה'),false);
     assert.equal((h.main.innerHTML.match(/data-action="service-filter"/g)||[]).length,3);
     h.action('service-filter','closed');assert.deepEqual(h.ids(h.render()),['closed']);
   }finally{h.restore()}

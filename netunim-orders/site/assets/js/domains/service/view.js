@@ -30,18 +30,17 @@ export function createDomainsServiceView({serviceRevision,model,serviceUi,mountV
   function resultsMarkup(rows){
     const page=pages.page(rows,'calls',`${serviceUi.serviceFilter}:${serviceUi.serviceSearch||''}`,{target:serviceUi.resultTarget});serviceUi.resultTarget='';
     const scope=serviceUi.serviceFilter==='closed'?'קריאות סגורות':serviceUi.serviceFilter==='due'?'קריאות למעקב היום ובאיחור':'קריאות בטיפול';
-    const summary=`<div class="service-result-summary" role="status">${rows.length} ${scope}${serviceUi.serviceSearch?' · לפי החיפוש':''}<span>${serviceUi.serviceFilter==='closed'?'לפי מועד הסגירה':'דחופות ומועדי מעקב קרובים תחילה'}</span></div>`;
     if(!rows.length){
       const message=serviceUi.serviceSearch?'לא נמצאו קריאות התואמות לחיפוש.':serviceUi.serviceFilter==='due'?'אין קריאות עם מועד מעקב להיום או באיחור.':serviceUi.serviceFilter==='closed'?'אין עדיין קריאות סגורות.':'אין כרגע קריאות בטיפול.';
-      return summary+`<div class="empty module-empty">${message}</div>`;
+      return `<div class="empty module-empty">${message}</div>`;
     }
-    return summary+page.controls+`<div class="service-table-wrap"><table class="service-table"><caption class="sr-only">${scope}</caption><thead><tr>${serviceUi.serviceBulkMode?'<th class="bulk-check-col">בחירה</th>':''}<th>לקוח וקשר</th><th>פרטי הקריאה</th><th>מצב</th><th>פעולות</th></tr></thead><tbody>${page.rows.map(serviceRow).join('')}</tbody></table></div>`;
+    return page.controls+`<div class="service-table-wrap"><table class="service-table"><caption class="sr-only">${scope}</caption><thead><tr>${serviceUi.serviceBulkMode?'<th class="bulk-check-col">בחירה</th>':''}<th>לקוח וקשר</th><th>פרטי הקריאה</th><th>מצב</th><th>פעולות</th></tr></thead><tbody>${page.rows.map(serviceRow).join('')}</tbody></table></div>`;
   }
   function renderService({resultsOnly=false}={}){
     const {rows,counts}=serviceData(),results=resultsMarkup(rows);
     if(resultsOnly){const host=$('#serviceSearchResults');if(host)host.innerHTML=results;updateServiceSummary(counts);syncServiceBulkUi();return}
     const tab=(key,label)=>`<button class="chip-filter ${serviceUi.serviceFilter===key?'active':''}" aria-pressed="${serviceUi.serviceFilter===key}" data-action="service-filter" data-click-arg0="${key}">${label} <span data-service-summary="${key}">${counts[key]}</span></button>`;
-    $('#main').innerHTML=`<div class="module-toolbar service-toolbar"><div class="service-toolbar-top"><input class="service-search" aria-label="חיפוש בקריאות שירות" placeholder="חיפוש לקוח, הזמנה, טלפון או תוכן הקריאה…" value="${esc(serviceUi.serviceSearch)}" data-input="service-search"><div class="module-toolbar-actions"><button class="btn primary" data-action="open-service-modal">+ פתיחת קריאה</button></div></div><div class="service-toolbar-bottom"><div class="module-tabs" aria-label="תצוגת קריאות שירות">${tab('all','בטיפול')}${tab('due','למעקב היום')}${tab('closed','סגורות')}</div>${serviceBulkControls()}</div></div><section id="serviceSearchResults" aria-label="קריאות שירות">${results}</section>`;
+    $('#main').innerHTML=`<div class="module-toolbar service-toolbar"><input class="service-search" aria-label="חיפוש בקריאות שירות" placeholder="חיפוש לקוח, הזמנה, טלפון או תוכן הקריאה…" value="${esc(serviceUi.serviceSearch)}" data-input="service-search"><div class="service-toolbar-controls"><div class="module-tabs" aria-label="תצוגת קריאות שירות">${tab('all','בטיפול')}${tab('due','למעקב היום')}${tab('closed','סגורות')}</div>${serviceBulkControls()}<button class="btn primary" data-action="open-service-modal">+ פתיחת קריאה</button></div></div><section id="serviceSearchResults" aria-label="קריאות שירות">${results}</section>`;
     mountViewLayout({headCount:1,className:'service-view-shell',scrollKey:`service:${serviceUi.serviceFilter}`});syncServiceBulkUi();
   }
   function serviceRow(c){

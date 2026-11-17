@@ -938,14 +938,13 @@ button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-v
 .inventory-table th,.inventory-table td{border-left:0}
 
 /* Service queue: shared columns keep customer, work and follow-up easy to scan. */
-.service-toolbar{display:flex;flex-direction:column;align-items:stretch;gap:10px}
-.service-toolbar-top,.service-toolbar-bottom{display:flex;align-items:center;gap:10px;width:100%;min-width:0}
-.service-toolbar .service-search{flex:1;max-width:520px;min-width:0}
-.service-toolbar-bottom .module-bulk-controls{margin-inline-start:auto}
+.service-toolbar{display:flex;flex-direction:row;align-items:center;flex-wrap:nowrap;gap:10px}
+.service-toolbar-controls{display:flex;align-items:center;flex:0 0 auto;gap:8px;margin-inline-start:auto;min-width:0}
+.service-toolbar .service-search{flex:1 1 220px;max-width:520px;min-width:130px}
+.service-toolbar .module-tabs{width:auto;flex:0 0 auto}
+.service-toolbar:has(#serviceBulkAll){flex-wrap:wrap}
 .service-toolbar .chip-filter{display:flex;align-items:center;gap:7px;white-space:nowrap}
 .service-toolbar .chip-filter span{font-size:11px;font-variant-numeric:tabular-nums;opacity:.8}
-.service-result-summary{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:2px 2px 10px;font-size:12px;color:var(--muted)}
-.service-result-summary span{font-size:11px}
 .service-table-wrap{border:1px solid var(--line);border-radius:12px;background:var(--panel)}
 .service-table{width:100%;min-width:0;border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:13px}
 .service-table caption{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
@@ -969,8 +968,8 @@ button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-v
 .service-customer-link:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
 @media(max-width:1100px) and (min-width:761px){.service-table td,.service-table th{padding:9px 7px}.service-table th:last-child{width:34%}.service-table th:nth-last-child(3){width:32%}}
 @media(max-width:760px){
- .service-toolbar-top{flex-wrap:wrap}.service-toolbar .service-search{flex-basis:100%;max-width:none}.service-toolbar .module-toolbar-actions{width:100%}.service-toolbar .module-toolbar-actions>.btn{flex:1}
- .service-toolbar-bottom{flex-wrap:wrap}.service-toolbar .module-tabs{width:100%;overflow-x:auto}.service-toolbar-bottom .module-bulk-controls{margin-inline-start:0;flex-wrap:wrap}
+ .service-toolbar{flex-wrap:wrap}.service-toolbar .service-search{flex-basis:100%;max-width:none}
+ .service-toolbar-controls{flex:1 1 100%;flex-wrap:wrap;margin:0;gap:6px}.service-toolbar .module-tabs{flex:1 1 auto;overflow-x:auto}.service-toolbar .module-bulk-controls{flex-wrap:wrap}.service-toolbar-controls>[data-action="open-service-modal"]{margin-inline-start:auto}
  .service-table,.service-table tbody{display:block}.service-table thead{display:none}
  .service-table tr{display:grid;grid-template-columns:minmax(0,1fr) auto;padding:12px;gap:10px;border-bottom:1px solid var(--line);position:relative}.service-table tr:last-child{border-bottom:0}
  .service-table td{display:block;border:0;padding:0;min-width:0}.service-table .service-customer-cell{grid-column:1;grid-row:1}.service-table .service-status-cell{grid-column:2;grid-row:1;text-align:end}

@@ -43,6 +43,9 @@ def run():
           const frame=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
           assert(JSON.stringify(ids())===JSON.stringify(['urgent','late','future','plain']),'all unfinished calls, priority order');
           assert(document.querySelectorAll('.service-toolbar [data-action="service-filter"]').length===3,'three meaningful views');
+          const searchRect=el('[data-input="service-search"]').getBoundingClientRect(),newRect=el('[data-action="open-service-modal"]').getBoundingClientRect(),tabsRect=el('.service-toolbar .module-tabs').getBoundingClientRect(),selectRect=el('[data-action="toggle-service-bulk-mode"]').getBoundingClientRect();
+          assert([newRect,tabsRect,selectRect].every(r=>Math.abs((r.top+r.height/2)-(searchRect.top+searchRect.height/2))<2),'search, views, selection and new call share a compact toolbar row');
+          assert(tabsRect.right<searchRect.left&&tabsRect.left>selectRect.right&&selectRect.left>newRect.right,'views and selection sit directly to the right of new call');
           assert(el('[data-service-summary="all"]').textContent==='4'&&el('[data-service-summary="due"]').textContent==='2','all and due counts');
           assert(el('.service-table').getBoundingClientRect().width<=el('.view-scroll').clientWidth,'table fits desktop');
           click('service-filter','due');assert(JSON.stringify(ids())===JSON.stringify(['urgent','late']),'today includes overdue and excludes completed');
