@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import {attachBankArchiveMetadata,bankMorningDebtCandidates,bankMorningEligibility,bankMorningPrefill} from '../netunim-orders/site/assets/js/domains/finance/bank-morning.js';
 import {MORNING_BANKS,findMorningBanks,morningBankDatalistMarkup,resolveMorningBank} from '../netunim-orders/site/assets/js/core/morning-banks.js';
 import {normalizeBankFeedTransaction} from '../netunim-orders/site/assets/js/domains/finance/bank-feed.js';
@@ -7,7 +8,7 @@ import {bankTransferReferenceDetails} from '../netunim-orders/site/assets/js/dom
 import {activeMorningBankDebts,morningBankDebtPickerMarkup} from '../netunim-orders/site/assets/js/domains/customers/morning-bank-debt-picker.js';
 import {debtMorningPrefill} from '../netunim-orders/site/assets/js/domains/customers/documents.js';
 import {createMorningPayments} from '../netunim-orders/site/assets/js/domains/customers/morning-payments.js';
-import {morningBankTransactionLabel,morningBankTransactionPickerMarkup,morningLinkableBankTransactions} from '../netunim-orders/site/assets/js/domains/customers/morning-bank-transaction-picker.js';
+import {morningBankTransactionLabel,morningBankTransactionPickerMarkup,morningLinkableBankTransactions,renderMorningBankTransactionPicker} from '../netunim-orders/site/assets/js/domains/customers/morning-bank-transaction-picker.js';
 import {createCloudTransport} from '../netunim-orders/site/assets/js/cloud/transport.js';
 
 const row={archiveId:42,id:'k1',amount:1250,currency:'ILS',status:'completed',date:'2026-09-20T09:00:00Z',processedDate:'2026-09-20T09:00:00Z',partyName:'  משה   כהן ',description:'העברה',bankReference:'REF-7'};
@@ -53,8 +54,32 @@ const pickerMarkup=morningBankDebtPickerMarkup({debts:pickerDebts,transaction:ro
 assert.match(pickerMarkup,/חפש לקוח, טלפון, הערה, סליקה או ת\.ז/);assert.match(pickerMarkup,/התאמה מועדפת/);assert.match(pickerMarkup,/data-bank-debt-search="ישראל לוי 778899 987654321"/);assert.doesNotMatch(pickerMarkup,/data-label="הזמנה"/);assert.match(pickerMarkup,/<button type="button" class="morning-bank-debt-row[^>]*data-action="morning-bank-debt-select"[^>]*data-click-arg0="b"/,'the entire debt result row is the selection control');assert.doesNotMatch(pickerMarkup,/>בחר</,'bank debt results do not waste a separate action column on a choose button');assert.doesNotMatch(pickerMarkup,/id="morningBankDebtLink"/);
 const debtPrefill=debtMorningPrefill({...pickerDebts[0],orderNumber:'LEGACY-ORDER'});assert.equal(debtPrefill.taxId,'123456782');assert.equal(debtPrefill.orderNumber,'');assert.equal(debtPrefill.remarks,'אשראי נסלק באתר ת.ב.י רהיטים. אישור סליקה באתר - 1234');assert.equal(debtPrefill.payment.type,3,'a debt with a clearing approval defaults Morning receipts to credit card');assert.equal(debtPrefill.payment.price,1250);assert.equal(debtPrefill.payment.cardNum,'****','unknown card suffix defaults to four asterisks');const noClearingPrefill=debtMorningPrefill({customerId:'123456782',amount:500});assert.equal(noClearingPrefill.remarks,'','no clearing approval means Morning remarks stay completely empty');assert.equal(noClearingPrefill.payment,undefined,'a debt without clearing evidence keeps the ordinary transfer default');
 const paymentRenderer=createMorningPayments({dateEditorMarkup:(id,value)=>`<input id="${id}" value="${value}">`,toast:()=>{},currentField:()=>null,getSource:()=>({kind:'debt'}),getSelectedType:()=>320});const debtPaymentMarkup=paymentRenderer.paymentFields(debtPrefill,{kind:'debt'});assert.match(debtPaymentMarkup,/<option value="3" selected>כרטיס אשראי<\/option>/,'debt clearing prefill renders credit card as the selected receipt method');assert.match(debtPaymentMarkup,/data-payment-field="cardNum"[^>]*value="\*\*\*\*"/,'unknown debt card suffix renders as four asterisks');const blankCardMarkup=paymentRenderer.paymentFields({amount:100,payment:{type:3,date:'2026-09-24',price:100,cardType:1,cardNum:''}},{kind:'debt'});assert.match(blankCardMarkup,/data-payment-field="cardNum"[^>]*value="\*\*\*\*"/,'blank card suffix is rendered as the four-asterisk default');const explicitCardMarkup=paymentRenderer.paymentFields({amount:100,payment:{type:3,date:'2026-09-24',price:100,cardType:1,cardNum:'9876'}},{kind:'debt'});assert.match(explicitCardMarkup,/data-payment-field="cardNum"[^>]*value="9876"/,'explicit card digits are preserved');
-const transactionPickerRows=morningLinkableBankTransactions([row,{...row,archiveId:45,status:'pending'},{...row,archiveId:46,amount:-2},{...row,archiveId:47,date:'2026-08-10T08:00:00Z',processedDate:'2026-08-10T08:00:00Z'},{...row,archiveId:48,date:'2026-08-09T08:00:00Z',processedDate:'2026-08-09T08:00:00Z'}],{today:new Date(2026,8,24,12)});assert.deepEqual(transactionPickerRows.map(item=>item.archiveId),[42,47],'reverse bank picker exposes only finalized eligible credits from the latest 45 calendar days, including the cutoff day');
-const transactionPicker=morningBankTransactionPickerMarkup({});assert.match(transactionPicker,/קישור לתנועת בנק/);assert.match(transactionPicker,/45 הימים האחרונים/);assert.match(transactionPicker,/חפש לפי לקוח, פעולה, אסמכתא, תאריך או סכום/);assert.match(transactionPicker,/morning-bank-transaction-select/);assert.match(morningBankTransactionLabel(row),/משה כהן/);assert.match(morningBankTransactionLabel(row),/1,250/);
+const transactionPickerRows=morningLinkableBankTransactions([
+  row,{...row,archiveId:45,status:'pending'},{...row,archiveId:46,amount:-2},
+  {...row,archiveId:47,date:'2026-08-09T08:00:00Z',processedDate:'2026-08-09T08:00:00Z'},
+  {...row,archiveId:48,date:'2026-07-26T08:00:00Z',processedDate:'2026-07-26T08:00:00Z'},
+  {...row,archiveId:49,date:'2026-07-25T08:00:00Z',processedDate:'2026-07-25T08:00:00Z'},
+],{today:new Date(2026,8,24,12)});
+assert.deepEqual(transactionPickerRows.map(item=>item.archiveId),[42,47,48],'reverse bank picker includes eligible credits aged 46 through 60 calendar days, including the cutoff day, and excludes older rows');
+test('Morning renders and searches credits through day 60 using the same range as its labels',t=>{
+  t.mock.timers.enable({apis:['Date'],now:new Date(2026,10,18,12).getTime()});
+  const fields={morningBankTransactionRows:{},morningBankTransactionEmpty:{},morningBankTransactionCount:{}};
+  const root={querySelector:selector=>fields[selector.slice(1)]};
+  const rows=[
+    {...row,archiveId:60,processedDate:'2026-09-19T00:00:00Z',bankReference:'CUTOFF-60'},
+    {...row,archiveId:61,processedDate:'2026-09-18T23:59:59Z',bankReference:'TOO-OLD'},
+    {...row,archiveId:50,processedDate:'2026-09-29T12:00:00Z',bankReference:'LINKED-50',documentLinks:[{documentNumber:'1234'}]},
+  ];
+  assert.equal(renderMorningBankTransactionPicker({rows,root}),2);
+  assert.ok(fields.morningBankTransactionRows.innerHTML.includes('CUTOFF-60'));
+  assert.equal(fields.morningBankTransactionRows.innerHTML.includes('TOO-OLD'),false);
+  assert.match(fields.morningBankTransactionRows.innerHTML,/already-linked[^>]+disabled/);
+  assert.equal(renderMorningBankTransactionPicker({rows,root,query:'CUTOFF-60'}),1);
+  assert.equal(renderMorningBankTransactionPicker({rows:[],root}),0);
+  assert.match(fields.morningBankTransactionEmpty.textContent,/60 הימים האחרונים/);
+  assert.match(morningBankTransactionPickerMarkup(),/60 הימים האחרונים/);
+});
+const transactionPicker=morningBankTransactionPickerMarkup({});assert.match(transactionPicker,/קישור לתנועת בנק/);assert.match(transactionPicker,/60 הימים האחרונים/);assert.match(transactionPicker,/חפש לפי לקוח, פעולה, אסמכתא, תאריך או סכום/);assert.match(transactionPicker,/morning-bank-transaction-select/);assert.match(morningBankTransactionLabel(row),/משה כהן/);assert.match(morningBankTransactionLabel(row),/1,250/);
 const direct=attachBankArchiveMetadata([{id:'k1',amount:1250}],[{archiveId:42,id:'k1',handledAt:'2026-09-21T00:00:00Z'}]);assert.equal(direct[0].archiveId,42);assert.ok(direct[0].handledAt);
 
 const response=body=>({ok:true,async json(){return body},async text(){return JSON.stringify(body)}});
