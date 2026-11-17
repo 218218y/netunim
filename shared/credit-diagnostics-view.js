@@ -35,7 +35,8 @@ export function creditDiagnosticMarkup(errors,{esc,syncDate,providerLabels,varia
     if(partialMaxForecast(error)){
       if(grouped)return '';grouped=true;
       const evidence=forecast.map(row=>`<div class="${detailClass} warn"><b>${esc(label(row))}</b>${meta(row)}</div>`).join('');
-      return `<div class="${detailClass} warn"><b>תחזית MAX חלקית</b><span>לא התקבל פירוט שניתן לאמת לחלק מחודשי התחזית. מידע קודם, אם קיים, נשמר; החודשים החסרים אינם מאומתים כחודשים ריקים.</span><small>חודשים: <bdi dir="ltr">${esc(monthSummary(forecast))}</bdi></small><details class="credit-forecast-evidence"><summary>פרטי אבחון · ${forecast.length} הודעות</summary>${evidence}</details></div>`;
+      const count=forecast.length===1?'הודעה אחת':`${forecast.length} הודעות`;
+      return `<div class="${detailClass} warn"><b>תחזית MAX חלקית</b><span>לא התקבל פירוט שניתן לאמת לחלק מחודשי התחזית. מידע קודם, אם קיים, נשמר; החודשים החסרים אינם מאומתים כחודשים ריקים.</span><small>חודשים: <bdi dir="ltr">${esc(monthSummary(forecast))}</bdi></small><details class="credit-forecast-evidence"><summary>פרטי אבחון · ${count}</summary>${evidence}</details></div>`;
     }
     const severity=['warning','deferred','info'].includes(error?.severity)?'warn':'error';
     return `<div class="${detailClass} ${severity}"><b>${esc(error?.severity==='deferred'?'מושהה — '+label(error):label(error))}</b><span>${esc(error?.message||'סנכרון האשראי נכשל')}</span>${meta(error)}</div>`;

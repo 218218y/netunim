@@ -33,7 +33,10 @@ for(const [app,render,headline] of apps){
     const errors=[warning(),warning('2026-11',{severity:'error',tier:'core',component:'core_transactions'})];
     const html=render(errors);assert.match(html,/תחזית MAX חלקית/);assert.match(html,/בדוק אם זמין עדכון למחבר/);
     assert.match(html,/core_transactions/);assert.match(html,/2026-11/);
-    for(const overrides of [{severity:'error'},{component:'pending'},{tier:'core'},{tier:'history'},{month:'bad'},{code:'CREDIT_PROVIDER_RATE_LIMITED'}])
+    // Orders normalizes unknown tiers away before presentation; core is retained.
+    const cases=[{severity:'error'},{component:'pending'},{tier:'core'},{month:'bad'},{code:'CREDIT_PROVIDER_RATE_LIMITED'}];
+    if(app==='kupa')cases.push({tier:'history'});
+    for(const overrides of cases)
       assert.doesNotMatch(render([warning('2027-01',overrides)]),/תחזית MAX חלקית/);
   });
   test(`${app}: diagnostic source labels and metadata remain escaped inside the disclosure`,()=>{
