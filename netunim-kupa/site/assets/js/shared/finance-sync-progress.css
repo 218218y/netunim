@@ -14,3 +14,7 @@
 .finance-sync-progress li[aria-current="step"]{font-weight:700;color:var(--text)}
 .finance-sync-progress li[aria-current="step"]::marker{color:var(--good,#267a55)}
 .finance-sync-progress li small{display:block;margin-top:3px;font-weight:400;color:var(--muted)}
+.credit-forecast-evidence{min-width:0;overflow-wrap:anywhere}
+.credit-forecast-evidence>summary{cursor:pointer;padding:6px 0;font-weight:700}
+.credit-forecast-evidence>summary:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+.credit-forecast-evidence>.credit-sync-detail,.credit-forecast-evidence>.finance-sync-detail{margin:8px 0 0}
