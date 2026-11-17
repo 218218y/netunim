@@ -960,7 +960,8 @@ button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-v
 .service-phone{display:inline-block;margin-top:4px;color:var(--primary-strong);text-underline-offset:3px;font-variant-numeric:tabular-nums}
 .service-row-description{white-space:pre-wrap;line-height:1.65}
 .service-status-cell .badge{display:table;margin-bottom:5px;white-space:nowrap}
-.service-row-actions{display:flex;flex-wrap:nowrap;gap:6px}.service-row-actions .btn{white-space:nowrap;min-width:0;padding:6px 8px;flex:0 0 auto}
+.service-row-actions{display:flex;flex-wrap:nowrap;justify-content:flex-end;gap:6px}.service-row-actions .btn{white-space:nowrap;min-width:0;padding:6px 8px;flex:0 0 auto}
+.service-table th:last-child{text-align:left}
 .service-sent-btn.is-sent{background:var(--good-soft);border-color:var(--good);color:var(--good)}
 #modal:has(.service-editor-form){width:min(660px,calc(100vw - 24px))}.service-editor-form{gap:10px}.service-editor-form #svcDesc{min-height:94px}
 .service-editor-options{align-self:end}.service-editor-options label{display:flex;align-items:center;gap:7px;min-height:34px;font-weight:400}.service-editor-options input{width:16px;min-height:16px;accent-color:var(--primary)}

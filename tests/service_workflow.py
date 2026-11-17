@@ -83,6 +83,9 @@ def run():
                 for(const row of document.querySelectorAll('.service-row')){
                   const buttons=[...row.querySelectorAll('.service-row-actions .btn')],rects=buttons.map(b=>b.getBoundingClientRect()),cell=row.querySelector('.service-actions-cell').getBoundingClientRect();
                   if(buttons.length!==4||rects.some(r=>Math.abs(r.top-rects[0].top)>1||r.left<cell.left-1||r.right>cell.right+1))throw Error('service buttons must fit a single row at '+innerWidth);
+                  if(buttons[0].dataset.action!=='open-service-gmail'||buttons[1].dataset.clickArg1!=='sent'||buttons[2].textContent!=='עריכה'||buttons[3].dataset.clickArg1!=='closed'||rects.some((r,i)=>i&&r.right>rects[i-1].left+1))throw Error('service actions must run RTL: email, sent, edit, close');
+                  const padding=parseFloat(getComputedStyle(row.querySelector('.service-actions-cell')).paddingLeft)||0;
+                  if(Math.abs(Math.min(...rects.map(r=>r.left))-(cell.left+padding))>1)throw Error('service actions must align to the left edge at '+innerWidth);
                 }
               };
               verify();document.querySelector('[data-action="service-filter"][data-click-arg0="closed"]').click();verify();

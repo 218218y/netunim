@@ -53,10 +53,10 @@ export function createDomainsServiceView({serviceRevision,model,serviceUi,mountV
       <td class="service-details-cell"><div class="service-row-description">${esc(c.description||'ללא פירוט')}</div><div class="service-row-meta">נפתחה ${esc(serviceDateLabel(c.openedAt))}</div></td>
       <td class="service-status-cell"><span class="badge ${s.cls}">${s.text}</span>${c.escalated&&!c.closed?'<span class="badge red">דחופה</span>':''}${c.closedAt&&c.closed?`<div class="service-row-meta">${esc(serviceDateLabel(c.closedAt))}</div>`:''}</td>
       <td class="service-actions-cell"><div class="service-row-actions">
-        <button class="btn small" data-action="open-service-modal-2" data-click-arg0="${esc(c.id)}" aria-label="עריכת הקריאה של ${esc(c.customerName)}">עריכה</button>
-        <button class="btn small ${c.closed?'':'primary'}" data-action="toggle-service-flag" data-click-arg0="${esc(c.id)}" data-click-arg1="closed" aria-label="${c.closed?'פתיחה מחדש':'סגירת הקריאה'} של ${esc(c.customerName)}">${c.closed?'פתיחה מחדש':'סגירה'}</button>
         <button class="btn small" data-action="open-service-gmail" data-click-arg0="${esc(c.id)}" title="פתיחת טיוטת השירות במייל" aria-label="הכנת מייל לקריאה של ${esc(c.customerName)}">מייל</button>
         <button class="btn small service-sent-btn ${c.sent?'is-sent':''}" aria-pressed="${!!c.sent}" title="סימון ידני שהקריאה נשלחה" data-action="toggle-service-flag" data-click-arg0="${esc(c.id)}" data-click-arg1="sent">${c.sent?'✓ ':''}נשלח</button>
+        <button class="btn small" data-action="open-service-modal-2" data-click-arg0="${esc(c.id)}" aria-label="עריכת הקריאה של ${esc(c.customerName)}">עריכה</button>
+        <button class="btn small ${c.closed?'':'primary'}" data-action="toggle-service-flag" data-click-arg0="${esc(c.id)}" data-click-arg1="closed" aria-label="${c.closed?'פתיחה מחדש':'סגירת הקריאה'} של ${esc(c.customerName)}">${c.closed?'פתיחה מחדש':'סגירה'}</button>
       </div></td>
     </tr>`;
   }
