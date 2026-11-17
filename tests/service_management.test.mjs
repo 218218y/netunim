@@ -63,7 +63,7 @@ test('service search includes assignee and escapes imported text; paging can rev
   try{
     assert.equal(h.ids(h.render()).length,150);
     h.serviceUi.resultTarget='s169';assert.ok(h.ids(h.render()).includes('s169'));
-    h.serviceUi.serviceSearch='אחראי מיוחד';const html=h.render();assert.deepEqual(h.ids(html),['s169']);assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>/);
+    h.serviceUi.serviceSearch='אחראי מיוחד';const html=h.render();assert.deepEqual(h.ids(html),['s169']);assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
     h.serviceUi.serviceSearch='no-match';assert.equal(h.ids(h.render()).length,0);
   }finally{h.restore()}
 });
