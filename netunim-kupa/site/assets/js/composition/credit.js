@@ -46,7 +46,7 @@ export function createKupaCreditRuntime({model,ui,platform={}}){
     historyPorts={projectCredit:normalizeCreditSync,subscribeAccountScope:cloud.subscribeAccountScope,request:(...args)=>cloud.historyRequest(...args),readHead:(...args)=>cloud.readHistoryHead(...args),capture:()=>authority.scope.capture(),
       refresh:(...args)=>cloud.refresh(...args),leases:{claim:(...args)=>cloud.claimLease(...args),release:(...args)=>cloud.releaseLease(...args)}};
     connections=createCreditConnectionOwner({
-      protocol:{minimumBridgeVersion:87,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},
+      protocol:{minimumBridgeVersion:88,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},
       pairing:{token:()=>bridge.getBridgeToken()},
       transport:{readStatus:()=>bridge.creditStatus(),readDiagnostics:()=>bridge.creditDiagnostics(),
         readData:()=>bridge.creditDataDiagnostics(),saveProfile:payload=>bridge.saveCreditProfile(payload),

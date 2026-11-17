@@ -1,5 +1,5 @@
 import {safeMaxResponseEvidence} from './max-response-diagnostics.mjs';
-export const CREDIT_DATA_DIAGNOSTIC_SCHEMA_VERSION=4;
+export const CREDIT_DATA_DIAGNOSTIC_SCHEMA_VERSION=5;
 const MAX_FIELDS=120;
 const MAX_SAMPLES_PER_CARD=2;
 

@@ -2,6 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {maxResponseShape,maxResponseDecision,safeMaxResponseEvidence,optionalMaxMonthFailure} from '../netunim-kupa/bank-bridge/max-response-diagnostics.mjs';
 import {maxGetJsonWithinPage} from '../netunim-kupa/bank-bridge/credit-http.mjs';
+import {extractMaxTransactionCandidates} from '../netunim-kupa/bank-bridge/max-model.mjs';
+import {bankBridgeCreditErrors} from '../netunim-kupa/bank-bridge/wire-errors.mjs';
+test('MAX no-transaction envelopes require a numeric known code, null result and the exact reviewed fields',()=>{
+ const empty={returnCode:10,rcDesc:null,result:null,correlationID:'synthetic'};
+ assert.deepEqual(extractMaxTransactionCandidates(empty).transactions,[]);
+ for(const data of [{result:null},{...empty,returnCode:0},{...empty,returnCode:'10'},{...empty,result:{transactions:[]}},
+  {...empty,result:[]},{...empty,unexpectedRows:[{amount:1}]},{...empty,rcDesc:{}},{...empty,correlationID:{}},
+  {returnCode:10,rcDesc:null,result:null}])assert.throws(()=>extractMaxTransactionCandidates(data));
+});
+test('MAX business codes and filter flags are bounded metadata while rcDesc values remain private',()=>{
+ const shape=maxResponseShape({returnCode:10,rcDesc:'PRIVATE-DESCRIPTION',result:{isMyMAXCardsFiltered:true}});
+ const safe=safeMaxResponseEvidence(shape);assert.equal(safe.returnCode,10);assert.equal(safe.descriptionType,'string');
+ assert.ok(safe.flags.some(f=>f.path==='$.result.isMyMAXCardsFiltered'&&f.value));assert.doesNotMatch(JSON.stringify(safe),/PRIVATE-DESCRIPTION/);
+ assert.equal(safeMaxResponseEvidence({...shape,returnCode:123456789}).returnCode,null);
+});
+test('MAX known unavailable and row-limit errors keep distinct safe messages on the public wire',()=>{
+ const errors=bankBridgeCreditErrors([{code:'CREDIT_PROVIDER_PERIOD_UNAVAILABLE',message:'PRIVATE'}, {code:'CREDIT_PROVIDER_ROW_LIMIT_EXCEEDED',message:'PRIVATE'}]);
+ assert.match(errors[0].message,/מאוחר יותר/);assert.match(errors[1].message,/יותר מדי תנועות/);assert.doesNotMatch(JSON.stringify(errors),/PRIVATE/);
+});
 test('MAX structural evidence keeps unknown array shape and count but no scalar response values',()=>{
  const shape=maxResponseShape({result:{newList:[{merchantName:'PRIVATE-MERCHANT',token:'PRIVATE-TOKEN',originalAmount:7123}]},owner:'PRIVATE-NAME'},{httpStatus:200,bodyType:'json'});
  const result=safeMaxResponseEvidence({...shape,outcome:'unrecognized_schema',reason:'schema_validation_failed',tier:'forecast'});

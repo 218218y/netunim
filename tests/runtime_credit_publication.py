@@ -34,7 +34,7 @@ FLOW = r"""(async()=>{
  cloudTransport.saveFinancePatch=async(mutator,_lease,options)=>{options?.assertCurrent?.();if(action==='reset')check(options.creditReset===true,'confirmed reset lost its explicit backup route');commits++;finance=JSON.parse(JSON.stringify(mutator({creditSync:state.creditSync})));return {saved:true,row:{revision:2,state:finance}}};
  cloudTransport.readSupabaseDocument=async()=>{reads++;return unavailable?null:{revision:main.revision,financeRevision:finance?2:session.financeRevision,state:{...structuredClone(main.state),...structuredClone(finance||{creditSync:state.creditSync})}}};
  globalThis.fetch=(url,options)=>{
-   if(String(url).includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:87,contractVersion:2,profiles:[{profileId:'P'}]})));
+   if(String(url).includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:88,contractVersion:2,profiles:[{profileId:'P'}]})));
    if(String(url).includes('/v2/credit/reset')){resets++;return Promise.resolve(new Response(JSON.stringify({ok:true})))}
    if(String(url).includes('/v2/credit/sync')){providerRuns++;return Promise.resolve(new Response(JSON.stringify({ok:true,syncedAt:'2026-10-09T10:00:00Z',attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'stable-issuer-tx',date:'2026-10-09',processedDate:'2026-10-09',chargedAmount:12,status:'completed'}]}]}],errors:[]})))}
    return originalFetch(url,options);

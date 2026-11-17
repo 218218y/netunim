@@ -9,19 +9,21 @@ import {mergeCreditSyncResult as orders} from '../netunim-orders/site/assets/js/
 const now='2026-11-17T12:00:00Z',profile={profileId:'synthetic',provider:'max',label:'Synthetic',credentials:{username:'private-user',password:'private-password'}};
 const raw=(fields={})=>({shortCardNumber:'0042',purchaseDate:'2026-11-03',paymentDate:'2026-11-20',merchantName:'PRIVATE-MERCHANT',
  originalAmount:100,originalCurrency:'ILS',actualPaymentAmount:100,paymentCurrency:376,planName:'רגילה',dealData:{arn:'private-identifier'},...fields});
-async function run(fault={},core={result:{transactions:[raw()]}}){
+async function run(fault={},core={result:{transactions:[raw()]}},syncMode='forecast'){
  const requested=[],closed=[];
  const page={evaluate:async(_fn,url)=>{
   let data={result:[]};
   if(url.includes('getHomePageData'))data={Result:{UserCards:{Cards:[{Last4Digits:'0042'}]}}};
   if(url.includes('getTransactionsAndGraphs')){
-   const month=JSON.parse(new URL(url).searchParams.get('filterData')).date.replace(/-(\d)-01$/,'-0$1-01').slice(0,7);requested.push(month);
+   const filter=JSON.parse(new URL(url).searchParams.get('filterData'));
+   assert.equal(filter.userIndex,-1);assert.equal(filter.cardIndex,-1);assert.equal(filter.monthView,true);assert.equal(filter.bankAccount.bankAccountIndex,-1);
+   const month=filter.date.replace(/-(\d)-01$/,'-0$1-01').slice(0,7);requested.push(month);
    if(fault[month]){const f=fault[month];if(f.throw)throw f.throw;return {status:f.status??200,body:f.body??JSON.stringify(f.data),retryAfter:f.retryAfter||''};}
    data=month==='2026-11'?core:{result:{transactions:[]}};
   }
   return {status:200,body:JSON.stringify(data),retryAfter:''};
  }};
- const provider=createCreditProvider({sessions:{scrape:()=>new MaxAdapter({profile,companyId:'max',syncMode:'forecast',now:()=>new Date(now),
+ const provider=createCreditProvider({sessions:{scrape:()=>new MaxAdapter({profile,companyId:'max',syncMode,now:()=>new Date(now),
   createScraper:()=>({page,initialize:async()=>{},login:async()=>({success:true}),terminate:async success=>closed.push(success)})}).scrape()},identity:{remove:async()=>{}},diagnostics:{record:()=>{}}});
  return {result:await provider.scrape([profile]),requested,closed};
 }
@@ -34,6 +36,44 @@ test('MAX isolates optional HTTP 503, network, JSON and normalization failures f
   const month=result.profiles[0].accounts[0].months.find(m=>m.month==='2027-01');
   assert.notEqual(month.fetchStatus,'success');assert.equal(month.fetchedAt,null);
   assert.equal(result.profiles[0].accounts[0].months.find(m=>m.month==='2026-11').transactions.length,1);
+ }
+});
+const noData=code=>({returnCode:code,rcDesc:null,result:null,correlationID:'synthetic-correlation'});
+test('MAX provider-defined no-transaction codes 10 and 11 verify empty forecast months without warnings',async()=>{
+ for(const code of [10,11]){
+  const faults=Object.fromEntries(Array.from({length:11},(_,i)=>['2027-'+String(i+1).padStart(2,'0'),{data:noData(code)}]));
+  const {result}=await run(faults);assert.equal(result.coreSuccessCount,1);assert.equal(result.errors.length,0);
+  const month=result.profiles[0].accounts[0].months.find(m=>m.month==='2027-01');
+  assert.equal(month.fetchStatus,'success');assert.ok(month.fetchedAt);assert.deepEqual(month.transactions,[]);
+  const diagnostic=buildCreditDataDiagnosticPayload({profiles:[profile],rawSamples:result._dataDiagnostics});
+  const evidence=diagnostic.profiles[0].providerEvidence.find(e=>e.month==='2027-01').response;
+  assert.equal(evidence.returnCode,code);assert.equal(evidence.outcome,'verified_empty');assert.equal(evidence.reason,'provider_no_transactions');
+ }
+});
+test('MAX temporary failure 9 and row limit 13 are never treated as empty transactions',async()=>{
+ for(const code of [9,13]){
+  const {result}=await run({'2027-01':{data:noData(code)}});
+  assert.equal(result.coreSuccessCount,1);assert.equal(result.errors.length,1);
+  const month=result.profiles[0].accounts[0].months.find(m=>m.month==='2027-01');assert.notEqual(month.fetchStatus,'success');assert.equal(month.fetchedAt,null);
+  const diagnostic=buildCreditDataDiagnosticPayload({profiles:[profile],rawSamples:result._dataDiagnostics});
+  assert.notEqual(diagnostic.profiles[0].providerEvidence.find(e=>e.month==='2027-01').response.outcome,'verified_empty');
+ }
+});
+test('MAX unknown business rejection codes stop the profile instead of being downgraded to forecast warnings',async()=>{
+ for(const code of [42,401]){
+  const {result,requested,closed}=await run({'2027-01':{data:noData(code)}});
+  assert.equal(result.coreSuccessCount,0);assert.deepEqual(closed,[false]);assert.equal(requested.at(-1),'2027-01');
+ }
+});
+test('MAX confirmed provider empty replies cannot erase protected future history, including recovery',async()=>{
+ for(const mode of ['forecast','recovery']){
+  const seed=(await run({}, {result:{transactions:[raw(),raw({paymentDate:'2027-01-20',dealData:{arn:'future'}})]}},mode)).result;
+  const next=(await run({'2027-01':{data:noData(10)}},{result:{transactions:[raw()]}},mode)).result;
+  for(const merge of [kupa,orders]){
+   const before=merge({cardMappings:{'synthetic:0042':{included:true}}},seed),after=merge(before,next);
+   assert.deepEqual(after.profiles[0].accounts[0].months.find(m=>m.month==='2027-01').transactions,before.profiles[0].accounts[0].months.find(m=>m.month==='2027-01').transactions);
+   assert.ok(after.errors.some(e=>e.code==='CREDIT_HISTORICAL_MONTH_REGRESSION'));
+  }
  }
 });
 test('MAX preserves prior future history and current pending on optional transport failure in both feeds',async()=>{

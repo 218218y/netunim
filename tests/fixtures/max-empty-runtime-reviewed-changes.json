@@ -1,0 +1,14 @@
+{
+  "netunim-kupa/site/assets/js/composition/credit.js": [
+    {
+      "before": "      protocol:{minimumBridgeVersion:87,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},\n",
+      "after": "      protocol:{minimumBridgeVersion:88,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},\n"
+    }
+  ],
+  "netunim-orders/site/assets/js/composition/finance.js": [
+    {
+      "before": "      protocol:{minimumBridgeVersion:87,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},\n",
+      "after": "      protocol:{minimumBridgeVersion:88,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},\n"
+    }
+  ]
+}
