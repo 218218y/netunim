@@ -15,6 +15,7 @@ visa-cal-session.mjs
 credit-adapter-base.mjs
 visa-cal-adapter.mjs
 max-model.mjs
+max-response-diagnostics.mjs
 credit-monthly-projection.mjs
 max-adapter.mjs
 isracard-group-adapter.mjs
