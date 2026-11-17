@@ -10,7 +10,7 @@ const gate = () => {
   return { promise, resolve };
 };
 const status = (id) => ({
-  bridgeVersion: 86,
+  bridgeVersion: 87,
   contractVersion: 2,
   profiles: [{ profileId: id, ownerLabel: id }],
 });
@@ -20,9 +20,10 @@ for (const [bridgeVersion, contractVersion] of [
   [83, 2],
   [84, 2],
   [85, 2],
-  [86, 1],
   [86, 2],
-  [87, 3],
+  [87, 1],
+  [87, 2],
+  [88, 3],
 ])
   test(`Credit connection rejects old protocol ${bridgeVersion}/${contractVersion} before diagnostics`, async () => {
     const f = fixture();
@@ -34,7 +35,7 @@ for (const [bridgeVersion, contractVersion] of [
     };
     f.bind();
     await f.cap.queries.refreshStatus();
-    const supported = bridgeVersion >= 86 && contractVersion >= 2;
+    const supported = bridgeVersion >= 87 && contractVersion >= 2;
     assert.equal(await f.cap.commands.exportCreditDataDiagnostics(), supported);
     assert.equal(reads, supported ? 1 : 0);
     assert.equal(!!f.cap.queries.uiState().bridgeError, !supported);

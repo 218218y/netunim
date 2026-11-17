@@ -71,6 +71,21 @@ test('not-configured and vault read failure never enter providers or manufacture
   }
 });
 
+test('credit command writes rejected profile evidence before total failure, without credentials',async()=>{
+ const calls=[],result={contractVersion:2,profiles:[],errors:[{code:'CREDIT_PROVIDER_SCHEMA_ERROR'}],syncedAt:null,attemptedCount:1,deferredCount:0,
+  _dataDiagnostics:[{kind:'providerResponseShape',profileId:'P',month:'2027-01',response:{httpStatus:200,resultType:'null',reason:'result_null',outcome:'unrecognized_schema'}}]};
+ const f=configurationHandler({readProfiles:async()=>[{profileId:'P',provider:'max',credentials:{password:'PRIVATE-CREDENTIAL'}}],providerPorts:{
+  scrapeAllCreditProfiles:async()=>result,writeCreditDataDiagnostic:async value=>calls.push(['diagnostic',value]),writeCreditMeta:async()=>calls.push(['meta'])}});
+ await assert.rejects(f.finance.syncCredit({}),e=>e.code==='CREDIT_SYNC_FAILED');
+ assert.deepEqual(calls.map(x=>x[0]),['diagnostic','meta']);assert.equal(calls[0][1].profiles[0].providerEvidence[0].response.reason,'result_null');
+ assert.doesNotMatch(JSON.stringify(calls),/PRIVATE-CREDENTIAL/);
+});
+test('credit diagnostic storage failure does not change successful financial publication',async()=>{
+ let metadata=0;const profile={profileId:'P',provider:'max',accounts:[]};
+ const f=configurationHandler({readProfiles:async()=>[profile],providerPorts:{scrapeAllCreditProfiles:async()=>({profiles:[profile],errors:[],syncedAt:'2026-11-17T12:00:00Z'}),
+  writeCreditDataDiagnostic:async()=>{throw Error('disk failure')},writeCreditMeta:async()=>{metadata++}}});
+ const result=await f.finance.syncCredit({});assert.equal(result.profiles.length,1);assert.equal(metadata,1);
+});
 test('credit command preserves partial success, exclusion normalization and local-only raw samples',async()=>{
   const calls=[],profile={profileId:'P',provider:'max',accounts:[],coreComplete:false},issuerError={profileId:'P',code:'PARTIAL',stage:'',httpStatus:0,message:'חלק מנתוני הספק לא התקבלו. יש לבדוק את שלמות הנתונים לפני שימוש בהם.'},previous=[{code:'PRIOR'}];
   const result={contractVersion:2,correlationId:'fixture-correlation',profiles:[profile],errors:[issuerError],syncedAt:null,attemptedCount:1,deferredCount:0,_dataDiagnostics:[{provider:'max',profileId:'P',secretFixture:'raw-local-only'}]};

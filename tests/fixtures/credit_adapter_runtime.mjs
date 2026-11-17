@@ -50,7 +50,7 @@ async function fetchFixture(value) {
 export function createScraper(options) {
   const page = {
     evaluate: async (callback, input) =>
-      vm.runInNewContext('(' + callback.toString() + ')(input)', { input, fetch: fetchFixture }),
+      vm.runInNewContext('(' + callback.toString() + ')(input)', { input, fetch: fetchFixture,AbortController,setTimeout,clearTimeout }),
   };
   return {
     page,

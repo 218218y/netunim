@@ -36,7 +36,7 @@ FLOW=r"""(async()=>{
    if(caseName==='publish'&&statuses>1){entered.resolve();await held.promise}
    return new Response(JSON.stringify({bridgeVersion:74,configured:true,businessBranchNumber:'0012',businessAccountNumber:'0034'}));
   }
-  if(path==='/v2/credit/status'||path==='/credit/status')return new Response(JSON.stringify({bridgeVersion:86,contractVersion:2,profiles:[]}));
+  if(path==='/v2/credit/status'||path==='/credit/status')return new Response(JSON.stringify({bridgeVersion:87,contractVersion:2,profiles:[]}));
   if(path==='/settings/import'){
    imports++;const value=JSON.parse(options.body);check(value.bank.password===source.bank.password&&value.credit.profiles[0].credentials.password===source.credit.profiles[0].credentials.password,'password whitespace changed');check(value.credit.profiles[0].connectionKey==='portable-fixture'&&!value.credit.profiles[0].profileId,'portable identity changed');
    if(['response','response-error','response-dispose'].includes(caseName)){entered.resolve();await held.promise}

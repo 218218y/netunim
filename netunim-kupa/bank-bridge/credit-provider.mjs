@@ -80,6 +80,7 @@ export function createCreditProvider({ sessions, identity, diagnostics }) {
                     }
             }
             catch (error) {
+                if(Array.isArray(error?._dataDiagnostics))dataDiagnostics.push(...error._dataDiagnostics);
                 const at = new Date().toISOString(), browserEngine = ['chromium', 'camoufox'].includes(String(error?.browserEngine || '')) ? String(error.browserEngine) : 'chromium', fallbackFromBrowserEngine = ['chromium', 'camoufox'].includes(String(error?.fallbackFromBrowserEngine || '')) ? String(error.fallbackFromBrowserEngine) : '', base = {
                     profileId: profile.profileId, 
                     provider: profile.provider, 

@@ -27,6 +27,7 @@ import { coverageError, monthlyCoverageFailure } from './credit-coverage.mjs';
 import { normalizeCreditScrapeAccount } from './credit-transaction-model.mjs';
 import { maxRawTransactionTime } from './credit-data-diagnostics.mjs';
 import { CreditProviderAdapter } from './credit-adapter-base.mjs';
+import {maxResponseShape,maxResponseDecision,optionalMaxMonthFailure} from './max-response-diagnostics.mjs';
 
 function maxTransactionsUrl(month) {
   const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(String(month || ''));
@@ -109,6 +110,7 @@ async function scrapeMaxDirect(adapter) {
       outputData: { enableTransactionsFilterByDate: false },
     }),
     started = Date.now();
+  const dataDiagnostics=[];
   let initialized = false,
     success = false;
   try {
@@ -163,53 +165,54 @@ async function scrapeMaxDirect(adapter) {
       homeCards = maxHomeCards(homeData),
       rawByCard = new Map(),
       monthFailures = new Map(),
-      errors = [],
-      dataDiagnostics = [];
+      errors = [];
     for (const entry of plan) {
-      const monthStarted = Date.now(),
-        data = await maxGetJsonWithinPage(
+      const monthStarted = Date.now(),buffer=[];
+      let shape=maxResponseShape(undefined),phase='fetch',parsed,errorForDiagnostic=null;
+      try {
+        const data = await maxGetJsonWithinPage(
           page,
           maxTransactionsUrl(entry.month),
           `MaxTransactions ${entry.month}`,
-          adapter.now().getTime()
+          adapter.now().getTime(),
+          reply=>{shape=maxResponseShape(reply.data,reply)}
         );
-      let parsed;
-      try { parsed = extractMaxTransactionCandidates(data); }
+        phase='parse';
+        parsed = extractMaxTransactionCandidates(data);
+        phase='normalize';
+        for(const raw of parsed.transactions){
+          const tx=normalizeMaxRawTransaction(raw,categories),accountNumber=safeSuffix(raw?.shortCardNumber);
+          if(!tx||!accountNumber)throw safeError('רשומת MAX שזוהתה לא ניתנת לנרמול. הנתונים הקודמים נשמרו.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: `MaxTransactions ${entry.month}` });
+          buffer.push({accountNumber,tx});
+        }
+        for(const {accountNumber,tx} of buffer){
+          if(!rawByCard.has(accountNumber))rawByCard.set(accountNumber,[]);
+          rawByCard.get(accountNumber).push(tx);
+        }
+      }
       catch (error) {
-        if (error?.code === 'CREDIT_PROVIDER_SCHEMA_ERROR') {
+        errorForDiagnostic=error;
+        if (optionalMaxMonthFailure(error)) {
           error.stage = `MaxTransactions ${entry.month}`;
-          error.message += ` (חודש ${entry.month})`;
           if (entry.tier === 'forecast') {
             monthFailures.set(entry.month, error);
             errors.push(coverageError(profile, error, { month: entry.month, tier: entry.tier, at: adapter.now().toISOString() }));
-            adapter.event({ stage: error.stage, month: entry.month, errorClass: error.code });
+            adapter.event({ stage: error.stage, month: entry.month, errorClass: error.code,httpStatus:error.httpStatus||0 });
             continue;
           }
         }
         throw error;
+      } finally {
+        const decision=maxResponseDecision(shape,errorForDiagnostic,phase);
+        if(!errorForDiagnostic&&parsed?.transactions.length)decision.outcome='verified_rows';
+        dataDiagnostics.push({...maxResponseEvidence(profile.profileId,entry.month,parsed?.evidence||{},homeCards.size,adapter.excludedAccountNumbers),
+          response:{...shape,...decision,tier:entry.tier}});
       }
-      dataDiagnostics.push(
-        maxResponseEvidence(
-          profile.profileId,
-          entry.month,
-          parsed.evidence,
-          homeCards.size,
-          adapter.excludedAccountNumbers
-        )
-      );
       adapter.event({
         stage: 'MaxTransactions',
         month: entry.month,
         durationMs: Date.now() - monthStarted,
       });
-      for (const raw of parsed.transactions) {
-        const tx = normalizeMaxRawTransaction(raw, categories),
-          accountNumber = safeSuffix(raw?.shortCardNumber);
-        if (!tx || !accountNumber)
-          throw safeError('רשומת MAX שזוהתה לא ניתנת לנרמול. הנתונים הקודמים נשמרו.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: `MaxTransactions ${entry.month}` });
-        if (!rawByCard.has(accountNumber)) rawByCard.set(accountNumber, []);
-        rawByCard.get(accountNumber).push(tx);
-      }
     }
     const discoveredNumbers = new Set([...homeCards.keys(), ...rawByCard.keys()]);
     if (!discoveredNumbers.size) {
@@ -286,6 +289,7 @@ async function scrapeMaxDirect(adapter) {
     };
   } catch (error) {
     const failure = creditThrownScrapeFailure(error, profile);
+    Object.defineProperty(failure,'_dataDiagnostics',{value:dataDiagnostics,enumerable:false});
     if (!failure.browserEngine) failure.browserEngine = 'chromium';
     adapter.event({
       browserEngine: 'chromium',

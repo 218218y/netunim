@@ -20,8 +20,12 @@ export function createFinanceCommands({ operations, bank, credit }) {
         publicResult.errors = bankBridgeCreditErrors(publicResult.errors);
         publicResult.profiles = publicResult.profiles.map(profile => Array.isArray(profile.errors)
             ? {...profile, errors: bankBridgeCreditErrors(profile.errors)} : profile);
-        if (publicResult.profiles.length)
-            await credit.writeDataDiagnostic(buildCreditDataDiagnosticPayload({ correlationId: publicResult.correlationId, profiles: publicResult.profiles, rawSamples }));
+        if (publicResult.profiles.length || rawSamples.length){
+            const diagnosticProfiles=profiles.map(profile=>publicResult.profiles.find(row=>row.profileId===profile.profileId)||{
+                profileId:profile.profileId,provider:profile.provider,label:profile.label,ownerLabel:profile.ownerLabel,accounts:[]});
+            try{await credit.writeDataDiagnostic(buildCreditDataDiagnosticPayload({ correlationId: publicResult.correlationId, profiles: diagnosticProfiles, rawSamples }))}
+            catch{/* Diagnostic storage is best effort; financial status publication remains authoritative. */}
+        }
         await credit.writeMeta({
             ...(publicResult.syncedAt ? { lastSyncAt: publicResult.syncedAt } : {}), lastErrors: publicResult.errors, lastCorrelationId: publicResult.correlationId, lastAttemptedCount: publicResult.attemptedCount, lastDeferredCount: publicResult.deferredCount
         });

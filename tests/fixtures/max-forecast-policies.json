@@ -1,0 +1,26 @@
+{
+  "MAX_PROVIDER_SCHEMA_VERSION": {
+    "before": "9c03c29840a0d09dc15efb31064e07e23aaadeabcc47aae032b0fe2656984d44",
+    "after": "753d3bb0999fb42ea423d3c111f6b0de5591329757557f05d633a5f819cd59a5"
+  },
+  "maxWalkTransactionCandidates": {
+    "before": "b5c1118cbbff68eb2980ab57a9b2871bae8fb94da3d9d07ccf21641afb6ae633",
+    "after": "5459e0f056778894c7f7d9c4e15a640d7aab8b466ee371534d820def71a858e8"
+  },
+  "extractMaxTransactionCandidates": {
+    "before": "764c8c3329aa26c341f4c6f69a4bbe840bc758c6530458374c32db481906d7e4",
+    "after": "a304856b273c19e4765ed0d7cdc4290b002ceff31edb52f868456f7c0d6fd43b"
+  },
+  "normalizeMaxRawTransaction": {
+    "before": "1956a08bdca6336399df533dbe791b26bfbe44e0639ee37369f5f57dca28491d",
+    "after": "2e779c1fefc287c36d86df330b2182251d3cc2357ccac78451f0ff008b606dbe"
+  },
+  "maxGetJsonWithinPage": {
+    "before": "e782a2871107dfed32861bd0f86c2ce34c823e069cb03278697a3e7f3fdcb391",
+    "after": "5162b11365ff4adb6f56924ed07030a1a7a5e60e6323c1fc87e5fca3227ea425"
+  },
+  "scrapeMaxDirect": {
+    "before": "e506a25332ce09e7a113f54310bbabc406153f676d717a2b779f9eef863520a9",
+    "after": "f909f30f72558e9ee13c5b3a014525dc5ce2c20061ca0eb459ab633362951702"
+  }
+}

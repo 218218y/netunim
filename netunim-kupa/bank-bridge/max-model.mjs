@@ -122,7 +122,7 @@ function maxWalkTransactionCandidates(
   if (value === null || value === undefined) return { out, arrayEvidence, transactionLists };
   if (depth > 10) {
     if (typeof value === 'object' && Object.keys(value).length)
-      throw safeError('מבנה פירוט MAX חורג מעומק הפענוח הנתמך. הריענון נעצר.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });
+      throw safeError('מבנה פירוט MAX חורג מעומק הפענוח הנתמך. הריענון נעצר.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions',diagnosticReason:'depth_exceeded' });
     return { out, arrayEvidence, transactionLists };
   }
   if (Array.isArray(value)) {
@@ -130,7 +130,7 @@ function maxWalkTransactionCandidates(
       recognizedRows = value.length > 0 && value.every(maxRawLooksLikeTransaction);
     if (value.length && !recognizedRows && (knownList || !maxMetadataArray(path, value)))
       throw safeError('MAX החזירה רשימה שאינה ריקה אך לא ניתן לפענח את כל רשומותיה. הנתונים הקודמים נשמרו.',
-        'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });
+        'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions',diagnosticReason:'unexpected_nonempty_array' });
     if (knownList || recognizedRows) transactionLists.push(path);
     const firstObject = value.find(
       (item) => item && typeof item === 'object' && !Array.isArray(item)
@@ -150,7 +150,7 @@ function maxWalkTransactionCandidates(
     out.push({ raw: value, path: text(path.replace(/\[\d+\]/g, '[]'), 180) });
   for (const [key, child] of Object.entries(value)) {
     if ((key === 'transactions' || path === 'result.foreignAndCurrency' && key === 'chargedNow') && !Array.isArray(child))
-      throw safeError('רשימת התנועות בפירוט MAX אינה מערך תקין. הנתונים הקודמים נשמרו.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });
+      throw safeError('רשימת התנועות בפירוט MAX אינה מערך תקין. הנתונים הקודמים נשמרו.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions',diagnosticReason:'transaction_list_wrong_type' });
     maxWalkTransactionCandidates(child, `${path}.${key}`, out, arrayEvidence, depth + 1, transactionLists);
   }
   return { out, arrayEvidence, transactionLists };
@@ -218,7 +218,7 @@ export function extractMaxTransactionCandidates(data = {}) {
     throw safeError('MAX לא החזירה מעטפת פירוט מזוהה. הריענון נעצר ללא החלפת הנתונים הקודמים.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });
   const { out, arrayEvidence, transactionLists } = maxWalkTransactionCandidates(result);
   if (!transactionLists.length)
-    throw safeError('לא נמצאה רשימת תנועות מזוהה בתשובת MAX. אין ראיה לחודש ריק.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });
+    throw safeError('לא נמצאה רשימת תנועות מזוהה בתשובת MAX. אין ראיה לחודש ריק.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions',diagnosticReason:'transaction_list_missing' });
   const seen = new Set(),
     sources = new Map(),
     cards = new Map(),
@@ -233,7 +233,7 @@ export function extractMaxTransactionCandidates(data = {}) {
       sourceKey = creditPendingSourceKey(tx),
       ambiguous = () => safeError(
         'MAX החזירה תצפיות שלא ניתן להכריע אם הן רכישות נפרדות. הריענון נעצר; יש להשוות לפירוט המקור לפני ניסיון נוסף.',
-        'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });
+        'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions',diagnosticReason:'inconsistent_purchase_evidence' });
     // Do not merge two supplied card identities merely because their suffix matches.
     if (cards.has(suffix) && cards.get(suffix) !== card) throw ambiguous();
     cards.set(suffix, card);
@@ -321,7 +321,7 @@ export function normalizeMaxRawTransaction(raw = {}, categories = new Map()) {
     timeEvidence = maxRawTransactionTime(raw),
     foreignTransaction = maxForeignSignalLabels(raw).length > 0;
   if (completed && !paymentDate || paymentRaw != null && typeof paymentRaw !== 'string')
-    throw safeError('MAX החזירה תאריך חיוב שאינו תקין. העסקה לא תועבר לרשימה ללא חודש חיוב.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });
+    throw safeError('MAX החזירה תאריך חיוב שאינו תקין. העסקה לא תועבר לרשימה ללא חודש חיוב.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions',diagnosticReason:'invalid_billing_date' });
   return {
     identifier: maxRawIdentifier(raw, installments),
     type: installments ? 'installments' : 'normal',
