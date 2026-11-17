@@ -161,7 +161,7 @@ with BrowserSession(ROOT/'netunim-orders/site','orders-domain-performance') as b
           for(const view of ['customers','service','warehouse']){
             metrics.clearPerformance();let start=performance.now();switchView(view);const cold=performance.now()-start;
             metrics.clearPerformance();start=performance.now();uiNavigation.render();const warm=performance.now()-start;
-            results[count+':'+view]={coldMs:Math.round(cold),warmMs:Math.round(warm),rows:document.querySelectorAll(view==='service'?'.service-card':view==='customers'?'.customer-table tbody tr':'[data-stock-bulk-id]').length,metrics:metrics.performanceSummary()};
+            results[count+':'+view]={coldMs:Math.round(cold),warmMs:Math.round(warm),rows:document.querySelectorAll(view==='service'?'.service-row':view==='customers'?'.customer-table tbody tr':'[data-stock-bulk-id]').length,metrics:metrics.performanceSummary()};
           }
           // Exercise real delegated pagination, then search must reset to page 1.
           switchView('customers');document.querySelector('[data-action="customer-results-page"][data-click-arg1="1"]').click();
