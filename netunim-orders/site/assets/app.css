@@ -15,10 +15,12 @@
   --workspace-line:#dce3ed;
   --workspace-ink:#263651;
   --workspace-muted:#51617a;
-  --workspace-accent:#273e68;
-  --workspace-hover:#1d3157;
-  --workspace-soft:#eaf0fb;
-  --workspace-focus:#4269b1;
+  --workspace-accent:#275da9;
+  --workspace-hover:#e1edff;
+  --workspace-soft:#edf4ff;
+  --workspace-accent-line:#b6cff5;
+  --workspace-indicator:#3b82f6;
+  --workspace-focus:#2b6aca;
   --workspace-shadow:0 2px 8px rgba(33,54,89,.07)
 }
 *{box-sizing:border-box}
@@ -79,7 +81,7 @@ button,input,select,textarea{font:inherit}.app{width:100%;height:100vh;height:10
   cursor:pointer;
   white-space:nowrap
 }
-.top-settings-btn:hover,.top-settings-btn.active{background:var(--workspace-soft);border-color:#c6d5ed;color:var(--workspace-accent)}
+.top-settings-btn:hover,.top-settings-btn.active{background:var(--workspace-soft);border-color:var(--workspace-accent-line);color:var(--workspace-accent)}
 .folder-access-button{max-width:8.5rem;padding-inline:6px;overflow:hidden;text-overflow:ellipsis}
 .topbar :is(button,a):focus-visible{outline:2px solid var(--workspace-focus);outline-offset:2px}
 .cloud-pill,.save-pill{
@@ -98,15 +100,13 @@ button,input,select,textarea{font:inherit}.app{width:100%;height:100vh;height:10
   max-width:100%;
   display:flex;
   gap:3px;
-  padding:3px;
+  padding:3px 3px 0;
   overflow-x:auto;
   overscroll-behavior-inline:contain;
   scrollbar-width:thin;
   scrollbar-color:#aebdd4 transparent;
   scroll-padding-inline:3px;
-  border:1px solid var(--workspace-line);
-  border-radius:13px;
-  background:var(--workspace-bg)
+  border-block-end:1px solid var(--workspace-line)
 }
 .nav button{
   position:relative;
@@ -115,21 +115,35 @@ button,input,select,textarea{font:inherit}.app{width:100%;height:100vh;height:10
   align-items:center;
   gap:6px;
   min-height:36px;
-  border:0;
-  border-radius:9px;
-  padding:6px 10px;
-  background:transparent;
-  color:var(--workspace-muted);
+  padding:5px 9px;
   font-size:13px;
   font-weight:650;
   white-space:nowrap;
   cursor:pointer
 }
 .nav button svg{display:none}
-.nav button:hover{background:var(--workspace-soft);color:var(--workspace-ink)}
-.nav button.active{background:var(--workspace-accent);color:#fff;box-shadow:var(--workspace-shadow)}
-.nav button:focus-visible{outline-offset:-3px}
-.nav button.active:focus-visible{outline-color:#fff}
+.nav button,.module-tabs .chip-filter,.kupa-subtab{
+  border:1px solid transparent;
+  border-block-end-width:3px;
+  border-radius:9px 9px 0 0;
+  background:transparent;
+  color:var(--workspace-muted)
+}
+.nav button:hover,.module-tabs .chip-filter:hover,.kupa-subtab:hover{
+  background:var(--workspace-soft);
+  color:var(--workspace-accent)
+}
+.nav button.active,.module-tabs .chip-filter.active,.kupa-subtab.active{
+  border-color:var(--workspace-accent-line);
+  border-block-end-color:var(--workspace-indicator);
+  background:var(--workspace-soft);
+  color:var(--workspace-accent);
+  box-shadow:none
+}
+.nav button:focus-visible,.kupa-subtab:focus-visible{
+  outline:2px solid var(--workspace-focus);
+  outline-offset:-4px
+}
 @media(min-width:1320px){
   .nav button svg{display:block}
   .nav.keytips-active button[data-nav-keytip] svg{visibility:hidden}
@@ -229,16 +243,8 @@ button,input,select,textarea{font-family:inherit;color:inherit}
 .chip-filter:hover{background:#eee2d8}.chip-filter.active{background:#fff;border-color:rgba(143,109,85,.22);color:var(--primary-strong);box-shadow:0 2px 7px rgba(70,50,36,.06)}
 .module-tabs .chip-filter{
   min-height:32px;
-  border-radius:8px;
-  background:var(--workspace-bg);
-  color:var(--workspace-muted);
+  padding-block:5px 3px;
   font-size:12px
-}
-.module-tabs .chip-filter:hover,.module-tabs .chip-filter.active{
-  border-color:#c6d5ed;
-  background:var(--workspace-soft);
-  color:var(--workspace-accent);
-  box-shadow:none
 }
 .supplier-empty{
   width:min(100% - 32px,420px);
@@ -256,20 +262,23 @@ button,input,select,textarea{font-family:inherit;color:inherit}
 }
 .supplier-empty svg{width:44px;height:44px;padding:10px;border-radius:11px;background:var(--workspace-soft);fill:none;stroke:var(--workspace-accent);stroke-width:1.65;stroke-linejoin:round}
 .supplier-empty h1{margin:0;font-size:20px}
-:is(.supplier-empty,.supplier-primary,.module-toolbar,.module-toolbar-actions,.service-toolbar-controls)>.btn.primary{
-  border-color:var(--workspace-accent);
-  background:var(--workspace-accent);
+:is(.supplier-empty,.supplier-primary,.module-toolbar,.module-toolbar-actions,.service-toolbar-controls)>.btn.primary,
+.customer-order-header-add.btn.primary{
+  border-color:var(--workspace-accent-line);
+  background:var(--workspace-soft);
+  color:var(--workspace-accent);
   box-shadow:none
 }
-:is(.supplier-empty,.supplier-primary,.module-toolbar,.module-toolbar-actions,.service-toolbar-controls)>.btn.primary:hover{
-  border-color:var(--workspace-hover);
+:is(.supplier-empty,.supplier-primary,.module-toolbar,.module-toolbar-actions,.service-toolbar-controls)>.btn.primary:hover:not(:disabled),
+.customer-order-header-add.btn.primary:hover{
+  border-color:var(--workspace-indicator);
   background:var(--workspace-hover)
 }
-:is(.supplier-empty,.supplier-command,.module-toolbar) button:focus-visible{
+:is(.supplier-empty,.supplier-command,.module-toolbar) button:focus-visible,
+.customer-order-header-add:focus-visible{
   outline:2px solid var(--workspace-focus);
   outline-offset:-2px
 }
-:is(.supplier-empty,.supplier-command,.module-toolbar) .btn.primary:focus-visible{outline-color:#fff}
 .panel,.dashboard-surface,.summary-section,.forecast-card,.settings-card,.stock-card,.supplier-summary-card,.customer-bottom-summary{
   border-color:var(--line);background:#fff;box-shadow:var(--shadow-sm)
 }
@@ -351,7 +360,7 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 .modal{border-color:var(--line);background:#fff;box-shadow:0 30px 80px rgba(70,50,36,.20)}
 @media(min-width:1200px){.customer-table .customer-col-name{width:17%}.customer-table .customer-col-amount{width:96px}.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:8.5%;padding-inline:4px}.customer-table .customer-col-state{width:11%;padding-inline:4px}.customer-table .customer-col-note{width:calc(32.5% - 122px)}.customer-table .customer-col-clearing{width:72px}.customer-table .customer-col-customer-id{width:108px}.customer-table .customer-col-actions{width:72px}}
 @media(max-width:1250px){.supplier-command{flex-wrap:wrap}.supplier-search-wrap{order:4;flex:1 1 360px}.supplier-actions{margin-right:auto}.supplier-table-panel .table-wrap{max-height:calc(100vh - 160px)}}
-@media(max-width:900px){.main{padding:0 env(safe-area-inset-right,0px) max(14px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px)}.settings-view-shell{padding-top:10px}.supplier-command{position:static}.supplier-primary{flex:1 1 420px}.supplier-menu{flex:1;min-width:200px}.customer-command{position:static}.customer-work-table{max-height:calc(100dvh - 170px)}.customer-table .customer-col-name{width:126px}.customer-table .customer-col-amount{width:68px}.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:94px;padding-inline:3px}.customer-table .customer-col-state{width:86px;padding-inline:3px}.customer-table .customer-col-clearing{width:60px}.customer-table .customer-col-customer-id{width:104px}.customer-table .customer-col-actions{width:72px}.nav button{padding-inline:9px}.hero h1{font-size:22px}}
+@media(max-width:900px){.main{padding:0 env(safe-area-inset-right,0px) max(14px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px)}.settings-view-shell{padding-top:10px}.supplier-command{position:static}.supplier-primary{flex:1 1 420px}.supplier-menu{flex:1;min-width:200px}.customer-command{position:static}.customer-work-table{max-height:calc(100dvh - 170px)}.customer-table .customer-col-name{width:126px}.customer-table .customer-col-amount{width:68px}.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:94px;padding-inline:3px}.customer-table .customer-col-state{width:86px;padding-inline:3px}.customer-table .customer-col-clearing{width:60px}.customer-table .customer-col-customer-id{width:104px}.customer-table .customer-col-actions{width:72px}.nav button{padding-inline:8px}.hero h1{font-size:22px}}
 @media(max-width:700px) and (min-width:601px){.customer-table th,.customer-table td{padding-inline:3px}.customer-table .customer-col-name{width:96px}.customer-table .customer-col-amount{width:56px}.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:90px;padding-inline:1px}.customer-table .customer-col-state{width:68px;padding-inline:1px}.customer-table .customer-col-clearing{width:52px}.customer-table .customer-col-customer-id{width:100px}.customer-table .customer-col-actions{width:72px}}
 @media(max-width:620px){body{font-size:14px}.main{padding:0 env(safe-area-inset-right,0px) max(12px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px)}.settings-view-shell{padding-top:8px}.supplier-primary{width:100%;flex-basis:100%}.supplier-menu{min-width:0;flex:1}.supplier-add-btn{flex:0 0 auto}.supplier-search-wrap{flex-basis:100%;order:6}.supplier-actions{width:100%;margin:0}.supplier-actions>.bulk-select-toggle{width:100%}.supplier-bulk-tray{position:static;width:100%;margin-top:5px;justify-content:stretch;box-shadow:none}.supplier-bulk-tray:before{display:none}.supplier-bulk-tray .btn{flex:1}.supplier-balance{margin-right:auto}.supplier-edit-picker{align-items:stretch;flex-direction:column}.supplier-edit-picker select,.supplier-edit-picker .btn{width:100%}.customer-bottom-grid{grid-template-columns:1fr 1fr}.module-toolbar input{min-width:100%}}
 
@@ -735,7 +744,7 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 @media(max-width:480px){.confirm-backdrop{padding:14px}.confirm-dialog{padding:22px 18px 18px}.confirm-actions{flex-direction:column}.confirm-actions .btn{width:100%}}
 
 /* ===== קופה מאוחדת: בנק / אשראי / צ׳קים / מאזן ===== */
-.kupa-view-shell{height:100%;min-height:0}.kupa-view-shell>.view-head{flex:0 0 auto}.kupa-view-shell>.view-scroll{overflow:auto;scrollbar-gutter:stable;padding-bottom:18px}.kupa-hero{display:flex;align-items:center;justify-content:flex-start;gap:8px;margin-bottom:8px;padding:0 2px}.kupa-subtabs{display:flex;align-items:center;flex:0 0 auto;height:36px;gap:3px;padding:2px;border:1px solid var(--workspace-line);border-radius:10px;background:var(--workspace-bg)}.kupa-subtab{appearance:none;min-height:30px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--workspace-muted);min-width:66px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer}.kupa-subtab:hover,.kupa-subtab.active{background:var(--workspace-soft);color:var(--workspace-accent);border-color:#c6d5ed}.kupa-subtab:focus-visible{outline:2px solid var(--workspace-focus);outline-offset:-2px}.kupa-hero>.finance-sync-section{flex:1 1 auto;min-width:0;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible}.kupa-hero>.finance-sync-section .finance-command-row{min-height:36px;padding:0;background:transparent;align-items:center}.kupa-hero .finance-view-tools{height:36px;min-height:36px;padding:0;border:0;border-radius:0;background:transparent}.kupa-hero .credit-view-tools{padding:0;border:0;border-radius:0;background:transparent}.kupa-hero .finance-search,.kupa-hero .finance-sync-toggle,.kupa-hero .finance-sync-refresh,.kupa-hero .bank-account-tab{height:36px}.kupa-hero .finance-sync-toggle{padding-block:3px}.kupa-checks-status{display:flex;align-items:center;justify-content:flex-end;gap:5px;min-height:36px;margin-inline-start:auto}.checks-header-activity{position:relative;z-index:20}.checks-header-activity>.check-bank-activity{margin:0;border:1px solid var(--line);border-radius:999px;background:#fff;box-shadow:none;overflow:visible}.checks-header-activity>.check-bank-activity>summary{padding:6px 10px;color:var(--muted);font-size:10px;font-weight:800;line-height:1.2;white-space:nowrap}.checks-header-activity>.check-bank-activity>summary:hover,.checks-header-activity>.check-bank-activity>summary:focus-visible{background:#fbf8f5}.checks-header-activity>.check-bank-activity>.section-body{position:absolute;top:calc(100% + 5px);inset-inline-end:0;z-index:90;width:min(760px,calc(100vw - 24px));max-height:min(70vh,620px);overflow:auto;padding:12px 13px;border:1px solid #d9e2e8;border-radius:12px;background:#fff;box-shadow:0 16px 38px rgba(39,55,66,.18)}.kupa-subcontent{display:grid;gap:12px;min-width:0}.kupa-subcontent-credit{gap:6px}.credit-primary-report{display:grid;gap:0;overflow:hidden;border:1px solid #dbe3e8;border-radius:15px;background:rgba(255,255,255,.97);box-shadow:var(--shadow-sm)}.credit-primary-report>.credit-filter-toolbar,.credit-primary-report>.credit-detail-section{border:0;border-radius:0;box-shadow:none}.credit-primary-report>.credit-filter-toolbar{border-bottom:1px solid #dbe3e8}.kupa-subcontent>.checks-page,.kupa-subcontent>.summary-page{margin:0}.checks-page-embedded .checks-embedded-status{display:flex;justify-content:flex-end;margin:0 1px 8px}.kupa-subcontent .checks-toolbar{margin-top:0}
+.kupa-view-shell{height:100%;min-height:0}.kupa-view-shell>.view-head{flex:0 0 auto}.kupa-view-shell>.view-scroll{overflow:auto;scrollbar-gutter:stable;padding-bottom:18px}.kupa-hero{display:flex;align-items:center;justify-content:flex-start;gap:8px;margin-bottom:8px;padding:0 2px}.kupa-subtabs{display:flex;align-items:center;flex:0 0 auto;height:36px;gap:3px;padding:2px;border:1px solid var(--workspace-line);border-radius:10px;background:var(--workspace-bg)}.kupa-subtab{appearance:none;min-height:30px;min-width:66px;padding:5px 10px;padding-block-end:3px;font-size:12px;font-weight:700;cursor:pointer}.kupa-hero>.finance-sync-section{flex:1 1 auto;min-width:0;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible}.kupa-hero>.finance-sync-section .finance-command-row{min-height:36px;padding:0;background:transparent;align-items:center}.kupa-hero .finance-view-tools{height:36px;min-height:36px;padding:0;border:0;border-radius:0;background:transparent}.kupa-hero .credit-view-tools{padding:0;border:0;border-radius:0;background:transparent}.kupa-hero .finance-search,.kupa-hero .finance-sync-toggle,.kupa-hero .finance-sync-refresh,.kupa-hero .bank-account-tab{height:36px}.kupa-hero .finance-sync-toggle{padding-block:3px}.kupa-checks-status{display:flex;align-items:center;justify-content:flex-end;gap:5px;min-height:36px;margin-inline-start:auto}.checks-header-activity{position:relative;z-index:20}.checks-header-activity>.check-bank-activity{margin:0;border:1px solid var(--line);border-radius:999px;background:#fff;box-shadow:none;overflow:visible}.checks-header-activity>.check-bank-activity>summary{padding:6px 10px;color:var(--muted);font-size:10px;font-weight:800;line-height:1.2;white-space:nowrap}.checks-header-activity>.check-bank-activity>summary:hover,.checks-header-activity>.check-bank-activity>summary:focus-visible{background:#fbf8f5}.checks-header-activity>.check-bank-activity>.section-body{position:absolute;top:calc(100% + 5px);inset-inline-end:0;z-index:90;width:min(760px,calc(100vw - 24px));max-height:min(70vh,620px);overflow:auto;padding:12px 13px;border:1px solid #d9e2e8;border-radius:12px;background:#fff;box-shadow:0 16px 38px rgba(39,55,66,.18)}.kupa-subcontent{display:grid;gap:12px;min-width:0}.kupa-subcontent-credit{gap:6px}.credit-primary-report{display:grid;gap:0;overflow:hidden;border:1px solid #dbe3e8;border-radius:15px;background:rgba(255,255,255,.97);box-shadow:var(--shadow-sm)}.credit-primary-report>.credit-filter-toolbar,.credit-primary-report>.credit-detail-section{border:0;border-radius:0;box-shadow:none}.credit-primary-report>.credit-filter-toolbar{border-bottom:1px solid #dbe3e8}.kupa-subcontent>.checks-page,.kupa-subcontent>.summary-page{margin:0}.checks-page-embedded .checks-embedded-status{display:flex;justify-content:flex-end;margin:0 1px 8px}.kupa-subcontent .checks-toolbar{margin-top:0}
 
 .finance-sync-quick-actions{display:flex;align-items:stretch;gap:7px;flex:0 0 auto}.finance-sync-refresh{min-width:64px;padding-inline:11px;font-weight:850}.bank-caption-account{display:flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap}.bank-caption-account>b{font-size:13px}.bank-caption-account small{color:var(--muted);font-size:10px;font-weight:750}.bank-compact-balance{display:flex;direction:ltr;align-items:center;gap:9px;flex:0 0 auto;white-space:nowrap}.bank-compact-balance>*{direction:rtl}.bank-primary-balance,.bank-available-balance{display:flex;align-items:baseline;gap:5px}.bank-primary-balance>span,.bank-available-balance>span{color:var(--muted);font-size:10px;font-weight:800}.bank-primary-balance>b{color:var(--good);font-size:18px;direction:ltr;font-variant-numeric:tabular-nums}.bank-balance-separator{align-self:stretch;width:1px;min-height:22px;background:#d7dfe4;direction:ltr}.bank-available-balance>b{color:var(--text);font-size:18px;direction:ltr;font-variant-numeric:tabular-nums}.bank-balance-delta{color:var(--text);font-size:15px;direction:ltr;font-variant-numeric:tabular-nums;font-weight:750}.bank-cashflow-summary{display:flex;direction:ltr;align-items:baseline;gap:11px}.bank-cashflow-metric{display:flex;direction:rtl;align-items:baseline;gap:5px}.bank-cashflow-metric>span{color:var(--muted);font-size:10px;font-weight:800}.bank-cashflow-metric>b{color:var(--text);font-size:18px;direction:ltr;font-variant-numeric:tabular-nums}.bank-cashflow-outflow>b{color:var(--bad);font-weight:900}.bank-cashflow-projected>b{color:var(--good);font-weight:900}.bank-cashflow-incomplete>span{color:#9a7043}.bank-cashflow-alert>b{color:var(--bad);font-weight:950}.cashflow-settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.cashflow-settings-grid label{display:grid;gap:5px;color:var(--muted);font-size:10px;font-weight:800}.cashflow-settings-grid input{width:100%;min-height:36px;border:1px solid var(--line);border-radius:9px;padding:7px 9px;font:inherit;color:var(--text);background:#fff}
 .finance-sync-section,.finance-report-section,.credit-live-section,.bank-transactions-region,.credit-filter-toolbar{border:1px solid #dbe3e8;border-radius:15px;background:rgba(255,255,255,.97);box-shadow:var(--shadow-sm)}.finance-sync-section{overflow:hidden}.finance-command-row{display:flex;align-items:stretch;gap:9px;padding:7px 9px;background:linear-gradient(180deg,#fff,#fbfcfd)}.finance-view-tools{display:flex;align-items:center;gap:8px;flex:1 1 auto;min-width:0;padding:5px 7px;border:1px solid #dfe6ea;border-radius:11px;background:#fff}.finance-search{min-width:170px;flex:1 1 260px;height:34px;border:1px solid #d5dee4;border-radius:9px;background:#fff;color:var(--text);padding:6px 10px;outline:none}.finance-search:focus{border-color:#b8c9d3;box-shadow:0 0 0 3px rgba(143,109,85,.08)}.finance-sync-toggle{appearance:none;display:flex;align-items:center;gap:7px;flex:0 0 auto;min-width:132px;padding:5px 9px;border:1px solid #e0e6ea;border-radius:10px;background:#f8fafb;color:inherit;font:inherit;text-align:inherit;cursor:pointer}.finance-sync-toggle:hover{background:#f4f7f8}.finance-sync-toggle:focus-visible{outline:3px solid rgba(143,109,85,.15);outline-offset:1px}.finance-sync-state-icon{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#edf1f3;color:#64727d;font-size:12px;font-weight:900}.finance-sync-state-copy{display:grid;line-height:1.15}.finance-sync-state-copy b{font-size:11px}.finance-sync-state-copy small{margin-top:3px;color:var(--muted);font-size:9px;white-space:nowrap}.finance-sync-toggle.ok{border-color:#cfe4d8;background:var(--good-soft)}.finance-sync-toggle.ok .finance-sync-state-icon{background:#cfe7d8;color:var(--good)}.finance-sync-toggle.warn{border-color:#ead9a8;background:var(--warn-soft)}.finance-sync-toggle.warn .finance-sync-state-icon{background:#f0dfac;color:var(--warn)}.finance-sync-toggle.error{border-color:#edc9c7;background:var(--bad-soft)}.finance-sync-toggle.error .finance-sync-state-icon{background:#f0cfcd;color:var(--bad)}.finance-sync-toggle.busy .finance-sync-state-icon{animation:kupa-spin 1s linear infinite}.finance-sync-chevron{display:inline-block;margin-inline-start:auto;color:#64727d;font-size:17px;transition:transform .18s}.finance-sync-toggle.open .finance-sync-chevron{transform:rotate(180deg)}.finance-sync-panel-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}@keyframes kupa-spin{to{transform:rotate(360deg)}}
