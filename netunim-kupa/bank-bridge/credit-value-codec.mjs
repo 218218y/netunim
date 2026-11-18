@@ -1,5 +1,20 @@
 // @ts-check
 
+/** @param {unknown} value @returns {value is Record<string, unknown>} */
+export function isProviderRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** @param {unknown} value @returns {Record<string, unknown>|undefined} */
+export function providerRecord(value) {
+  return isProviderRecord(value) ? value : undefined;
+}
+
+/** @param {unknown} value @returns {value is unknown[]} */
+export function isProviderList(value) {
+  return Array.isArray(value);
+}
+
 /** @param {unknown} value @param {number} [max] */
 export function text(value, max = 240) {
   return String(value ?? '')

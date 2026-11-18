@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseVisaCalMonthData,
+  parseVisaCalPending,
   normalizeVisaCalTransaction,
   parseVisaCalFrame,
 } from '../netunim-kupa/bank-bridge/visa-cal-model.mjs';
@@ -17,6 +18,21 @@ import {kupaReconciledCreditDetailRowsData} from '../shared/kupa-cashflow.js';
 // totalDebits[{currencySymbol,amount}] drive the cycle heading on its website.
 const txn={trnIntId:'purchase',trnTypeCode:'5',trnPurchaseDate:'2026-08-25T12:00:00',debCrdDate:'2026-09-10T00:00:00',trnAmt:1372.67,amtBeforeConvAndIndex:1372.67,trnCurrencySymbol:'₪',debCrdCurrencySymbol:'₪',merchantName:'עסקת בדיקה'};
 const body=(day={})=>({statusCode:1,result:{bankAccounts:[{debitDates:[{date:'2026-09-10T00:00:00',totalDebits:[{currencySymbol:'₪',amount:1369.78}],transactions:[txn],...day}]}]}});
+
+test('CAL collection changes cannot become successful empty coverage',()=>{
+  const account = fields => ({statusCode:1,result:{bankAccounts:[fields]}});
+  const card = fields => ({statusCode:1,result:{cardsList:[fields]}});
+  const schema = stage => error => error.code==='CREDIT_PROVIDER_SCHEMA_ERROR'&&error.stage===stage;
+  assert.deepEqual(parseVisaCalMonthData(account({debitDates:[]})),[]);
+  assert.deepEqual(parseVisaCalPending(card({authDetalisList:[]})),[]);
+  assert.deepEqual(parseVisaCalPending({statusCode:96}),[]);
+  for (const invalid of [null,{}, {debitDates:{}}, {debitDates:[],immidiateDebits:{debitDays:{}}}])
+    assert.throws(()=>parseVisaCalMonthData(account(invalid)),schema('Transactions'));
+  for (const invalid of [null,{}, {authDetalisList:{}},{authDetalisList:[null]},{authDetalisList:[{}]}])
+    assert.throws(()=>parseVisaCalPending(card(invalid)),schema('Pending'));
+  assert.throws(()=>parseVisaCalMonthData(body({transactions:[txn,null]})),schema('Transactions'));
+  assert.throws(()=>parseVisaCalFrame({result:{calIssuedCards:{frameLimitForCardAmount:Infinity}}}),schema('Frames'));
+});
 function stateFor(txns){return {credits:[],checks:[],expenses:[],bank:{homeFeed:{balance:9000,syncedAt:'2026-09-10',transactions:[]}},creditSync:normalizeCreditSync({profiles:[{profileId:'cal',provider:'visaCal',defaultAccount:'ביתי',accounts:[normalizeCreditScrapeAccount({accountNumber:'9715',txns},'visaCal')]}],cardMappings:{'cal:9715':{included:true,account:'ביתי'}}})}}
 
 test('CAL statement total preserves purchases and explains the exact 2.89 ILS difference',()=>{

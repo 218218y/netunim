@@ -1,10 +1,19 @@
-// @ts-nocheck
-import { hasOwn, safeDate, safeSuffix, safeError, text } from './credit-value-codec.mjs';
-import { maxRawTransactionTime } from './credit-data-diagnostics.mjs';
+// @ts-check
+import { hasOwn, isProviderList, isProviderRecord, providerRecord, safeDate, safeSuffix, safeError, text } from './credit-value-codec.mjs';
 import { creditDebitAmount,assertCreditNumericInput } from './credit-core-values.mjs';
 import { normalizeCreditScrapeTransaction } from './credit-transaction-model.mjs';
 import { creditObservationKey, creditPendingSourceKey } from './credit-transaction-identity.mjs';
 
+/** @typedef {Record<string, unknown>} ProviderRecord */
+/** @typedef {{raw:ProviderRecord,path:string}} MaxCandidate */
+/** @typedef {{path:string,count:number,sampleKeys:string[]}} MaxArrayEvidence */
+/** @typedef {{accountSuffix:string,candidateCount:number,foreignSignalCount:number,offCycleCount:number}} MaxAccountEvidence */
+/** @typedef {{resultPresent?:boolean,verifiedEmptyCode?:10|11,resultKeys?:string[],arrayPaths?:MaxArrayEvidence[],
+ * legacyTransactionsCount?:number,candidateCount?:number,candidatePaths?:string[],candidateAccountSummary?:MaxAccountEvidence[],
+ * foreignSignalCandidateCount?:number,offCycleCandidateCount?:number,candidateAuditSamples?:ReturnType<typeof maxCandidateAudit>[],
+ * candidateAuditTruncated?:boolean}} MaxResponseShape */
+
+/** @param {unknown} value */
 function maxNumber(value) {
   assertCreditNumericInput(value);
   if (value === null || value === undefined || String(value).trim() === '') return null;
@@ -17,6 +26,7 @@ function maxNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+/** @param {unknown} value */
 function maxProviderDate(value) {
   if (typeof value !== 'string' || !value.trim()) return null;
   const raw = value.trim(),
@@ -28,11 +38,13 @@ function maxProviderDate(value) {
     hour = Number(match[4] || 0), minute = Number(match[5] || 0), second = Number(match[6] || 0),
     leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0),
     days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  if (month < 1 || month > 12 || day < 1 || day > days[month - 1] || hour > 23 || minute > 59 || second > 59) return null;
-  const pad = n => String(n).padStart(2, '0');
+  const daysInMonth = days[month - 1];
+  if (daysInMonth === undefined || day < 1 || day > daysInMonth || hour > 23 || minute > 59 || second > 59) return null;
+  const pad = (/** @type {number} */ n) => String(n).padStart(2, '0');
   return safeDate(dmy ? `${match[3]}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}:${pad(second)}Z` : raw.replace(' ', 'T'));
 }
 
+/** @param {unknown} value */
 function maxChargedCurrency(value) {
   const raw = String(value ?? '')
     .trim()
@@ -43,6 +55,7 @@ function maxChargedCurrency(value) {
   return raw && raw.length <= 12 ? raw : '';
 }
 
+/** @param {ProviderRecord} [raw] */
 function maxInstallments(raw = {}) {
   const comments = String(raw.comments || ''),
     numbers = comments.match(/\d+/g) || [],
@@ -57,6 +70,7 @@ function maxInstallments(raw = {}) {
   return null;
 }
 
+/** @param {ProviderRecord} [raw] */
 function maxMemo(raw = {}) {
   const comments = text(raw.comments, 180),
     receiver = text(raw.fundsTransferReceiverOrTransfer, 120),
@@ -69,10 +83,12 @@ function maxMemo(raw = {}) {
   return promotion ? [memo, promotion].filter(Boolean).join(' | ') : memo;
 }
 
+/** @param {ProviderRecord} [raw] @param {ReturnType<typeof maxInstallments>} [installments] */
 function maxRawIdentifier(raw = {}, installments = null) {
+  const deal = providerRecord(raw.dealData);
   const candidates = [
-      raw?.dealData?.arn,
-      raw?.dealData?.transactionId,
+      deal?.arn,
+      deal?.transactionId,
       raw?.transactionId,
       raw?.dealId,
       raw?.referenceNumber,
@@ -83,8 +99,9 @@ function maxRawIdentifier(raw = {}, installments = null) {
   return base && installments?.number ? `${base}_${installments.number}` : base;
 }
 
+/** @param {unknown} raw @returns {raw is ProviderRecord} */
 function maxRawLooksLikeTransaction(raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+  if (!isProviderRecord(raw)) return false;
   const card = text(raw.shortCardNumber, 80),
     purchase = text(raw.purchaseDate, 80),
     merchant = text(raw.merchantName || raw.businessName, 220),
@@ -97,20 +114,26 @@ function maxRawLooksLikeTransaction(raw) {
   );
 }
 
+/** @type {Readonly<Record<string,readonly string[]>>} */
+const MAX_METADATA_ARRAY_FIELDS = Object.freeze({
+  'result.totalCycle': ['currency', 'futureDebit', 'pastDebit', 'totalAmount'],
+  'result.categories': ['currency', 'id', 'ilsSum', 'sum'],
+  'result.barsGraphDetailsResult.monthlySummary': ['actualDebitSumNIS', 'date', 'isFutureDebit'],
+  'result.cancelDenialData.cancelDenialReasons': ['reasonId', 'reasonText'],
+});
+
+/** @param {string} path @param {unknown[]} rows */
 function maxMetadataArray(path, rows) {
   // These non-transaction array shapes were verified in actual MAX diagnostic
   // structure evidence. New nonempty shapes need review, never a guessed empty.
-  const fields = {
-    'result.totalCycle': ['currency', 'futureDebit', 'pastDebit', 'totalAmount'],
-    'result.categories': ['currency', 'id', 'ilsSum', 'sum'],
-    'result.barsGraphDetailsResult.monthlySummary': ['actualDebitSumNIS', 'date', 'isFutureDebit'],
-    'result.cancelDenialData.cancelDenialReasons': ['reasonId', 'reasonText'],
-  }[path];
-  return !!fields && rows.every(row => row && typeof row === 'object' && !Array.isArray(row) &&
+  const fields = MAX_METADATA_ARRAY_FIELDS[path];
+  return !!fields && rows.every(row => isProviderRecord(row) &&
     Object.keys(row).every(key => fields.includes(key)) &&
     Object.values(row).every(value => value === null || ['string', 'number', 'boolean'].includes(typeof value)));
 }
 
+/** @param {unknown} value @param {string} [path] @param {MaxCandidate[]} [out]
+ * @param {MaxArrayEvidence[]} [arrayEvidence] @param {number} [depth] @param {string[]} [transactionLists] */
 function maxWalkTransactionCandidates(
   value,
   path = 'result',
@@ -125,16 +148,14 @@ function maxWalkTransactionCandidates(
       throw safeError('מבנה פירוט MAX חורג מעומק הפענוח הנתמך. הריענון נעצר.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions',diagnosticReason:'depth_exceeded' });
     return { out, arrayEvidence, transactionLists };
   }
-  if (Array.isArray(value)) {
+  if (isProviderList(value)) {
     const knownList = path.endsWith('.transactions') || path === 'result.foreignAndCurrency.chargedNow',
       recognizedRows = value.length > 0 && value.every(maxRawLooksLikeTransaction);
     if (value.length && !recognizedRows && (knownList || !maxMetadataArray(path, value)))
       throw safeError('MAX החזירה רשימה שאינה ריקה אך לא ניתן לפענח את כל רשומותיה. הנתונים הקודמים נשמרו.',
         'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions',diagnosticReason:'unexpected_nonempty_array' });
     if (knownList || recognizedRows) transactionLists.push(path);
-    const firstObject = value.find(
-      (item) => item && typeof item === 'object' && !Array.isArray(item)
-    );
+    const firstObject = value.find(isProviderRecord);
     arrayEvidence.push({
       path: text(path, 180),
       count: value.length,
@@ -156,21 +177,24 @@ function maxWalkTransactionCandidates(
   return { out, arrayEvidence, transactionLists };
 }
 
-function maxCandidateKey(raw = {}, tx = normalizeCreditScrapeTransaction(normalizeMaxRawTransaction(raw))) {
+/** @param {ProviderRecord} raw @param {import('./credit-model-contracts.js').CreditScrapeTransaction} tx */
+function maxCandidateKey(raw, tx) {
   return JSON.stringify([text(raw.shortCardNumber, 80), creditObservationKey(tx)]);
 }
 
-function maxForeignSignalLabels(raw = {}) {
+/** @param {ProviderRecord} raw */
+function maxForeignSignalLabels(raw) {
+  const deal = providerRecord(raw.dealData);
   const labels = [],
     currencies = [
       ['originalCurrency', maxChargedCurrency(raw.originalCurrency)],
       ['paymentCurrency', maxChargedCurrency(raw.paymentCurrency)],
-      ['issuerCurrency', maxChargedCurrency(raw?.dealData?.issuerCurrency)],
+      ['issuerCurrency', maxChargedCurrency(deal?.issuerCurrency)],
     ];
   for (const [field, currency] of currencies)
     if (currency && currency !== 'ILS') labels.push(`${field}:${currency}`);
-  const exchangeRate = maxNumber(raw?.dealData?.exchangeRate),
-    issuerExchangeRate = maxNumber(raw?.dealData?.issuerExchangeRate);
+  const exchangeRate = maxNumber(deal?.exchangeRate),
+    issuerExchangeRate = maxNumber(deal?.issuerExchangeRate);
   if (exchangeRate !== null && exchangeRate !== 0) labels.push('exchangeRate');
   if (issuerExchangeRate !== null && issuerExchangeRate !== 0) labels.push('issuerExchangeRate');
   const wording = [raw.planName, raw.comments, raw.fundsTransferComment]
@@ -180,15 +204,18 @@ function maxForeignSignalLabels(raw = {}) {
   return [...new Set(labels)].slice(0, 12);
 }
 
-function maxOffCyclePayment(raw = {}) {
+/** @param {ProviderRecord} raw */
+function maxOffCyclePayment(raw) {
   const date = maxProviderDate(raw.paymentDate);
   if (!date) return false;
   const day = new Date(date).getUTCDate();
   return day < 7 || day > 18;
 }
 
-function maxCandidateAudit(item = {}) {
-  const raw = item.raw || {},
+/** @param {MaxCandidate} item */
+function maxCandidateAudit(item) {
+  const raw = item.raw,
+    deal = providerRecord(raw.dealData),
     foreignSignals = maxForeignSignalLabels(raw),
     offCyclePayment = maxOffCyclePayment(raw);
   return {
@@ -204,16 +231,17 @@ function maxCandidateAudit(item = {}) {
     originalCurrency: maxChargedCurrency(raw.originalCurrency) || text(raw.originalCurrency, 12),
     actualPaymentAmount: maxNumber(raw.actualPaymentAmount),
     paymentCurrency: maxChargedCurrency(raw.paymentCurrency),
-    issuerCurrency: maxChargedCurrency(raw?.dealData?.issuerCurrency),
-    exchangeRate: maxNumber(raw?.dealData?.exchangeRate),
-    issuerExchangeRate: maxNumber(raw?.dealData?.issuerExchangeRate),
+    issuerCurrency: maxChargedCurrency(deal?.issuerCurrency),
+    exchangeRate: maxNumber(deal?.exchangeRate),
+    issuerExchangeRate: maxNumber(deal?.issuerExchangeRate),
     foreignSignals,
     offCyclePayment,
   };
 }
 
+/** @param {ProviderRecord|undefined} data */
 function maxProviderReply(data) {
-  if(!data||typeof data!=='object'||Array.isArray(data)||!Object.hasOwn(data,'returnCode'))return null;
+  if(!data||!Object.hasOwn(data,'returnCode'))return null;
   const code=data.returnCode;
   if(code===0)return null;
   if(code===9||code===13)throw safeError(code===9?'MAX אינה יכולה להציג את פירוט התקופה כרגע. המידע הקודם נשמר.':'MAX דיווחה על ריבוי תנועות שאינו ניתן להצגה בבקשה זו. אין אישור לחודש ריק.',
@@ -231,19 +259,21 @@ function maxProviderReply(data) {
     'CREDIT_PROVIDER_DATA_ERROR',{stage:'MaxTransactions',diagnosticReason:'provider_rejected'});
 }
 
-export function extractMaxTransactionCandidates(data = {}) {
+/** @param {unknown} [input] @returns {{transactions:ProviderRecord[],evidence:MaxResponseShape}} */
+export function extractMaxTransactionCandidates(input) {
+  const data=providerRecord(input);
   const verifiedEmptyCode=maxProviderReply(data);
   if(verifiedEmptyCode)return {transactions:[],evidence:{resultPresent:false,verifiedEmptyCode}};
-  const result = data && typeof data === 'object' && !Array.isArray(data) ? data.result : null;
-  if (!result || typeof result !== 'object' || Array.isArray(result))
+  const result = data?.result;
+  if (!isProviderRecord(result))
     throw safeError('MAX לא החזירה מעטפת פירוט מזוהה. הריענון נעצר ללא החלפת הנתונים הקודמים.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions' });
   const { out, arrayEvidence, transactionLists } = maxWalkTransactionCandidates(result);
   if (!transactionLists.length)
     throw safeError('לא נמצאה רשימת תנועות מזוהה בתשובת MAX. אין ראיה לחודש ריק.', 'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'MaxTransactions',diagnosticReason:'transaction_list_missing' });
   const seen = new Set(),
-    sources = new Map(),
-    cards = new Map(),
-    anonymousPaths = new Map(),
+    sources = /** @type {Map<string, Set<string>>} */ (new Map()),
+    cards = /** @type {Map<string, string>} */ (new Map()),
+    anonymousPaths = /** @type {Map<string, string>} */ (new Map()),
     transactions = [],
     uniqueItems = [],
     candidatePaths = new Set();
@@ -277,7 +307,7 @@ export function extractMaxTransactionCandidates(data = {}) {
     uniqueItems.push(item);
     candidatePaths.add(item.path);
   }
-  const accountSummary = new Map(),
+  const accountSummary = /** @type {Map<string, MaxAccountEvidence>} */ (new Map()),
     auditRows = [];
   for (const item of uniqueItems) {
     const audit = maxCandidateAudit(item),
@@ -327,7 +357,8 @@ export function extractMaxTransactionCandidates(data = {}) {
   };
 }
 
-export function normalizeMaxRawTransaction(raw = {}, categories = new Map()) {
+/** @param {unknown} [raw] @param {ReadonlyMap<number,string>} [categories] */
+export function normalizeMaxRawTransaction(raw, categories = new Map()) {
   if (!maxRawLooksLikeTransaction(raw)) return null;
   const purchaseDate = maxProviderDate(raw.purchaseDate);
   if (!purchaseDate) return null;
@@ -364,32 +395,39 @@ export function normalizeMaxRawTransaction(raw = {}, categories = new Map()) {
   };
 }
 
-export function maxCategories(data = {}) {
-  const map = new Map(),
-    rows = Array.isArray(data?.result) ? data.result : [];
-  for (const row of rows) {
-    const id = Number(row?.id),
-      name = text(row?.name, 160);
+/** @param {unknown} [input] */
+export function maxCategories(input) {
+  /** @type {Map<number,string>} */
+  const map = new Map();
+  const rows = providerRecord(input)?.result;
+  for (const item of isProviderList(rows) ? rows : []) {
+    const row = providerRecord(item);
+    const id = Number(row?.id);
+    const name = text(row?.name, 160);
     if (Number.isFinite(id) && name) map.set(id, name);
   }
   return map;
 }
 
-export function maxHomeCards(data = {}) {
-  const rows = Array.isArray(data?.Result?.UserCards?.Cards) ? data.Result.UserCards.Cards : [],
-    cards = new Map();
-  for (const row of rows) {
+/** @param {unknown} [input] */
+export function maxHomeCards(input) {
+  const result = providerRecord(providerRecord(input)?.Result);
+  const rows = providerRecord(result?.UserCards)?.Cards;
+  /** @type {Map<string,{accountNumber:string,balance:number|null,balanceDate:string|null,cardFrame:number|null,availableCredit:number|null}>} */
+  const cards = new Map();
+  for (const item of isProviderList(rows) ? rows : []) {
+    const row = providerRecord(item);
     const accountNumber = safeSuffix(row?.Last4Digits),
       limit = maxNumber(row?.CreditLimit),
       open = maxNumber(row?.OpenToBuy),
-      cycle = Array.isArray(row?.CycleSummary) ? row.CycleSummary : [],
-      shekel = cycle.find((item) => String(item?.CurrencySymbol || '').includes('₪')),
+      cycle = isProviderList(row?.CycleSummary) ? row.CycleSummary : [],
+      shekel = cycle.find(item => isProviderRecord(item) && String(item.CurrencySymbol || '').includes('₪')),
       balance = limit !== null && open !== null ? Math.round(-(limit - open) * 100) / 100 : null;
     if (accountNumber)
       cards.set(accountNumber, {
         accountNumber,
         balance,
-        balanceDate: maxProviderDate(shekel?.Date),
+        balanceDate: maxProviderDate(providerRecord(shekel)?.Date),
         cardFrame: limit,
         availableCredit: open,
       });
@@ -397,6 +435,8 @@ export function maxHomeCards(data = {}) {
   return cards;
 }
 
+/** @param {string} profileId @param {string} month @param {MaxResponseShape} evidence
+ * @param {number} discoveredCardCount @param {Iterable<string>} excludedAccountNumbers */
 export function maxResponseEvidence(
   profileId,
   month,
@@ -438,18 +478,47 @@ export function maxResponseEvidence(
   };
 }
 
+/** @param {ProviderRecord} [tx] */
 export function enrichMaxTransaction(tx = {}) {
-  const raw =
-      tx?.rawTransaction && typeof tx.rawTransaction === 'object' ? tx.rawTransaction : null,
+  const raw = providerRecord(tx.rawTransaction),
     timeEvidence = raw ? maxRawTransactionTime(raw) : null;
   return {
     ...tx,
-    ...(hasOwn(raw, 'actualPaymentAmount')
+    ...(raw && hasOwn(raw, 'actualPaymentAmount')
       ? { chargedAmount: creditDebitAmount(raw.actualPaymentAmount) }
       : {}),
-    ...(hasOwn(raw, 'originalAmount')
+    ...(raw && hasOwn(raw, 'originalAmount')
       ? { originalAmount: creditDebitAmount(raw.originalAmount) }
       : {}),
     transactionTime: tx?.transactionTime || timeEvidence?.time || '',
   };
+}
+
+/** @param {unknown} value */
+function maxPurchaseClock(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  /** @type {string[]|null} */
+  let match = /^(\d{1,2}):([0-5]\d)(?::[0-5]\d(?:\.\d+)?)?$/.exec(raw);
+  if (!match && /^\d{3,4}$/.test(raw)) {
+    const compact = raw.padStart(4, '0');
+    match = [raw, compact.slice(0, 2), compact.slice(2)];
+  }
+  const dateTime = !match && /[T\s](\d{1,2}):([0-5]\d)(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/.exec(raw);
+  const parts = match || dateTime;
+  if (!parts) return '';
+  const hour = Number(parts[1]), minute = Number(parts[2]);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return '';
+  const clock = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  return dateTime && clock === '00:00' ? '' : clock;
+}
+
+const MAX_PURCHASE_TIME_PATH = 'dealData.purchaseTime';
+/** @param {unknown} rawTransaction */
+export function maxRawTransactionTime(rawTransaction) {
+  const value = providerRecord(providerRecord(rawTransaction)?.dealData)?.purchaseTime;
+  const time = maxPurchaseClock(value);
+  if (!time) return { time: '', sourcePath: '', ambiguous: false, candidates: [] };
+  const candidate = { path: MAX_PURCHASE_TIME_PATH, time, value };
+  return { time, sourcePath: MAX_PURCHASE_TIME_PATH, ambiguous: false, candidates: [candidate] };
 }

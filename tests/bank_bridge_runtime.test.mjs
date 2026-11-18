@@ -32,7 +32,7 @@ test('staged Bank runtime starts its real HTTP capabilities with isolated files 
   assert.equal(await fs.readFile(cliToken,'utf8'),initialKey);
   const explicitPrint=await runCli('--print-token');
   assert.ok(explicitPrint.stdout.split(/\r?\n/).includes(initialKey.trim()));
-  assert.deepEqual(await (await request('/health?probe=1',{token:'wrong'})).json(),{ok:true,service:'netunim-kupa-bank-bridge',version:89,creditContractVersion:2,pairingProtocol:1,installationId});
+  assert.deepEqual(await (await request('/health?probe=1',{token:'wrong'})).json(),{ok:true,service:'netunim-kupa-bank-bridge',version:90,creditContractVersion:2,pairingProtocol:1,installationId});
   await assert.rejects(runCli(),error=>error.code===1&&error.stderr.includes('is already in use'));
   await runCli('--check-running');
   const marker=path.join(f.runtime,'installation-id.txt');
