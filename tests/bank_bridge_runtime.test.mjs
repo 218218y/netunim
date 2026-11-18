@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {execFile} from 'node:child_process';
+import http from 'node:http';
+import {once} from 'node:events';
 import {promisify} from 'node:util';
 import {bankStage} from './bank_stage_fixture.mjs';
 import {readPairingAdminToken} from '../netunim-kupa/bank-bridge/scoped-pairing.mjs';
@@ -18,7 +20,7 @@ test('staged Bank runtime starts its real HTTP capabilities with isolated files 
   const {app,request,exited}=f;
   const cliRoot=path.join(f.directory,'fresh-cli-install');
   const cliToken=path.join(cliRoot,'NetunimKupaBankBridge','bridge-token.txt');
-  const runCli=flag=>promisify(execFile)(process.execPath,[path.join(f.runtime,'server.mjs'),flag],{
+  const runCli=(...flags)=>promisify(execFile)(process.execPath,[path.join(f.runtime,'server.mjs'),...flags],{
     cwd:f.runtime,env:{...process.env,LOCALAPPDATA:cliRoot},windowsHide:true,timeout:10000,
   });
   const freshInit=await runCli('--init');
@@ -30,7 +32,8 @@ test('staged Bank runtime starts its real HTTP capabilities with isolated files 
   assert.equal(await fs.readFile(cliToken,'utf8'),initialKey);
   const explicitPrint=await runCli('--print-token');
   assert.ok(explicitPrint.stdout.split(/\r?\n/).includes(initialKey.trim()));
-  assert.deepEqual(await (await request('/health?probe=1',{token:'wrong'})).json(),{ok:true,service:'netunim-kupa-bank-bridge',version:88,creditContractVersion:2,pairingProtocol:1,installationId});
+  assert.deepEqual(await (await request('/health?probe=1',{token:'wrong'})).json(),{ok:true,service:'netunim-kupa-bank-bridge',version:89,creditContractVersion:2,pairingProtocol:1,installationId});
+  await assert.rejects(runCli(),error=>error.code===1&&error.stderr.includes('is already in use'));
   await runCli('--check-running');
   const marker=path.join(f.runtime,'installation-id.txt');
   await fs.writeFile(marker,'b'.repeat(32));
@@ -89,4 +92,15 @@ test('staged Bank runtime starts its real HTTP capabilities with isolated files 
   });
   assert.ok(!stagedStop.stdout.includes(adminToken));
   assert.equal((await f.exited)[0],0,f.output());assert.ok(!f.output().includes(replacement));
+
+  const foreign=http.createServer((_req,res)=>res.end(JSON.stringify({ok:true,service:'unrelated'})));
+  const listening=once(foreign,'listening');
+  foreign.listen(f.port,'127.0.0.1');
+  await listening;
+  t.after(()=>new Promise((resolve,reject)=>foreign.close(error=>error?reject(error):resolve())));
+  await fs.unlink(cliToken);
+  await assert.rejects(runCli(),error=>error.code===1&&error.stderr.includes('is already in use'));
+  await assert.rejects(fs.access(cliToken),{code:'ENOENT'});
+  await assert.rejects(runCli('--check-running'),error=>error.code===1&&error.stderr.includes('did not respond'));
+  assert.deepEqual(await (await request('/health')).json(),{ok:true,service:'unrelated'});
 });
