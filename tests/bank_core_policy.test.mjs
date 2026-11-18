@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { creditAdapterPolicyHashes } from './credit_adapter_policy_fixture.mjs';
 import {typedFinancialPolicies} from './typed_financial_policy_fixture.mjs';
+import { retryTransientNavigation } from '../netunim-kupa/bank-bridge/hapoalim-navigation-policy.mjs';
 const modules = [
   'hapoalim-policy',
   'hapoalim-navigation-policy',
@@ -23,7 +24,19 @@ const read = (name) =>
 const fixture = JSON.parse(
   fs.readFileSync(new URL('./fixtures/credit-core-policy.json', import.meta.url), 'utf8')
 );
+const reviewedBoundaries=JSON.parse(fs.readFileSync(new URL('./fixtures/bank-bridge-checked-boundary-policies.json',import.meta.url),'utf8')).bank;
 const retired = ['normalizeAccountNumber', 'selectBalanceAccount', 'isHapoalimChequeTransaction'];
+
+test('a non-finite navigation retry budget cannot keep a bank refresh alive indefinitely', async () => {
+  const navigationError = new Error('Execution context was destroyed');
+  let calls = 0;
+  await assert.rejects(retryTransientNavigation(() => {
+    calls++;
+    if (calls > 3) throw new Error('retry budget was not enforced');
+    throw navigationError;
+  }, { attempts: Infinity }), error => error === navigationError);
+  assert.equal(calls, 3);
+});
 test('all 73 active Bank declarations match their reviewed policy digests', () => {
   const expected = { ...fixture.bankPolicies };
   // Reviewed audit change: unknown server capacity cannot prove completeness.
@@ -35,7 +48,12 @@ test('all 73 active Bank declarations match their reviewed policy digests', () =
     delete expected[name];
   }
   assert.equal(Object.keys(expected).length, 72);
-  assert.deepEqual(creditAdapterPolicyHashes(modules.map(read)).policies, typedFinancialPolicies(expected,'bankPolicies'));
+  const reviewed = typedFinancialPolicies(expected,'bankPolicies');
+  for (const [name, {before, after}] of Object.entries(reviewedBoundaries)) {
+    assert.equal(reviewed[name], before, name);
+    reviewed[name] = after;
+  }
+  assert.deepEqual(creditAdapterPolicyHashes(modules.map(read)).policies, reviewed);
 });
 test('Bank policy digests detect altered cheque identity, pending status, account selection and login bounds', () => {
   for (const [module, before, after, name] of [

@@ -1,11 +1,15 @@
-// @ts-nocheck
+// @ts-check
 import { creditText } from './credit-core-values.mjs';
-import { CREDIT_PROVIDER_CONFIG } from './credit-profile-model.mjs';
+import { CREDIT_PROVIDER_CONFIG, creditProviderSupported } from './credit-profile-model.mjs';
 import { creditRetryAfterAt } from './credit-cooldown-policy.mjs';
+import { isProviderList, isProviderRecord, providerRecord, safeError } from './credit-value-codec.mjs';
 
+/** @typedef {{profileId?:string,provider?:string,label?:string}|null|undefined} FailureProfile */
+
+/** @param {unknown} rawValue @param {FailureProfile} profile */
 function safeCreditProviderDiagnostic(rawValue, profile) {
   if (profile?.provider !== 'visaCal') return '';
-  let value = String(rawValue || '').replace(/https?:\/\/[^\s,]+/gi, (url) => url.split('?')[0]);
+  let value = String(rawValue || '').replace(/https?:\/\/[^\s,]+/gi, (url) => url.split('?')[0] ?? '');
   value = value.replace(/\b(?:Bearer|CALAuthScheme)\s+[A-Za-z0-9._~+\/=-]+/gi, '[authorization]');
   value = value.replace(
     /(\"(?:password|username|userName|authorization|token|calConnectToken)\"\s*:\s*\")[^\"]*(\")/gi,
@@ -15,6 +19,7 @@ function safeCreditProviderDiagnostic(rawValue, profile) {
   return creditText(value, 220);
 }
 
+/** @param {unknown} typeValue @param {unknown} rawValue @param {FailureProfile} profile */
 function creditFailureContext(typeValue, rawValue, profile) {
   const type = String(typeValue || 'SCRAPE_FAILED').toUpperCase(),
     raw = String(rawValue || ''),
@@ -122,13 +127,13 @@ function creditFailureContext(typeValue, rawValue, profile) {
   return null;
 }
 
+/** @param {unknown} typeValue @param {unknown} rawValue @param {FailureProfile} profile */
 function safeCreditScrapeFailure(typeValue, rawValue, profile) {
   const type = String(typeValue || 'SCRAPE_FAILED').toUpperCase(),
     raw = String(rawValue || ''),
-    label = creditText(
-      profile?.label || CREDIT_PROVIDER_CONFIG[profile?.provider]?.label || 'חברת האשראי',
-      100
-    ),
+    provider = profile?.provider || '',
+    providerLabel = creditProviderSupported(provider) ? CREDIT_PROVIDER_CONFIG[provider].label : 'חברת האשראי',
+    label = creditText(profile?.label || providerLabel, 100),
     isIsracardGroup = profile?.provider === 'isracard' || profile?.provider === 'amex';
   let code = `CREDIT_${type}`,
     stage = '',
@@ -169,33 +174,33 @@ function safeCreditScrapeFailure(typeValue, rawValue, profile) {
       message = `החברה החזירה תשובה שלא ניתן לעבד. נסה שוב עם חלון אבחון; אם התקלה חוזרת יש לעדכן את מחבר החברה.${diagnostic ? ` אבחון טכני בטוח: ${diagnostic}` : ''}`;
     }
   }
-  const e = new Error(`${label}: ${message}`);
-  e.code = code;
-  if (stage) e.stage = stage;
-  return e;
+  return Object.assign(new Error(`${label}: ${message}`), { code, ...(stage ? { stage } : {}) });
 }
 
 export const CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 export const CREDIT_RATE_LIMIT_FALLBACK_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
+/** @param {unknown} errors @param {FailureProfile} profile */
 function matchingCreditProfileErrors(errors, profile) {
   const profileId = String(profile?.profileId || ''),
     provider = String(profile?.provider || '');
   if (!profileId && !provider) return [];
-  return (Array.isArray(errors) ? errors : [])
+  return (isProviderList(errors) ? errors : [])
+    .filter(isProviderRecord)
     .filter(
       (error) =>
-        error &&
         (!profileId || String(error.profileId || '') === profileId) &&
         (!provider || String(error.provider || '') === provider)
     )
-    .sort((a, b) => (Date.parse(b?.at || '') || 0) - (Date.parse(a?.at || '') || 0));
+    .sort((a, b) => (Date.parse(String(b.at || '')) || 0) - (Date.parse(String(a.at || '')) || 0));
 }
 
-export function creditAutomaticRetryAfterAt(error, now = Date.now()) {
+/** @param {unknown} input @param {number} [now] */
+export function creditAutomaticRetryAfterAt(input, now = Date.now()) {
+  const error = providerRecord(input);
   const code = String(error?.code || ''),
-    explicit = Date.parse(error?.retryAfterAt || '');
+    explicit = Date.parse(String(error?.retryAfterAt || ''));
   if (Number.isFinite(explicit) && explicit > Number(now))
     return creditRetryAfterAt({ ...error, at: error?.at || new Date(now).toISOString() }, now);
   if (code !== 'CREDIT_AUTOMATION_BLOCKED' && code !== 'CREDIT_PROVIDER_RATE_LIMITED') return null;
@@ -209,6 +214,7 @@ export function creditAutomaticRetryAfterAt(error, now = Date.now()) {
   ).toISOString() }, base);
 }
 
+/** @param {Record<string,unknown>} error @param {FailureProfile} profile */
 function creditErrorBrowserEngine(error, profile) {
   const explicit = String(error?.browserEngine || '').toLowerCase();
   if (explicit) return explicit;
@@ -226,10 +232,11 @@ function creditErrorBrowserEngine(error, profile) {
   return '';
 }
 
+/** @param {Record<string,unknown>} error @param {number} retryAt @param {{engineOnly?:boolean}} [options] */
 function deferredCreditError(error, retryAt, { engineOnly = false } = {}) {
   const originalFailureAt = error.originalFailureAt || error.at || null,
     reason = String(error.code || '').includes('RATE_LIMITED') ? '429' : '403',
-    engine = creditErrorBrowserEngine(error, { provider: error?.provider });
+    engine = creditErrorBrowserEngine(error, { provider: String(error.provider || '') });
   return {
     ...error,
     retryAfterAt: new Date(retryAt).toISOString(),
@@ -244,6 +251,7 @@ function deferredCreditError(error, retryAt, { engineOnly = false } = {}) {
   };
 }
 
+/** @param {unknown} errors @param {FailureProfile} profile @param {number} [now] */
 export function deferredCamoufoxProfileError(errors, profile, now = Date.now()) {
   const time = Number(now);
   if (!Number.isFinite(time)) return null;
@@ -262,6 +270,7 @@ export function deferredCamoufoxProfileError(errors, profile, now = Date.now()) 
   return null;
 }
 
+/** @param {unknown} errors @param {FailureProfile} profile @param {number} [now] */
 export function deferredCreditProfileError(errors, profile, now = Date.now()) {
   const time = Number(now);
   if (!Number.isFinite(time)) return null;
@@ -280,6 +289,7 @@ export function deferredCreditProfileError(errors, profile, now = Date.now()) {
   return null;
 }
 
+/** @param {unknown} errors @param {FailureProfile} profile @param {number} [now] */
 export function expiredCamoufoxLoginPageBlock(errors, profile, now = Date.now()) {
   const time = Number(now),
     provider = String(profile?.provider || '');
@@ -298,7 +308,9 @@ export function expiredCamoufoxLoginPageBlock(errors, profile, now = Date.now())
   return Number.isFinite(retryAt) && retryAt <= time ? latest : null;
 }
 
-export function creditErrorSeverity(error = {}) {
+/** @param {unknown} [input] */
+export function creditErrorSeverity(input) {
+  const error = providerRecord(input);
   const code = String(error?.code || ''),
     stage = String(error?.stage || ''),
     given = String(error?.severity || '');
@@ -308,15 +320,18 @@ export function creditErrorSeverity(error = {}) {
     code === 'CREDIT_PROVIDER_RATE_LIMITED'
   )
     return 'deferred';
-  if (['error', 'warning', 'deferred', 'info'].includes(given)) return given;
+  if (given === 'error' || given === 'warning' || given === 'deferred' || given === 'info') return given;
   if (error?.tier === 'forecast' || stage === 'Frames' || stage === 'Pending') return 'warning';
   return 'error';
 }
 
-export function creditErrorComponent(error = {}) {
+/** @param {unknown} [input] */
+export function creditErrorComponent(input) {
+  const error = providerRecord(input);
   const given = String(error?.component || '');
   if (
-    ['core_transactions', 'forecast_transactions', 'pending', 'frames', 'profile'].includes(given)
+    given === 'core_transactions' || given === 'forecast_transactions' || given === 'pending' ||
+    given === 'frames' || given === 'profile'
   )
     return given;
   if (error?.tier === 'core') return 'core_transactions';
@@ -326,15 +341,29 @@ export function creditErrorComponent(error = {}) {
   return 'profile';
 }
 
+/** @param {unknown} result @param {FailureProfile} profile */
 export function creditScrapeFailure(result, profile) {
-  return safeCreditScrapeFailure(result?.errorType, result?.errorMessage, profile);
+  const row = providerRecord(result);
+  return safeCreditScrapeFailure(row?.errorType, row?.errorMessage, profile);
 }
 
+/** @param {unknown} result @param {FailureProfile} profile */
+export function requireCreditLoginSuccess(result, profile) {
+  const row = providerRecord(result);
+  if (typeof row?.success !== 'boolean') {
+    throw safeError('חברת האשראי החזירה תשובת התחברות ללא עדות תקינה.',
+      'CREDIT_PROVIDER_SCHEMA_ERROR', { stage: 'Login' });
+  }
+  if (!row.success) throw creditScrapeFailure(row, profile);
+}
+
+/** @param {unknown} error @param {FailureProfile} profile */
 export function creditLoginThrownScrapeFailure(error, profile) {
-  if (String(error?.code || '').startsWith('CREDIT_')) return error;
-  const raw = String(error?.message || error || ''),
+  const row = providerRecord(error);
+  if (row && String(row.code || '').startsWith('CREDIT_')) return row;
+  const raw = String(row?.message || error || ''),
     isTimeout =
-      String(error?.name || '') === 'TimeoutError' ||
+      String(row?.name || '') === 'TimeoutError' ||
       /Navigation timeout of \d+ ms exceeded|waiting for (?:selector|navigation).*timeout/i.test(
         raw
       );
@@ -345,7 +374,9 @@ export function creditLoginThrownScrapeFailure(error, profile) {
   );
 }
 
+/** @param {unknown} error @param {FailureProfile} profile */
 export function creditThrownScrapeFailure(error, profile) {
-  if (String(error?.code || '').startsWith('CREDIT_')) return error;
-  return safeCreditScrapeFailure('SCRAPE_FAILED', error?.message || error, profile);
+  const row = providerRecord(error);
+  if (row && String(row.code || '').startsWith('CREDIT_')) return row;
+  return safeCreditScrapeFailure('SCRAPE_FAILED', row?.message || error, profile);
 }

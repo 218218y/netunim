@@ -69,7 +69,7 @@ test(
         'SCRAPE_BUSY'
       );
       await assert.rejects(
-        fs.access(path.join(f.app, 'credit-status.json')),
+        fs.access(path.join(f.app, 'credit-card-status.json')),
         (error) => error.code === 'ENOENT'
       );
       await assert.rejects(
@@ -127,3 +127,31 @@ test(
     assert.equal((await f.exited)[0], 0, f.output());
   }
 );
+
+test('native Bridge retains the last confirmed sync time after a malformed connector result', { timeout: 30000 }, async t => {
+  const previous = '2026-10-12T12:00:00.000Z';
+  const f = await bankStage(t, {
+    prepare: async ({ runtime, app }) => {
+      const file = path.join(runtime, 'server.mjs');
+      const source = await fs.readFile(file, 'utf8');
+      const guarded = source
+        .replace(/findInstalled:\s*browserLocator\.find/g, "findInstalled:async()=> 'fixture-browser'")
+        .replace(/loadScrapers:\s*\(\)\s*=>\s*import\('israeli-bank-scrapers'\)/g,
+          'loadScrapers:async()=>({CompanyTypes:{},createScraper:()=>{}})')
+        .replace('createAdapter:createCreditProviderAdapter', 'createAdapter:()=>({scrape:async()=>({accounts:[]})})')
+        .replace('const vault=createConnectionVault({directory:APP_DIR,protectText,unprotectText});',
+          "const vault={...createConnectionVault({directory:APP_DIR,protectText,unprotectText}),readCreditProfiles:async()=>[{profileId:'fixture-max',provider:'max',active:true,label:'Synthetic credit',credentials:{}}]};");
+      assert.ok(guarded.includes('createAdapter:()=>({scrape:async()=>({accounts:[]})})'));
+      await fs.writeFile(file, guarded);
+      await fs.writeFile(path.join(app, 'credit-card-status.json'), JSON.stringify({ lastSyncAt: previous }));
+    },
+  });
+
+  assert.equal((await (await f.request('/credit/status')).json()).lastSyncAt, previous);
+  const response = await f.request('/credit/sync', { method: 'POST', body: { syncMode: 'quick' } });
+  assert.equal(response.status, 400, f.output());
+  assert.equal((await response.json()).code, 'CREDIT_SYNC_FAILED');
+  const status = await (await f.request('/credit/status')).json();
+  assert.equal(status.lastSyncAt, previous);
+  assert.equal(status.lastErrors[0].code, 'CREDIT_PROVIDER_SCHEMA_ERROR');
+});

@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCreditProfileSession} from '../netunim-kupa/bank-bridge/credit-session.mjs';
-import {creditProfile,gate} from './bank_provider_fixture.mjs';
+import {creditProfile,creditResult,gate} from './bank_provider_fixture.mjs';
 
 test('credit session construction is inert and connector inputs preserve profile identity and flags',async()=>{
-  const calls=[],profile=creditProfile('P','amex'),result={profileId:'P',accounts:[]};let options;
+  const calls=[],profile=creditProfile('P','amex'),result={profileId:'P',...creditResult()};let options;
   const session=createCreditProfileSession({browser:{findInstalled:async()=>{calls.push('locate');return 'browser'},loadScrapers:async()=>{calls.push('load');return {CompanyTypes:{amex:'amex'},createScraper:'opaque-upstream-factory'}},identityProbeUrl:'http://127.0.0.1:8765/health'},
     identity:{directory:value=>{calls.push('identity');assert.equal(value,profile);return 'scoped-P'}},diagnostics:{record:event=>{calls.push(['diagnostic',event])}},
     createAdapter:value=>{calls.push('adapter');options=value;return {scrape:async()=>{calls.push('scrape');return result}}}});

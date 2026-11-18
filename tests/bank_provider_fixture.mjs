@@ -30,8 +30,9 @@ export function bankProviderFixture(overrides={}){
 }
 
 export const creditProfile=(profileId,provider='max')=>({profileId,provider,label:profileId,active:true,credentials:{username:profileId,password:' exact synthetic credit secret '}});
+export const creditResult=(coreComplete=true)=>({coreComplete,syncedAt:coreComplete?new Date().toISOString():null,accounts:[],errors:[]});
 export function creditProviderFixture(overrides={}){
-  const calls=[],sessions={scrape:async(profile,options)=>{calls.push(['scrape',profile.profileId,options]);return {profileId:profile.profileId,provider:profile.provider,coreComplete:true,accounts:[]}},...overrides.sessions};
+  const calls=[],sessions={scrape:async(profile,options)=>{calls.push(['scrape',profile.profileId,options]);return {profileId:profile.profileId,provider:profile.provider,...creditResult()}},...overrides.sessions};
   const identity={remove:async profile=>{calls.push(['identity',profile.profileId])},...overrides.identity},diagnostics={record:async event=>{calls.push(['diagnostic',event])},...overrides.diagnostics};
   const scrape=createCreditProvider({sessions,identity,diagnostics}).scrape;
   return {scrape,calls,sessions,identity,diagnostics};

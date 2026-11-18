@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {extractMaxTransactionCandidates,normalizeMaxRawTransaction} from '../netunim-kupa/bank-bridge/max-model.mjs';
 import {MaxAdapter} from '../netunim-kupa/bank-bridge/max-adapter.mjs';
+import {safeMaxResponseEvidence} from '../netunim-kupa/bank-bridge/max-response-diagnostics.mjs';
 import {createCreditProvider} from '../netunim-kupa/bank-bridge/credit-provider.mjs';
 import {mergeCreditSyncResult as kupa} from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
 import {mergeCreditSyncResult as orders} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
@@ -20,6 +21,34 @@ async function run(data,{syncMode='quick',overrides={}}={}){
  const result=await provider.scrape([profile]);assert.deepEqual(closed,[result.coreSuccessCount===1]);return result;
 }
 const schema=error=>error.code==='CREDIT_PROVIDER_SCHEMA_ERROR';
+
+test('MAX requires boolean login evidence before making any authenticated data request', async () => {
+  const profile = { profileId:'P', provider:'max', label:'Synthetic', credentials:{} };
+  for (const reply of [null, {}, { success:'false' }, { success:1 }]) {
+    let requests = 0;
+    const closed = [];
+    const adapter = new MaxAdapter({ profile, companyId:'max', createScraper:() => ({
+      initialize:async()=>{}, login:async()=>reply, terminate:async success=>closed.push(success),
+      page:{evaluate:async()=>{ requests++; throw new Error('unexpected data request'); }},
+    }) });
+    await assert.rejects(adapter.scrape(), { code:'CREDIT_PROVIDER_SCHEMA_ERROR', stage:'Login' });
+    assert.equal(requests,0);
+    assert.deepEqual(closed,[false]);
+  }
+});
+
+test('MAX diagnostic evidence validates persisted numeric and structural fields', () => {
+  const evidence = safeMaxResponseEvidence({httpStatus:'429',returnCode:'11',bodyLength:Infinity,
+    flags:[{path:'$.result.hasData',value:false},{path:'$.secret',value:true}],
+    arrays:[{path:'secret-path',count:8,sampleKeys:['valid_key','secret value']}],
+  });
+  assert.equal(evidence.httpStatus,0);
+  assert.equal(evidence.returnCode,null);
+  assert.equal(evidence.bodyLength,0);
+  assert.deepEqual(evidence.flags,[{path:'$.result.hasData',value:false}]);
+  assert.deepEqual(evidence.arrays,[{path:'[redacted]',count:8,sampleKeys:['valid_key']}]);
+});
+
 test('MAX rejects nonempty known transaction lists whose field names are unrecognized',()=>{
  assert.throws(()=>extractMaxTransactionCandidates({result:{transactions:[unknown]}}),schema);
 });

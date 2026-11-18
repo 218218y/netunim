@@ -1,5 +1,5 @@
-// @ts-nocheck
-import { safeError, safeSuffix } from './credit-value-codec.mjs';
+// @ts-check
+import { providerRecord, safeError, safeSuffix } from './credit-value-codec.mjs';
 import {
   MAX_BASE_API_ACTIONS_URL,
   MAX_CATEGORIES_URL,
@@ -11,8 +11,8 @@ import { creditSyncScope } from './credit-sync-scope.mjs';
 import { buildCreditMonthPlan } from './credit-month-plan.mjs';
 import {
   creditLoginThrownScrapeFailure,
-  creditScrapeFailure,
   creditThrownScrapeFailure,
+  requireCreditLoginSuccess,
 } from './credit-failure-policy.mjs';
 import { creditProfilePublic } from './credit-profile-model.mjs';
 import {
@@ -20,15 +20,26 @@ import {
   maxCategories,
   maxHomeCards,
   maxResponseEvidence,
+  maxRawTransactionTime,
   normalizeMaxRawTransaction,
 } from './max-model.mjs';
 import { maxGetJsonWithinPage } from './credit-http.mjs';
 import { coverageError, monthlyCoverageFailure } from './credit-coverage.mjs';
 import { normalizeCreditScrapeAccount } from './credit-transaction-model.mjs';
-import { maxRawTransactionTime } from './credit-data-diagnostics.mjs';
 import { CreditProviderAdapter } from './credit-adapter-base.mjs';
 import {maxResponseShape,maxResponseDecision,optionalMaxMonthFailure} from './max-response-diagnostics.mjs';
 
+/**
+ * @typedef {import('./credit-model-contracts.js').CreditProfileInput} CreditProfile
+ * @typedef {import('./credit-model-contracts.js').CreditProfileResult} CreditProfileResult
+ * @typedef {import('./credit-http.mjs').CreditPage} CreditPage
+ * @typedef {NonNullable<ReturnType<typeof normalizeMaxRawTransaction>>} MaxTransaction
+ * @typedef {{initialize:()=>Promise<unknown>,login:(credentials:CreditProfile['credentials'])=>Promise<unknown>,terminate:(success:boolean)=>Promise<unknown>,page?:CreditPage}} MaxScraper
+ * @typedef {{companyId:string,startDate:Date,futureMonthsToScrape:number,combineInstallments:boolean,showBrowser:boolean,executablePath:string|undefined,navigationRetryCount:number,defaultTimeout:number,timeout:number,additionalTransactionInformation:boolean,includeRawTransaction:boolean,outputData:{enableTransactionsFilterByDate:boolean}}} MaxScraperOptions
+ * @typedef {import('./credit-adapter-base.mjs').AdapterOptions & {companyId:string,createScraper:(options:MaxScraperOptions)=>MaxScraper}} MaxAdapterOptions
+ */
+
+/** @param {string} month */
 function maxTransactionsUrl(month) {
   const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(String(month || ''));
   if (!match)
@@ -54,6 +65,7 @@ function maxTransactionsUrl(month) {
   return url.toString();
 }
 
+/** @param {{homeCards:ReturnType<typeof maxHomeCards>,rawByCard:Map<string,MaxTransaction[]>,profile:CreditProfile,startDate:Date,futureMonths:number,now:Date,excludedAccountNumbers:Set<string>,monthFailures:Map<string,Record<string,unknown>>}} input */
 function maxMonthlyAccounts({
   homeCards,
   rawByCard,
@@ -78,14 +90,18 @@ function maxMonthlyAccounts({
         { startDate, futureMonths, now },
         MAX_PROVIDER_SCHEMA_VERSION
       );
-    account.months = account.months.map(slice => monthFailures.has(slice.month)
-      ? { ...monthlyCoverageFailure(slice, monthFailures.get(slice.month), now.toISOString()), providerSchemaVersion: MAX_PROVIDER_SCHEMA_VERSION }
-      : slice);
-    accounts.push(normalizeCreditScrapeAccount(account, profile.provider));
+    const months = account.months.map(slice => {
+      const error = monthFailures.get(slice.month);
+      return error
+        ? { ...monthlyCoverageFailure(slice, error, now.toISOString()), providerSchemaVersion: MAX_PROVIDER_SCHEMA_VERSION }
+        : slice;
+    });
+    accounts.push(normalizeCreditScrapeAccount({ ...account, months }, profile.provider));
   }
   return accounts;
 }
 
+/** @param {MaxAdapter} adapter @returns {Promise<CreditProfileResult>} */
 async function scrapeMaxDirect(adapter) {
   const profile = adapter.profile,
     scope = creditSyncScope({ syncMode: adapter.syncMode, now: adapter.now() }),
@@ -123,14 +139,15 @@ async function scrapeMaxDirect(adapter) {
       loginResult = await scraper.login(profile.credentials);
     } catch (error) {
       const failure = creditLoginThrownScrapeFailure(error, profile);
+      const detail = providerRecord(failure);
       adapter.event({
-        stage: failure.stage || 'LoginFlow',
+        stage: detail?.stage || 'LoginFlow',
         durationMs: Date.now() - loginStarted,
         errorClass: failure.code,
       });
       throw failure;
     }
-    if (!loginResult?.success) throw creditScrapeFailure(loginResult, profile);
+    requireCreditLoginSuccess(loginResult, profile);
     adapter.event({ stage: 'Login', durationMs: Date.now() - loginStarted });
     const page = scraper?.page;
     if (!page || typeof page.evaluate !== 'function')
@@ -139,6 +156,7 @@ async function scrapeMaxDirect(adapter) {
         'CREDIT_CONNECTOR_COMPATIBILITY_ERROR',
         { stage: 'MaxData' }
       );
+    /** @type {Map<number,string>} */
     let categories = new Map();
     try {
       categories = maxCategories(
@@ -150,10 +168,11 @@ async function scrapeMaxDirect(adapter) {
         )
       );
     } catch (error) {
+      const detail = providerRecord(error);
       adapter.event({
         stage: 'MaxCategories',
-        errorClass: error?.code || 'CREDIT_PROVIDER_DATA_ERROR',
-        httpStatus: error?.httpStatus || 0,
+        errorClass: detail?.code || 'CREDIT_PROVIDER_DATA_ERROR',
+        httpStatus: detail?.httpStatus || 0,
       });
     }
     const homeData = await maxGetJsonWithinPage(
@@ -162,20 +181,26 @@ async function scrapeMaxDirect(adapter) {
         'MaxHomeCards',
         adapter.now().getTime()
       ),
-      homeCards = maxHomeCards(homeData),
-      rawByCard = new Map(),
-      monthFailures = new Map(),
-      errors = [];
+      homeCards = maxHomeCards(homeData);
+    /** @type {Map<string,MaxTransaction[]>} */
+    const rawByCard = new Map();
+    /** @type {Map<string,Record<string,unknown>>} */
+    const monthFailures = new Map();
+    const errors = [];
     for (const entry of plan) {
       const monthStarted = Date.now(),buffer=[];
-      let shape=maxResponseShape(undefined),phase='fetch',parsed,errorForDiagnostic=null;
+      let shape=maxResponseShape(undefined),parsed;
+      /** @type {'fetch'|'parse'|'normalize'} */
+      let phase='fetch';
+      /** @type {unknown} */
+      let errorForDiagnostic=null;
       try {
         const data = await maxGetJsonWithinPage(
           page,
           maxTransactionsUrl(entry.month),
           `MaxTransactions ${entry.month}`,
           adapter.now().getTime(),
-          reply=>{shape=maxResponseShape(reply.data,reply)}
+          reply=>{shape=maxResponseShape('data' in reply ? reply.data : undefined,reply)}
         );
         phase='parse';
         parsed = extractMaxTransactionCandidates(data);
@@ -186,8 +211,9 @@ async function scrapeMaxDirect(adapter) {
           buffer.push({accountNumber,tx});
         }
         for(const {accountNumber,tx} of buffer){
-          if(!rawByCard.has(accountNumber))rawByCard.set(accountNumber,[]);
-          rawByCard.get(accountNumber).push(tx);
+          const rows = rawByCard.get(accountNumber);
+          if (rows) rows.push(tx);
+          else rawByCard.set(accountNumber,[tx]);
         }
       }
       catch (error) {
@@ -289,16 +315,17 @@ async function scrapeMaxDirect(adapter) {
     };
   } catch (error) {
     const failure = creditThrownScrapeFailure(error, profile);
+    const detail = providerRecord(failure);
     Object.defineProperty(failure,'_dataDiagnostics',{value:dataDiagnostics,enumerable:false});
-    if (!failure.browserEngine) failure.browserEngine = 'chromium';
+    if (detail && !detail.browserEngine) detail.browserEngine = 'chromium';
     adapter.event({
       browserEngine: 'chromium',
-      stage: failure?.stage || 'Scrape',
+      stage: detail?.stage || 'Scrape',
       durationMs: Date.now() - started,
       errorClass: failure?.code,
-      httpStatus: failure?.httpStatus,
-      providerStatus: failure?.providerStatus,
-      providerReturnCode: failure?.providerReturnCode,
+      httpStatus: detail?.httpStatus,
+      providerStatus: detail?.providerStatus,
+      providerReturnCode: detail?.providerReturnCode,
     });
     throw failure;
   } finally {
@@ -310,16 +337,14 @@ async function scrapeMaxDirect(adapter) {
 }
 
 export class MaxAdapter extends CreditProviderAdapter {
-  constructor(options = {}) {
+  /** @param {MaxAdapterOptions} options */
+  constructor(options) {
     super(options);
     this.connectorVersion = MAX_PROVIDER_SCHEMA_VERSION;
-    Object.assign(this, {
-      createScraper: options.createScraper,
-      CompanyTypes: options.CompanyTypes,
-      companyId: options.companyId,
-      browserPath: options.browserPath,
-      interactive: !!options.interactive,
-    });
+    this.createScraper = options.createScraper;
+    this.companyId = options.companyId;
+    this.browserPath = options.browserPath;
+    this.interactive = !!options.interactive;
   }
   async scrape() {
     return scrapeMaxDirect(this);

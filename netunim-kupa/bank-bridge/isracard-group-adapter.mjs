@@ -71,7 +71,7 @@ class IsracardGroupDigitalV3Adapter extends CreditProviderAdapter {
         onDiagnostic: (event) => this.event({ browserEngine: 'chromium', ...event }),
         now: this.now,
       });
-      if (!result?.success)
+      if (result?.success !== true || !Array.isArray(result.accounts))
         throw safeError(
           `${profile.label || profile.provider} DigitalV3 לא השלים את הסנכרון.`,
           'CREDIT_PROVIDER_DATA_ERROR',
@@ -83,7 +83,7 @@ class IsracardGroupDigitalV3Adapter extends CreditProviderAdapter {
         stage: 'Complete',
         durationMs: Date.now() - started,
       });
-      const rawAccounts = (Array.isArray(result.accounts) ? result.accounts : []).filter(
+      const rawAccounts = result.accounts.filter(
           (account) => {
             const accountNumber = text(account?.accountNumber, 80);
             if (!this.excludedAccountNumbers.has(accountNumber)) return true;

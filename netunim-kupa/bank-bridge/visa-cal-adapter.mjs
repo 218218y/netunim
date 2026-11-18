@@ -13,7 +13,7 @@ import {
   applyVisaCalLoginNavigationPolicy,
   prepareVisaCalBrowserIdentity,
 } from './visa-cal-session.mjs';
-import { creditLoginThrownScrapeFailure, creditScrapeFailure } from './credit-failure-policy.mjs';
+import { creditLoginThrownScrapeFailure, requireCreditLoginSuccess } from './credit-failure-policy.mjs';
 import { creditProfilePublic } from './credit-profile-model.mjs';
 import { normalizeCreditScrapeAccount } from './credit-transaction-model.mjs';
 import { errorFetchStatus, safeError, safeSuffix, text } from './credit-value-codec.mjs';
@@ -155,7 +155,7 @@ export class VisaCalAdapter extends CreditProviderAdapter {
         });
         throw failure;
       }
-      if (!loginResult?.success) throw creditScrapeFailure(loginResult, profile);
+      requireCreditLoginSuccess(loginResult, profile);
       this.event({ stage: 'Login', durationMs: Date.now() - loginStarted });
       let cards;
       try {

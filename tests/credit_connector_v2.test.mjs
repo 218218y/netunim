@@ -84,6 +84,20 @@ function fakeScraper(overrides={}){const calls={initialize:0,login:0,cards:0,aut
 function fetchFixture({failureMonth='',failureCard='',failureKind='provider',framesBody=null,pendingBody=null}={}){return async(url,options)=>{const body=JSON.parse(options.body);if(url.includes('/Frames/'))return response(framesBody??{result:{calIssuedCards:{cardLevelFrames:[{cardUniqueId:body.cardsForFrameData[0].cardUniqueId,nextTotalDebit:100,nextDebitDate:'2026-09-10'}],frameLimitForCardAmount:10000}}});if(url.includes('/approvals/'))return response(pendingBody??{statusCode:96});const month=`${body.year}-${String(body.month).padStart(2,'0')}`,card=body.cardUniqueId;if(month===failureMonth&&card===failureCard){if(failureKind==='schema')return response({statusCode:1,result:{changed:true}});if(failureKind==='html')return response('<!doctype html><html>maintenance</html>');return response({statusCode:9,title:'temporary issuer failure'})}return response(calMonth(card,month))}}
 function adapterFor(scraper,fetchImpl,syncMode='recovery',options={}){return new VisaCalAdapter({profile,CompanyTypes:{visaCal:'visaCal'},createScraper:()=>scraper,browserPath:'browser.exe',fetchImpl,requestDelayMs:0,now:()=>new Date(fixedNow),syncMode,...options})}
 
+const unconfirmedCal = fakeScraper({login:async()=>({success:'false'})});
+await assert.rejects(adapterFor(unconfirmedCal.scraper,()=>assert.fail('unconfirmed login issued a data request')).scrape(),
+  {code:'CREDIT_PROVIDER_SCHEMA_ERROR',stage:'Login'});
+assert.equal(unconfirmedCal.calls.cards,0);
+assert.equal(unconfirmedCal.calls.terminate,1);
+
+for (const reply of [{success:'false',accounts:[]},{success:true}]) {
+  const digital = createCreditProviderAdapter({
+    profile:{...profile,provider:'isracard'},CompanyTypes:{isracard:'isracard'},
+    isracardScrapeImpl:async()=>reply,allowCamoufoxFallback:false,
+  });
+  await assert.rejects(digital.scrape(),{code:'CREDIT_PROVIDER_DATA_ERROR',stage:'DigitalV3'});
+}
+
 const calApiUrl='https://api.cal-online.co.il/Frames/api/Frames/GetFrameStatus';
 let browserApiArgs=null,browserApiNodeCalls=0;const browserApiResult=await postVisaCalJson({evaluate:async(_fn,url,data,headers,timeoutMs)=>{browserApiArgs={url,data,headers,timeoutMs};return {status:200,body:'{"statusCode":1,"result":{"ok":true}}',retryAfter:''}}},async()=>{browserApiNodeCalls++;throw new Error('node should not run')},calApiUrl,{x:1},{browserHeaders:{Authorization:'CALAuthScheme test','X-Site-Id':'site'},nodeHeaders:{Authorization:'CALAuthScheme test'},stage:'Frames'});
 assert.equal(browserApiResult.transport,'browser','Cal data API prefers the authenticated browser network path from PR #1193');assert.equal(browserApiNodeCalls,0,'a browser HTTP response never triggers the Node fallback');assert.deepEqual(browserApiArgs.headers,{Authorization:'CALAuthScheme test','X-Site-Id':'site'},'browser API calls pass only application auth headers and let Chromium own Origin/Referer/browser identity');

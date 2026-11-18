@@ -11,6 +11,7 @@ import {
 import { CREDIT_CONNECTOR_CONTRACT_VERSION } from './credit-adapter-wire.mjs';
 import { normalizeCreditSyncMode } from './credit-sync-scope.mjs';
 import { diagnosticFingerprint } from './credit-diagnostic-model.mjs';
+import { decodeCreditProfileResult } from './credit-session.mjs';
 // Profiles remain sequential; a session facade owns the connector attempt.
 // Identity recovery and diagnostics are explicit ports, not HTTP internals.
 export function createCreditProvider({ sessions, identity, diagnostics }) {
@@ -46,18 +47,18 @@ export function createCreditProvider({ sessions, identity, diagnostics }) {
                         browserEngine: 'camoufox', 
                         stage: 'IdentityRecovery' });
                 }
-                const result = await scrapeCreditProfile(profile, {
+                const result = decodeCreditProfileResult(await scrapeCreditProfile(profile, {
                     interactive, 
                     correlationId, 
                     syncMode, 
                     excludedAccountNumbers: excludedAccountsForProfile(selection, profile.profileId), 
                     allowCamoufoxFallback: !camoufoxDeferred
-                });
-                if (Array.isArray(result?._dataDiagnostics))
+                }));
+                if (Array.isArray(result._dataDiagnostics))
                     dataDiagnostics.push(...result._dataDiagnostics);
-                const { _dataDiagnostics: ignoredDataDiagnostics, ...publicResult } = result || {};
+                const { _dataDiagnostics: ignoredDataDiagnostics, ...publicResult } = result;
                 success.push(publicResult);
-                if (publicResult.coreComplete !== false)
+                if (publicResult.coreComplete)
                     coreSuccessCount++;
                 if (Array.isArray(publicResult.errors))
                     for (const raw of publicResult.errors) {

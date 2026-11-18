@@ -23,8 +23,8 @@ test('Bank HTTP/capability boundaries have explicit dependency and collaborator 
     ['hapoalim-enrichment',["./hapoalim-additional-details-model.mjs","./hapoalim-cheque-model.mjs","./hapoalim-credit-settlement-model.mjs","./hapoalim-transaction-model.mjs","./hapoalim-wire.mjs"],'createHapoalimEnrichment',3],
     ['browser-locator',[],'createInstalledBrowserLocator',2],
     ['hapoalim-provider',['./provider-errors.mjs'],'createHapoalimProvider',7],
-    ['credit-session',[],'createCreditProfileSession',4],
-    ['credit-provider',['node:crypto','./credit-profile-model.mjs','./credit-failure-policy.mjs','./credit-adapter-wire.mjs','./credit-sync-scope.mjs','./credit-diagnostic-model.mjs'],'createCreditProvider',3],
+    ['credit-session',['./credit-value-codec.mjs','./observation-time.mjs'],'createCreditProfileSession',4],
+    ['credit-provider',['node:crypto','./credit-profile-model.mjs','./credit-failure-policy.mjs','./credit-adapter-wire.mjs','./credit-sync-scope.mjs','./credit-diagnostic-model.mjs','./credit-session.mjs'],'createCreditProvider',3],
     ['shutdown-owner',[],'createBridgeShutdownOwner',3],
     ['replacement-command',[],'createBridgeReplacementCommand',4],
     // Pairing is a single injected authority port. The handler has no registry or platform access.

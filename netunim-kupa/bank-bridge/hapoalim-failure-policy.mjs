@@ -1,5 +1,6 @@
-// @ts-nocheck
+// @ts-check
 
+/** @param {{errorType?:unknown,errorMessage?:unknown}|null|undefined} result @returns {[message:string,code:string]} */
 export function scraperFailureMessage(result) {
   const type = String(result?.errorType || '').toUpperCase();
   const raw = String(result?.errorMessage || '').trim();

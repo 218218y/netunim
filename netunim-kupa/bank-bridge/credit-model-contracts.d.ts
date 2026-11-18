@@ -31,3 +31,7 @@ export type CreditPublicProfile = {
 export type CreditProfileInput = Omit<CreditPublicProfile,'configured'|'provider'> & {
   provider:CreditProvider,credentials:Record<string,unknown>,
 };
+
+export type CreditProfileResult = Record<string,unknown> & {
+  accounts:Record<string,unknown>[], errors:Record<string,unknown>[],
+} & ({coreComplete:true,syncedAt:string}|{coreComplete:false,syncedAt:null});

@@ -150,3 +150,28 @@ test('authoritative browser HTTP and JSON errors retain their classification wit
     assert.equal(requests, 0);
   }
 });
+
+test('CAL falls back once when the browser rejects without an error message', async () => {
+  let requests = 0;
+  const result = await postVisaCalJson({ evaluate: async () => { throw null; } }, async () => {
+    requests++;
+    return new Response('{"receipt":true}');
+  }, 'https://fixture.invalid', {});
+  assert.equal(requests, 1);
+  assert.equal(result.transport, 'node-fallback');
+  assert.deepEqual(result.data, { receipt: true });
+});
+
+test('CAL Node fallback must provide the same validated HTTP receipt as the browser', async () => {
+  let requests = 0;
+  await assert.rejects(postVisaCalJson({ evaluate: async () => { throw new Error('browser disconnected'); } }, async () => {
+    requests++;
+    return { status: '200', text: async () => '{}' };
+  }, 'https://fixture.invalid', {}), { code: 'CREDIT_PROVIDER_SCHEMA_ERROR', transport: 'node-fallback' });
+  assert.equal(requests, 1);
+});
+
+test('MAX accepts only a string as evidence of an in-page network failure', async () => {
+  await assert.rejects(maxGetJsonWithinPage({ evaluate: async () => ({ networkError: { message: 'invalid receipt' } }) },
+    'https://fixture.invalid', 'Transactions'), { code: 'CREDIT_PROVIDER_SCHEMA_ERROR' });
+});

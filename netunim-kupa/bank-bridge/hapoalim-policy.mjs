@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-check
 
 export const INTERACTIVE_AUTH_TIMEOUT_MS = 10 * 60 * 1000;
 
