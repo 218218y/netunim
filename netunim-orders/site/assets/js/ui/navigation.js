@@ -20,16 +20,11 @@ function viewStateKey(view){
 const cacheableView=view=>['supplier','customers','customer-orders','service','warehouse','checks','summary'].includes(view);
 const viewCache=createCleanViewCache({container:()=>document.getElementById('main'),dataRevision,viewStateKey,cacheable:cacheableView,maxEntries:3});
 function syncActiveNav(){
-  const nav=document.getElementById('nav');
   for(const button of document.querySelectorAll('#nav [data-view], #settingsTopButton')){
     const active=button.dataset.view===ui.currentView;
-    const becameActive=active&&!button.hasAttribute('aria-current');
     button.classList.toggle('active',active);
     if(active)button.setAttribute('aria-current','page');
     else button.removeAttribute('aria-current');
-    if(becameActive&&nav?.contains(button)&&nav.scrollWidth>nav.clientWidth){
-      button.scrollIntoView({block:'nearest',inline:'nearest'});
-    }
   }
 }
 

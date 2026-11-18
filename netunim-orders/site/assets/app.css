@@ -52,7 +52,7 @@ button,input,select,textarea{font:inherit}.app{width:100%;height:100vh;height:10
   border-bottom:1px solid var(--workspace-line);
   box-shadow:var(--workspace-shadow)
 }
-.topbar-nav-cluster{grid-area:nav;display:flex;align-items:center;gap:8px;min-width:0}
+.topbar-nav-cluster{grid-area:nav;display:flex;align-items:center;gap:8px;min-width:0;container:topbar-navigation / inline-size}
 .topbar-nav-tools,.topbar-actions,.topbar-status{display:flex;align-items:center;gap:6px}
 .topbar-nav-tools{flex:0 0 auto}
 .topbar-actions{grid-area:actions;min-width:0;justify-self:end}
@@ -99,13 +99,9 @@ button,input,select,textarea{font:inherit}.app{width:100%;height:100vh;height:10
   min-width:0;
   max-width:100%;
   display:flex;
-  gap:3px;
-  padding:3px 3px 0;
-  overflow-x:auto;
-  overscroll-behavior-inline:contain;
-  scrollbar-width:thin;
-  scrollbar-color:#aebdd4 transparent;
-  scroll-padding-inline:3px;
+  flex-wrap:wrap;
+  gap:8px 3px;
+  padding:6px 3px 0;
   border-block-end:1px solid var(--workspace-line)
 }
 .nav button{
@@ -144,11 +140,35 @@ button,input,select,textarea{font:inherit}.app{width:100%;height:100vh;height:10
   outline:2px solid var(--workspace-focus);
   outline-offset:-4px
 }
-@media(min-width:1320px){
-  .nav button svg{display:block}
-  .nav.keytips-active button[data-nav-keytip] svg{visibility:hidden}
+/* Position the Alt shortcuts over the tabs so their geometry stays fixed. */
+.nav.keytips-active button[data-nav-keytip]::before{
+  content:attr(data-nav-keytip);
+  position:absolute;
+  inset-block-start:-6px;
+  inset-inline-start:3px;
+  display:grid;
+  place-items:center;
+  box-sizing:border-box;
+  inline-size:14px;
+  block-size:14px;
+  border:1px solid #d9bc7b;
+  border-radius:4px;
+  background:#fff5da;
+  color:#624a1f;
+  font-size:10px;
+  font-weight:800;
+  line-height:1;
+  pointer-events:none
 }
-@media(max-width:1100px){
+.nav.keytips-active button[data-nav-keytip]:is(:hover,.active)::before{
+  border-color:#ba9146;
+  background:#ffedb8
+}
+/* Wide tabs need room for the icons plus Search and Alerts. */
+@container topbar-navigation (min-width:820px){
+  .nav button svg{display:block}
+}
+@media(max-width:1160px){
   .topbar{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"nav nav" "tools actions";gap:6px 8px}
   .secondary-readonly .topbar{grid-template-areas:"readonly readonly" "nav nav" "tools actions"}
   .topbar-nav-cluster{display:contents}
@@ -1159,12 +1179,6 @@ button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-v
 @media(max-width:760px){.morning-bank-transaction-toolbar{align-items:stretch;flex-direction:column}.morning-bank-transaction-clear{width:100%}.morning-bank-transaction-table-head{display:none}.morning-bank-transaction-row{grid-template-columns:repeat(2,minmax(0,1fr));padding:7px}.morning-bank-transaction-cell{padding:5px}.morning-bank-transaction-cell:before{content:attr(data-label);display:block;margin-bottom:2px;color:var(--muted);font-size:8px;font-weight:800}.morning-bank-transaction-description{grid-column:1/-1}}
 .customer-debt-documents{display:flex;flex-wrap:wrap;align-items:center;gap:4px;max-width:100%;margin-top:5px}.customer-debt-documents .bank-row-morning-doc{max-width:min(100%,190px);font-size:9px}.customer-col-name{min-width:0}.customer-col-name>b{overflow-wrap:anywhere}
 .debt-progress-linked-row{display:flex;align-items:center;gap:6px;min-width:0}.debt-progress-linked-row>.debt-progress-history-row{flex:1;min-width:0}.debt-progress-linked-row>.bank-row-morning-doc{flex:none;max-width:150px}@media(max-width:620px){.debt-progress-linked-row{flex-wrap:wrap}.debt-progress-linked-row>.debt-progress-history-row{flex-basis:100%}}
-
-/* Primary navigation keyboard KeyTips (Alt, then 1-8). */
-.nav button[data-nav-keytip]::before{content:attr(data-nav-keytip);display:none;align-items:center;justify-content:center;position:absolute;inset-block-start:50%;inset-inline-start:5px;transform:translateY(-50%);width:16px;height:16px;border:1px solid #c8a96d;border-radius:5px;background:#fff4c9;color:#624a1f;box-shadow:0 2px 6px rgba(72,52,24,.16);font-size:10px;font-weight:900;line-height:1;pointer-events:none}
-@media(max-width:1319px){.nav.keytips-active button[data-nav-keytip]{padding-inline-start:29px}}
-.nav.keytips-active button[data-nav-keytip]::before{display:inline-flex}
-.nav.keytips-active button[data-nav-keytip]:hover::before,.nav.keytips-active button[data-nav-keytip].active::before{background:#ffedaa;border-color:#b88d3d;color:#49330d}
 
 .credit-cycle-explanation{margin:0;padding:5px 11px 8px;color:var(--muted);font-size:11px;line-height:1.5;background:#fff}
 

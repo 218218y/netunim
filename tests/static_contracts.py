@@ -456,7 +456,7 @@ alert_slot_pos = orders_html.find('id="alertCenterSlot"')
 alert_button_pos = orders_html.find('id="alertCenterButton"')
 ok(0 <= nav_open < nav_close < nav_tools_pos < search_button_pos < alert_slot_pos < alert_button_pos
    and '.alert-center-slot[hidden]{display:none}' in orders_css,
-   "orders: search and alerts live outside the scrolling tab strip and empty alerts disappear")
+   "orders: search and alerts live outside the tab strip and empty alerts disappear")
 ok('.folder-access-slot{display:flex;flex:0 0 5rem;inline-size:5rem}' in orders_css,
    "orders: desktop folder-access slot keeps stable header geometry")
 ok('.main{flex:1 1 auto;min-width:0;min-height:0;width:100%;max-width:none;margin:0;padding:0 env(safe-area-inset-right,0px) max(22px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px);overflow:hidden}' in orders_css

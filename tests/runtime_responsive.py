@@ -15,6 +15,9 @@ VIEWPORTS = [
     (768, 1024),
     (820, 1180),
     (1024, 768),
+    (1150, 768),
+    (1280, 768),
+    (1320, 768),
     (1366, 768),
     (1920, 1080),
     (568, 320),
@@ -135,7 +138,34 @@ def check_orders(browser: BrowserSession) -> list[dict]:
               const alertSlot=document.getElementById('alertCenterSlot');
               const alertButton=document.getElementById('alertCenterButton');
               await frame();
-              folder.hidden=false;folder.textContent='אשר תיקייה';alertSlot.hidden=false;alertButton.hidden=false;
+              folder.hidden=false;folder.textContent='אשר תיקייה';
+              const tabButtons=[...nav.querySelectorAll('button[data-view]')];
+              const tabBounds=()=>tabButtons.map(button=>{
+                const {left,right,top,bottom}=button.getBoundingClientRect();
+                return [left,right,top,bottom];
+              });
+              const sendKey=(type,key,altKey=false)=>document.dispatchEvent(
+                new KeyboardEvent(type,{key,altKey,bubbles:true,cancelable:true})
+              );
+              for(const showAlert of [false,true]){
+                alertSlot.hidden=alertButton.hidden=!showAlert;
+                const before=tabBounds();
+                sendKey('keydown','Alt',true);
+                sendKey('keyup','Alt');
+                const navRect=nav.getBoundingClientRect();
+                if(nav.scrollWidth>nav.clientWidth+1||before.some(([left,right])=>left<navRect.left-1||right>navRect.right+1)){
+                  throw Error(`Tab strip overflows at ${innerWidth}px (alert: ${showAlert})`);
+                }
+                if(JSON.stringify(before)!==JSON.stringify(tabBounds())){
+                  throw Error(`Alt shifts tab bounds at ${innerWidth}px (alert: ${showAlert})`);
+                }
+                const shortcuts=tabButtons.map(button=>getComputedStyle(button,'::before').content).join(' ');
+                if(shortcuts!=='"1" "2" "3" "4" "5" "6" "7" "8"'){
+                  throw Error(`Incomplete Alt shortcuts at ${innerWidth}px: ${shortcuts}`);
+                }
+                sendKey('keydown','Escape');
+                if(nav.classList.contains('keytips-active'))throw Error('Escape did not close Alt shortcuts');
+              }
               const settings=document.getElementById('settingsTopButton');
               const header={
                 settingsVisible:withinViewport(settings),
@@ -176,7 +206,7 @@ def check_orders(browser: BrowserSession) -> list[dict]:
         assert result["header"]["settingsVisible"], result
         assert result["header"]["folderVisible"], result
         assert result["header"]["searchVisible"] and result["header"]["alertVisible"], result
-        if width <= 1100:
+        if width <= 1160:
             assert result["header"]["tabsWidth"] >= width - 28, result
         assert result["header"]["settingsLabel"] == "הגדרות", result
         assert not result["header"]["settingsText"], result
