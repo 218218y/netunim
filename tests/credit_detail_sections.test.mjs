@@ -52,17 +52,19 @@ test('dynamic cycle headings are escaped and an empty result has no phantom sect
   assert.equal(creditUpcomingSectionsMarkup([],presentation),'');
 });
 
-test('combined billing menu contains all past and future months once, in order, with an initial three-month history window',()=>{
+test('combined billing menu contains all past and future months once, in order, with an initial two-month history window',()=>{
   const past=['2026-05','2026-06','2026-07','2026-08','2026-09','2026-10'].map(key=>({key,total:1,items:[{date:key+'-10'}]}));
   const future=['2026-11','2026-12','2027-01'].map(key=>({key,total:2,items:[{date:key+'-10'}]}));
   const make=selectedKey=>creditCombinedMonthMenuMarkup({historyMonths:past,months:future,selectedKey,formatMoney:String,formatMonth:String,escapeHtml,monthAction:'credit-detail-month',monthDayAction:'credit-detail-month-day'});
   const markup=make(''),choices=[...markup.matchAll(/data-action="credit-detail-month" data-click-arg0="(\d{4}-\d{2})"/g)].map(match=>match[1]);
   assert.deepEqual(choices,[...past,...future].map(month=>month.key));
   assert.equal((markup.match(/data-menu-scroll-start/g)||[]).length,1);
-  assert.match(markup,/<span data-menu-scroll-start[^>]*>[\s\S]*?data-click-arg0="2026-08"/);
+  const scrollStart=html=>html.match(/<span data-menu-scroll-start[^>]*><button[^>]*data-click-arg0="([^"]+)"/)?.[1];
+  assert.equal(scrollStart(markup),'2026-09');
+  assert.deepEqual(choices.slice(choices.indexOf(scrollStart(markup))),['2026-09','2026-10',...future.map(month=>month.key)]);
   assert.ok(markup.indexOf('data-click-arg0="2026-10"')<markup.indexOf('credit-cycle-menu-divider'));
   assert.ok(markup.indexOf('credit-cycle-menu-divider')<markup.indexOf('data-click-arg0="2026-11"'));
-  assert.match(make('2026-05'),/<span data-menu-scroll-start[^>]*>[\s\S]*?data-click-arg0="2026-05"/);
+  assert.equal(scrollStart(make('2026-05')),'2026-05','reopening an older selected month still keeps it visible');
   assert.equal(make('2026-12').match(/class="credit-cycle-menu /g)?.length,1,'one month selector, not separate history and future controls');
   assert.equal(creditCombinedMonthMenuMarkup({historyMonths:[],months:[],formatMoney:String,formatMonth:String,escapeHtml}), '');
 });
