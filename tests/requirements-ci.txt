@@ -1,2 +1,5 @@
 # Exact CI resolution of the compatible range in requirements.txt.
 websocket-client==1.9.0
+cryptography==50.0.2
+cffi==2.0.0
+pycparser==3.0
