@@ -1,7 +1,17 @@
-// @ts-nocheck
-import { safeError, text } from './credit-value-codec.mjs';
+// @ts-check
+import { providerRecord, safeError, text } from './credit-value-codec.mjs';
 import { classifyCreditHttpResponse, parseCreditJsonResponse,decodeCreditHttpReply } from './credit-http-policy.mjs';
 
+/**
+ * @typedef {Record<string,string>} RequestHeaders
+ * @typedef {(url:string, request:RequestInit)=>Promise<Pick<Response,'status'|'text'|'headers'>>} CreditFetch
+ * @typedef {{evaluate:<Args extends unknown[], Result>(callback:(...args:Args)=>Promise<Result>,...args:Args)=>Promise<unknown>}} CreditPage
+ * @typedef {{stage?:string,timeoutMs?:number,now?:number}} RequestOptions
+ * @typedef {{data:unknown,transport:'browser'}|{data:unknown,transport:'node-fallback',browserError:string}} CalHttpResult
+ * @typedef {{httpStatus:0,bodyType:'transport_failure'|'invalid_transport'}|{httpStatus:number,bodyType:'empty'|'non_json'|'json',contentType:string,bodyLength:number,data:unknown}} MaxHttpObservation
+ */
+
+/** @param {CreditFetch} fetchImpl @param {string} url @param {unknown} data @param {RequestOptions & {headers?:RequestHeaders}} [options] */
 async function postJson(
   fetchImpl,
   url,
@@ -21,18 +31,24 @@ async function postJson(
       });
       responseText = await response.text();
     } catch (error) {
+      const causeName = text(providerRecord(error)?.name, 40);
       throw safeError(
-        error?.name === 'AbortError'
+        causeName === 'AbortError'
           ? 'קריאת הנתונים מחברת האשראי לא הסתיימה בזמן.'
           : 'החיבור לשירות הנתונים של חברת האשראי נקטע.',
         'CREDIT_PROVIDER_NETWORK_ERROR',
-        { stage, causeName: text(error?.name, 40) }
+        { stage, causeName }
       );
     }
-    return parseCreditJsonResponse(responseText, {
+    const reply = decodeCreditHttpReply({
       status: response.status,
+      body: responseText,
+      retryAfter: response.headers?.get?.('retry-after') ?? '',
+    }, stage);
+    return parseCreditJsonResponse(reply.body, {
+      status: reply.status,
       stage,
-      retryAfter: response.headers?.get?.('retry-after') || '',
+      retryAfter: reply.retryAfter,
       now,
     });
   } finally {
@@ -40,6 +56,7 @@ async function postJson(
   }
 }
 
+/** @param {CreditPage} page @param {CreditFetch} fetchImpl @param {string} url @param {unknown} data @param {RequestOptions & {browserHeaders?:RequestHeaders,nodeHeaders?:RequestHeaders}} [options] @returns {Promise<CalHttpResult>} */
 export async function postVisaCalJson(
   page,
   fetchImpl,
@@ -81,7 +98,7 @@ export async function postVisaCalJson(
       timeoutMs
     );
   } catch (error) {
-    inPageError = text(error?.message || error, 180);
+    inPageError = text(providerRecord(error)?.message || error, 180) || 'Browser request failed';
   }
   if (!inPageError) {
     try {
@@ -96,8 +113,7 @@ export async function postVisaCalJson(
         transport: 'browser',
       };
     } catch (error) {
-      error.transport = 'browser';
-      throw error;
+      throw Object.assign(error instanceof Error ? error : new Error('Credit HTTP reply failed'), { transport: 'browser' });
     }
   }
   try {
@@ -107,13 +123,15 @@ export async function postVisaCalJson(
       browserError: inPageError,
     };
   } catch (error) {
-    error.transport = 'node-fallback';
-    error.browserRequestError = inPageError;
-    throw error;
+    throw Object.assign(error instanceof Error ? error : new Error('Credit HTTP fallback failed'), {
+      transport: 'node-fallback', browserRequestError: inPageError,
+    });
   }
 }
 
+/** @param {CreditPage} page @param {string} url @param {string} stage @param {number} [now] @param {((value:MaxHttpObservation)=>void)|null} [observe] @returns {Promise<unknown>} */
 export async function maxGetJsonWithinPage(page, url, stage, now = Date.now(), observe = null) {
+  /** @param {MaxHttpObservation} value */
   const notify=value=>{try{observe?.(value)}catch{/* Diagnostics cannot change provider results. */}};
   let payload;
   try {
@@ -125,7 +143,7 @@ export async function maxGetJsonWithinPage(page, url, stage, now = Date.now(), o
         const body = response.status === 204 ? '' : await response.text();
         return {status:response.status,body,retryAfter:response.headers?.get?.('retry-after')||'',contentType:response.headers?.get?.('content-type')||''};
       } catch (error) {
-        return { networkError: String(error?.message || error || 'fetch failed') };
+        return { networkError: String((error instanceof Error && error.message) || error || 'fetch failed') };
       } finally {
         clearTimeout(timer);
       }
@@ -135,10 +153,11 @@ export async function maxGetJsonWithinPage(page, url, stage, now = Date.now(), o
     throw safeError(
       'קריאת נתוני MAX מתוך הסשן המחובר נכשלה לפני קבלת תשובה.',
       'CREDIT_PROVIDER_NETWORK_ERROR',
-      { stage, causeName: text(error?.name, 40) }
+      { stage, causeName: text(providerRecord(error)?.name, 40) }
     );
   }
-  if (payload?.networkError){
+  const receipt = providerRecord(payload);
+  if (typeof receipt?.networkError === 'string' && receipt.networkError.trim()) {
     notify({httpStatus:0,bodyType:'transport_failure'});
     throw safeError('החיבור לשירות הנתונים של MAX נקטע.', 'CREDIT_PROVIDER_NETWORK_ERROR', {
       stage,
@@ -146,9 +165,12 @@ export async function maxGetJsonWithinPage(page, url, stage, now = Date.now(), o
   }
   let reply;
   try{reply=decodeCreditHttpReply(payload,stage)}catch(error){notify({httpStatus:0,bodyType:'invalid_transport'});throw error}
-  let data=null,invalidJson=false;
+  /** @type {unknown} */
+  let data = null;
+  let invalidJson=false;
   if(reply.body)try{data=JSON.parse(reply.body)}catch{invalidJson=true}
-  notify({httpStatus:reply.status,bodyType:!reply.body?'empty':invalidJson?'non_json':'json',contentType:payload.contentType,bodyLength:reply.body.length,data});
+  const contentType = typeof receipt?.contentType === 'string' ? receipt.contentType : '';
+  notify({httpStatus:reply.status,bodyType:!reply.body?'empty':invalidJson?'non_json':'json',contentType,bodyLength:reply.body.length,data});
   const body = reply.body,
     failure = classifyCreditHttpResponse({
       status: reply.status,

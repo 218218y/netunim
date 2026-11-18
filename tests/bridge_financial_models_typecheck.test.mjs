@@ -6,7 +6,9 @@ import {root,check,describe} from './typecheck_contract_fixture.mjs';
 
 test('actual Bridge financial models and negative consumers compile without exclusions',()=>{
   const diagnostics=check();assert.deepEqual(diagnostics,[],describe(diagnostics));
-  for(const file of ['credit-transaction-model','credit-profile-model','hapoalim-cheque-model','hapoalim-credit-settlement-model','hapoalim-additional-details-model'])
+  for(const file of ['credit-transaction-model','credit-profile-model','hapoalim-cheque-model','hapoalim-credit-settlement-model','hapoalim-additional-details-model',
+    'credit-adapter-base','credit-failure-policy','credit-http','credit-monthly-projection','credit-scheduler','credit-session','max-adapter','max-response-diagnostics',
+    'hapoalim-failure-policy','hapoalim-login-runtime','hapoalim-navigation-policy','hapoalim-policy'])
     assert.doesNotMatch(readFileSync(path.join(root,'netunim-kupa/bank-bridge',file+'.mjs'),'utf8'),/@ts-nocheck/);
 });
 for(const [file,from,to] of [

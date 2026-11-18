@@ -53,7 +53,7 @@ test('provider aggregation and sanitized diagnostics retain the raw provider dat
 });
 test('a component cannot choose its own reference clock or retain a rejected raw deadline',async t=>{
   t.mock.timers.enable({apis:['Date'],now});
-  const provider=createCreditProvider({sessions:{scrape:async()=>({...profile,errors:[{...failure,at:far,originalFailureAt:far}]})},identity:{remove:async()=>{}},diagnostics:{record:()=>{}}});
+  const provider=createCreditProvider({sessions:{scrape:async()=>({...profile,coreComplete:false,syncedAt:null,accounts:[],errors:[{...failure,at:far,originalFailureAt:far}]})},identity:{remove:async()=>{}},diagnostics:{record:()=>{}}});
   const result=await provider.scrape([profile]);
   assert.equal(result.errors[0].retryAfterAt,null);
   assert.equal(result.errors[0].providerRetryAfterAt,far);

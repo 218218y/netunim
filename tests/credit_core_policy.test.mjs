@@ -17,8 +17,14 @@ const modules = [
 const fixture = JSON.parse(
   fs.readFileSync(new URL('./fixtures/credit-core-policy.json', import.meta.url), 'utf8')
 );
-test('all 34 Credit core declarations match the reviewed contract', () => {
-  assert.deepEqual(creditAdapterPolicyHashes(modules.map(name=>restoreCreditCooldown(restoreCreditProfileAuthority(restoreCreditPendingStatus(restoreCreditFollowupChanges(read(name),'netunim-kupa/bank-bridge/'+name+'.mjs')))))).policies, typedFinancialPolicies(fixture.creditPolicies,'creditPolicies'));
+const reviewedBoundaries=JSON.parse(fs.readFileSync(new URL('./fixtures/bank-bridge-checked-boundary-policies.json',import.meta.url),'utf8')).creditCore;
+test('Credit core declarations match the reviewed contract', () => {
+  const reviewed = typedFinancialPolicies(fixture.creditPolicies,'creditPolicies');
+  for (const [name, {before, after}] of Object.entries(reviewedBoundaries)) {
+    assert.equal(reviewed[name] ?? null, before, name);
+    reviewed[name] = after;
+  }
+  assert.deepEqual(creditAdapterPolicyHashes(modules.map(name=>restoreCreditCooldown(restoreCreditProfileAuthority(restoreCreditPendingStatus(restoreCreditFollowupChanges(read(name),'netunim-kupa/bank-bridge/'+name+'.mjs')))))).policies, reviewed);
 });
 
 test('policy fixture detects changed charge signs, login identity, transaction status and cooldown', () => {

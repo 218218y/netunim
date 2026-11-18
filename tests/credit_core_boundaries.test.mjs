@@ -11,7 +11,7 @@ const models = {
   'credit-transaction-model': ['./credit-transaction-identity.mjs','./credit-core-values.mjs','./credit-transaction-evidence.mjs'],
   'credit-transaction-evidence': [],
   'credit-transaction-identity': [],
-  'credit-failure-policy': ['./credit-core-values.mjs', './credit-profile-model.mjs', './credit-cooldown-policy.mjs'],
+  'credit-failure-policy': ['./credit-core-values.mjs', './credit-profile-model.mjs', './credit-cooldown-policy.mjs', './credit-value-codec.mjs'],
 };
 const effects = new Set([
   'globalThis',

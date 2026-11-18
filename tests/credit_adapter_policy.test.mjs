@@ -47,6 +47,7 @@ const maxForecastPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/max-for
 const maxEmptyPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/max-empty-policies.json',import.meta.url),'utf8'));
 const monthIntegrityPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/credit-month-integrity-policies.json',import.meta.url),'utf8'));
 const providerDecoderPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/credit-provider-decoder-policies.json',import.meta.url),'utf8'));
+const reviewedBoundaries=JSON.parse(fs.readFileSync(new URL('./fixtures/bank-bridge-checked-boundary-policies.json',import.meta.url),'utf8')).credit;
 
 test('credit provider methods, normalization, wire constants and fallback policy match the reviewed baseline', () => {
   const active = { ...fixture.policies };
@@ -94,6 +95,10 @@ test('credit provider methods, normalization, wire constants and fallback policy
     assert.equal(reviewed[name] ?? null, before, name);
     if (after === null) delete reviewed[name];
     else reviewed[name] = after;
+  }
+  for (const [name, {before, after}] of Object.entries(reviewedBoundaries)) {
+    assert.equal(reviewed[name] ?? null, before, name);
+    reviewed[name] = after;
   }
   assert.deepEqual(creditAdapterPolicyHashes(sources()).policies,reviewed);
   assert.equal(Object.keys(fixture.policies).length, 118);

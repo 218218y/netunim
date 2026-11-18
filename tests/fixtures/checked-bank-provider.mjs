@@ -24,11 +24,15 @@ provider.read({userCode:'0012'});
 provider.read({userCode:'0012',password:'fixture'},{interactive:'visible'});
 /** @type {import('../../netunim-kupa/bank-bridge/credit-session.mjs').CreditSessionPorts} */
 const credit={browser:{findInstalled:async()=> 'fixture',loadScrapers:async()=>({CompanyTypes:{},createScraper:()=>{}}),identityProbeUrl:'http://127.0.0.1:8765/health'},
-  identity:{directory:()=> 'fixture'},createAdapter:()=>({scrape:async()=>({accounts:[]})}),diagnostics:{record:()=>{}}};
+  identity:{directory:()=> 'fixture'},createAdapter:()=>({scrape:async()=>({accounts:[],errors:[],coreComplete:true,syncedAt:'2026-11-18T08:00:00Z'})}),diagnostics:{record:()=>{}}};
 const session=createCreditProfileSession(credit);
 session.scrape({profileId:'P',provider:'max',credentials:{password:' secret '}},{excludedAccountNumbers:['0007']});
 // @ts-expect-error a connector must return a promised profile result
 createCreditProfileSession({...credit,createAdapter:()=>({scrape:async()=> 'done'})});
+// @ts-expect-error a partial result cannot carry a successful sync timestamp
+createCreditProfileSession({...credit,createAdapter:()=>({scrape:async()=>({accounts:[],errors:[],coreComplete:false,syncedAt:'2026-11-18T08:00:00Z'})})});
+// @ts-expect-error explicit completion evidence is required even for empty accounts
+createCreditProfileSession({...credit,createAdapter:()=>({scrape:async()=>({accounts:[],errors:[]})})});
 // @ts-expect-error identity paths are explicit strings
 createCreditProfileSession({...credit,identity:{directory:()=>123}});
 // @ts-expect-error exclusion lists contain account strings, not numeric IDs

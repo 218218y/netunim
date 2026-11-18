@@ -31,6 +31,7 @@ const pure = {
     './credit-transaction-model.mjs',
     './credit-month-plan.mjs',
     './credit-coverage.mjs',
+    './credit-value-codec.mjs',
   ],
 };
 const ioNames = new Set([

@@ -9,6 +9,7 @@ import {providerPolicyHashes} from './bank_provider_policy_fixture.mjs';
 const read=name=>{const source=restoreCreditCooldown(fs.readFileSync(new URL('../netunim-kupa/bank-bridge/'+name+'.mjs',import.meta.url),'utf8'));return name==='hapoalim-accounts'?restoreBankProviderMoneyBoundary(source):source};
 const sources=()=>['server','finance-commands','provider-errors','hapoalim-session','hapoalim-provider','credit-session','credit-provider','hapoalim-json','hapoalim-enrichment','hapoalim-accounts','cheque-images','browser-locator','windows-browser'].map(read);
 const forecast=JSON.parse(fs.readFileSync(new URL('./fixtures/max-forecast-provider-policies.json',import.meta.url),'utf8'));
+const reviewedBoundaries=JSON.parse(fs.readFileSync(new URL('./fixtures/bank-bridge-checked-boundary-policies.json',import.meta.url),'utf8')).provider;
 
 for(const [name,file] of [['Bank and credit provider policies','bank-provider-policy.json'],['Bank session and error policies','bank-session-policy.json'],['Bank read, image and installed-browser policies','bank-read-policy.json']])test(name+' match their reviewed pre-refactor AST fixtures',()=>{
   const fixture=JSON.parse(fs.readFileSync(new URL('./fixtures/'+file,import.meta.url),'utf8'));
@@ -22,6 +23,7 @@ for(const [name,file] of [['Bank and credit provider policies','bank-provider-po
   }
   assert.deepEqual(Object.keys(forecast),['scrapeAllCreditProfiles']);
   for(const [key,{before,after}]of Object.entries(forecast))if(key in fixture.policies){assert.equal(fixture.policies[key],before);fixture.policies[key]=after;}
+  for(const [key,{before,after}]of Object.entries(reviewedBoundaries))if(key in fixture.policies){assert.equal(fixture.policies[key],before);fixture.policies[key]=after;}
   assert.deepEqual(providerPolicyHashes(sources(),Object.keys(fixture.policies)),fixture.policies);
 });
 

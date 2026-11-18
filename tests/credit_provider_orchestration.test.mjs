@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {creditProviderFixture,creditProfile,gate} from './bank_provider_fixture.mjs';
+import {creditProviderFixture,creditProfile,creditResult,gate} from './bank_provider_fixture.mjs';
 
 test('credit profiles remain sequential, retain identity exclusions and isolate raw samples',async()=>{
   const entered=gate(),held=gate(),order=[];
   const f=creditProviderFixture({sessions:{scrape:async(profile,options)=>{order.push(profile.profileId);if(profile.profileId==='first'){entered.resolve();await held.promise}
     assert.deepEqual([...options.excludedAccountNumbers],profile.profileId==='first'?['0007']:[]);
-    return {profileId:profile.profileId,coreComplete:profile.profileId==='first',_dataDiagnostics:[{profileId:profile.profileId,raw:'local-only'}]};
+    return {profileId:profile.profileId,...creditResult(profile.profileId==='first'),_dataDiagnostics:[{profileId:profile.profileId,raw:'local-only'}]};
   }}});
   const flight=f.scrape([creditProfile('first'),creditProfile('second'),{...creditProfile('inactive'),active:false},creditProfile('unsupported','unknown')],{selection:[{profileId:'first',excludedAccounts:['0007']}]});
   await entered.promise;assert.deepEqual(order,['first']);held.resolve();const result=await flight;
@@ -26,7 +26,7 @@ test('issuer-wide deferral skips an attempt while Camoufox-only deferral still p
 
 test('expired blocked identity is removed and its diagnostic settles before a new provider session',async()=>{
   const removed=gate(),held=gate(),order=[];
-  const f=creditProviderFixture({identity:{remove:async()=>{order.push('identity');removed.resolve();await held.promise}},diagnostics:{record:async event=>order.push(event.stage)},sessions:{scrape:async()=>{order.push('scrape');return {coreComplete:true}}}});
+  const f=creditProviderFixture({identity:{remove:async()=>{order.push('identity');removed.resolve();await held.promise}},diagnostics:{record:async event=>order.push(event.stage)},sessions:{scrape:async()=>{order.push('scrape');return creditResult()}}});
   const flight=f.scrape([creditProfile('amex','amex')],{previousErrors:[{profileId:'amex',provider:'amex',code:'CREDIT_AUTOMATION_BLOCKED',stage:'LoginPage',httpStatus:403,browserEngine:'camoufox',at:'2020-01-01T00:00:00Z',retryAfterAt:'2020-01-01T01:00:00Z'}]});
   await removed.promise;assert.deepEqual(order,['identity']);held.resolve();await flight;assert.deepEqual(order,['identity','IdentityRecovery','scrape']);
 });
@@ -41,4 +41,30 @@ test('failed Chromium retains the prior Camoufox cooldown and the original diagn
 
 test('no enabled credit profile is rejected before any identity or provider effect',async()=>{
   const f=creditProviderFixture();await assert.rejects(f.scrape([{...creditProfile('off'),active:false}]),{code:'CREDIT_NOT_CONFIGURED'});assert.deepEqual(f.calls,[]);
+});
+
+test('malformed adapter evidence never publishes a profile or advances the success clock', async () => {
+  const valid = creditResult();
+  for (const malformed of [undefined, {}, { ...valid, coreComplete: 'true' }, { ...valid, syncedAt: null },
+    { ...valid, coreComplete: false }, { ...valid, errors: [null] }, { ...valid, accounts: Array(1) }]) {
+    const fixture = creditProviderFixture({ sessions: { scrape: async () => malformed } });
+    const result = await fixture.scrape([creditProfile('fixture')]);
+    assert.equal(result.attemptedCount, 1);
+    assert.equal(result.coreSuccessCount, 0);
+    assert.equal(result.syncedAt, null);
+    assert.deepEqual(result.profiles, []);
+    assert.equal(result.errors.length, 1);
+    assert.equal(result.errors[0].code, 'CREDIT_PROVIDER_SCHEMA_ERROR');
+    assert.equal(result.errors[0].stage, 'ProfileResult');
+  }
+});
+
+test('valid partial coverage remains available without granting full success', async () => {
+  const partial = { ...creditResult(false), accounts: [{ accountNumber: '0007' }], errors: [{ code: 'CREDIT_PROVIDER_HTTP_ERROR' }] };
+  const fixture = creditProviderFixture({ sessions: { scrape: async () => partial } });
+  const result = await fixture.scrape([creditProfile('fixture')]);
+  assert.deepEqual(result.profiles, [partial]);
+  assert.equal(result.coreSuccessCount, 0);
+  assert.equal(result.syncedAt, null);
+  assert.equal(result.errors[0].code, 'CREDIT_PROVIDER_HTTP_ERROR');
 });

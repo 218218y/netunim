@@ -1,0 +1,118 @@
+{
+  "bank": {
+    "isTransientNavigationError": {
+      "before": "1d121a256880883f60c0cb7dc2f61582af0178ad016ea87da45bacea02af454a",
+      "after": "9ecf5834bfeb2f148fd4c80473afdee73e3b01356c631795edc6ea1a2ae740ab"
+    },
+    "retryTransientNavigation": {
+      "before": "23200cb8781e9f87a430dac103ad7cbd81e94cf879112f13f75a0cfca093e4af",
+      "after": "0133ef58960faf631c1a55ce3a893ef7752c81733dd208c4dd0dae5601453ff9"
+    },
+    "waitForTerminalLoginResult": {
+      "before": "f028f893cad407cb1fd4d83a798c3c58bd2776cef59c323b41af10f1aced27e0",
+      "after": "8ea25d6974d3f8418335a1888f3c43a1dbe9139698a58a54ab1157a86aa21d5a"
+    }
+  },
+  "credit": {
+    "postVisaCalJson": {
+      "before": "a416a382b91bcfc7ed16e34ff82c2bf76f2d146c950795aa865c5ae5346a51d6",
+      "after": "2beccfa040cb22fff10171bef404dd85e2fb115a8a74fb2521ef60d83bd5722c"
+    },
+    "maxGetJsonWithinPage": {
+      "before": "5162b11365ff4adb6f56924ed07030a1a7a5e60e6323c1fc87e5fca3227ea425",
+      "after": "0677ab4a86b63a916412ce10fa7dc9d55ac81559914dc1c12fed73946272eacd"
+    },
+    "excludedAccountSet": {
+      "before": "1e486c5f2bd427d9abe27b788ce3c17d737670f6cfc6dc8f08899fae8ebc4651",
+      "after": "378e7fd9c8a376e861bc2bb7b4d3b1c7e98f07e4397dae06a926edaf05cfe23c"
+    },
+    "diagnosticBrowserProduct": {
+      "before": "dfa1520219b3b31e3a5ac3938605924ad4e6df62d2896b1403cc92605fcba697",
+      "after": "6e1428a69f77cda5b5ff2e16e64b3c036da78bcff6b57a28c42fb067ecde9225"
+    },
+    "CreditProviderAdapter": {
+      "before": "e89d8352fc0702f40e8d440884e8e7ba8bcbf9e242682b809b59434f5380b8ac",
+      "after": "62919a5495fc031632cebe86c816977ba74a66e508ca7f6325a5f2779f142fe1"
+    },
+    "genericMonthlyAccount": {
+      "before": "782bbb6ea1e9cc5831d97bea74cf3f8ca3fd62fe3f88216fd8409a02a89b3c90",
+      "after": "3c03f0c0a7235290c18fb13cf888c6fe87860c4654becdd11d6385ccafedbd0e"
+    },
+    "projectMaxTransaction": {
+      "before": null,
+      "after": "a6836da8400e75b0bad80d447f61967dec6b68ea390b646b2bae92c6841191b3"
+    },
+    "maxMonthlyAccounts": {
+      "before": "1026d7c96f30a14c61a4e7885a61bcb2779505c50fb0ef7474f40a187d96c367",
+      "after": "68b8f328c747ca41cb87eaaf36bc74d8d811a0af1a24c497302da60ab8635ad3"
+    },
+    "scrapeMaxDirect": {
+      "before": "f909f30f72558e9ee13c5b3a014525dc5ce2c20061ca0eb459ab633362951702",
+      "after": "553e6471692739ef8a92133907b63e64238576bc03b40a74c02e87dbf23b2184"
+    },
+    "MaxAdapter": {
+      "before": "5f9a609a460775c4fbce5d9b9ef8a0fc9e544fe1cdbfb677752b2b6a42caae5d",
+      "after": "fa45f54de4309dbb3c68e4e02f30c2c20fbf81f0cedd20791c3441a71e469507"
+    },
+    "VisaCalAdapter": {
+      "before": "edab833c249c5353b1a2d4d6d489fdf8f6623ca3d8822d1743b079e71cad2741",
+      "after": "87fdf3e31fc9f547ec0be1d3494501f29449556c42d03fa23211b7dc56ebd102"
+    },
+    "IsracardGroupDigitalV3Adapter": {
+      "before": "6a22ce19c90b69f0b3fcc5866aac55a238cca84cc0389d1b61e8ab7dec0806ad",
+      "after": "9342a3828fee38540502d11e853c5f57c6c65e05cb179911a490a0e0cab4de28"
+    }
+  },
+  "provider": {
+    "scrapeAllCreditProfiles": {
+      "before": "1983445e635482310b94d8acb85238a5ffa52e61030ef75ac477e4f9496febcf",
+      "after": "6cc2e06c869a3dac5b436fb6a0d9156b27153693eaf72c931f84918714749fc8"
+    }
+  },
+  "creditCore": {
+    "safeCreditProviderDiagnostic": {
+      "before": "8dd9f64e87fe192d656fdb8140a358be4424969e7345b747073ed6d504658c98",
+      "after": "dd719fdba73458633e38edc747a39f381aeb237368a968938510e2eb015a7ac8"
+    },
+    "safeCreditScrapeFailure": {
+      "before": "7fc30998fa3b99b2cff85ffb4490ed7aa423221d6e6f1e19bad8759ae65ce8f5",
+      "after": "ae8051e7afc78a7990b90977a52b155699bfd21f3234853e13a43d6d12632f65"
+    },
+    "matchingCreditProfileErrors": {
+      "before": "a1c79882fe3fa92b56166b51567f61cb8d65c3b4d6c0d6a6c8f3cadf2282872a",
+      "after": "893df4d8c254270d73e44ff591baee557f68542b6ef585982a5cfae8995d82ed"
+    },
+    "creditAutomaticRetryAfterAt": {
+      "before": "1b42823e7be1b5e3cf4efe5eb2d5cea9725198ac9b77c16d707ecb4b677e71df",
+      "after": "dd34937122c21c82ac54ccde020714bcf800384b57867955df72d16386f3c086"
+    },
+    "deferredCreditError": {
+      "before": "3a29166c92e484020cade5836c6e41ace04fd7308ca5490dbc95635bea8ecc4b",
+      "after": "ef5b57b918cd7b84afc05f0e02a2731137b696b017f5d4f29029b89138b823ef"
+    },
+    "creditErrorSeverity": {
+      "before": "73b1ea8906a78228a5ff61dbfd90ca312866c96fb1a87fffde2733785c4e24c3",
+      "after": "da6a0aaf57fa7157947d0d2596bf0cfef770efd7d0d5683eae67d8be0879e5ab"
+    },
+    "creditErrorComponent": {
+      "before": "ebef12afdd6c4c8dae531061cd7932ba38d39e81946d0508baf8b3e3c59f39eb",
+      "after": "3735e61f12328c1922438bf0ab4d247921a3d457a316873796d06e177f688c37"
+    },
+    "creditScrapeFailure": {
+      "before": "bb911b3815c6f4b28b9a0bca1015378c58878189b7cb082abf065aba101fff4a",
+      "after": "276bc346ceee939197d71ff09ee14812dab2181ce8fa4413e81d460913bc903b"
+    },
+    "requireCreditLoginSuccess": {
+      "before": null,
+      "after": "a50c26438f31ec19d3c87f2ff85facec96554b57285d8fa07114044a6f3b3cc4"
+    },
+    "creditLoginThrownScrapeFailure": {
+      "before": "66130816422f5a287bf72ac53fad996097f1c15de721e20af2e7530f0576d2e7",
+      "after": "f20eca73569a4a252dd201959d63f07165075149dbbf5a25ca73c402f0cdedf8"
+    },
+    "creditThrownScrapeFailure": {
+      "before": "082a6b5987602a38f4293e1835f4e772a88cfe36f05b73e5f1e14c8f3a379a10",
+      "after": "c30a5cebc8a21f06dcf993d59d2014b2e79cd4d8d21c831ffb66eca449fb8d9e"
+    }
+  }
+}
