@@ -3,7 +3,7 @@ import {createCreditPreferences} from '../netunim-kupa/site/assets/js/platform/c
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createKupaCreditControllerFixture as createDomainsCreditController} from './kupa_credit_controller_fixture.mjs';
-import {creditSyncHeadlineState,creditSyncDiagnosticsMarkup} from '../netunim-kupa/site/assets/js/domains/credit/sync-view.js';
+import {creditSyncHeadlineState,creditSyncDiagnosticsMarkup} from '../netunim-kupa/site/assets/js/domains/credit/presentation.js';
 
 function fixture(t){
   const values=new Map(),messages=[];let failure=null,resets=0,commits=0,providerRuns=0,leaseClaims=0,statusRenders=0,afterCommit=()=>{};

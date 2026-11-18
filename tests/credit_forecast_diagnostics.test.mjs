@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {creditSyncDiagnosticsMarkup,creditSyncHeadlineState} from '../netunim-kupa/site/assets/js/domains/credit/sync-view.js';
+import {creditSyncDiagnosticsMarkup,creditSyncHeadlineState} from '../netunim-kupa/site/assets/js/domains/credit/presentation.js';
 import {creditDiagnostics,creditHeadlineState} from '../netunim-orders/site/assets/js/domains/finance/credit-status-view.js';
 
 const at='2026-11-17T04:58:51.000Z',oldMessage='תגובת הספק אינה תואמת למחבר. בדוק אם זמין עדכון למחבר.';

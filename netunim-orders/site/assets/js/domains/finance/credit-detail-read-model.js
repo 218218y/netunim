@@ -47,3 +47,53 @@ export function selectOrdersCreditDetail({allMonths,upcomingRows,query,reference
   return {...base,focus,selected,items:focusedRows.filter(matches),focusedCount:focusedRows.length,
     futureMonths:creditDetailFutureMonths(months)};
 }
+
+/**
+ * @typedef {{card:string, account:string, ownerLabel?:string, creditAccountKey?:string, hidden?:boolean,
+ * date:string, amount:number, status?:string, amountStatus?:string, coverageIncomplete?:boolean,
+ * includedInIlsTotal?:boolean, bankPendingSettlementDetected?:boolean}} ForecastRow
+ * @typedef {{card:string, account:string, ownerLabel:string|undefined, cardKey:string, billingDate:string,
+ * total:number, pendingCount:number, incompleteCount:number, missingAmountCount:number,
+ * coverageGapCount:number, bankPendingSettlementDetected:boolean}} ForecastCard
+ */
+
+/** @param {readonly ForecastRow[]} rows */
+export function creditForecastCardGroups(rows) {
+    /** @type {Map<string, ForecastCard>} */
+    const groups = new Map();
+    for (const row of rows) {
+        const cardKey = row.hidden ? '' : row.creditAccountKey || '';
+        const key = row.hidden ? 'hidden' : cardKey || `${row.card}\u0000${row.account}\u0000${row.ownerLabel || ''}`;
+        let group = groups.get(key);
+        if (!group) {
+            group = {
+                card: row.card,
+                account: row.account,
+                ownerLabel: row.ownerLabel,
+                cardKey,
+                billingDate: row.date,
+                total: 0,
+                pendingCount: 0,
+                incompleteCount: 0,
+                missingAmountCount: 0,
+                coverageGapCount: 0,
+                bankPendingSettlementDetected: false,
+            };
+            groups.set(key, group);
+        }
+        if (row.date && (!group.billingDate || row.date < group.billingDate))
+            group.billingDate = row.date;
+        group.total += row.amount;
+        if (row.status === 'pending')
+            group.pendingCount++;
+        if (row.amountStatus !== 'known_ils')
+            group.missingAmountCount++;
+        if (row.coverageIncomplete)
+            group.coverageGapCount++;
+        if (!row.includedInIlsTotal || row.coverageIncomplete)
+            group.incompleteCount++;
+        if (row.bankPendingSettlementDetected)
+            group.bankPendingSettlementDetected = true;
+    }
+    return [...groups.values()].sort((a, b) => String(a.card).localeCompare(String(b.card), 'he'));
+}

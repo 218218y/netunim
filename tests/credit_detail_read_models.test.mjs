@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {selectKupaCreditDetail} from '../netunim-kupa/site/assets/js/domains/credit/detail-read-model.js';
-import {selectOrdersCreditDetail} from '../netunim-orders/site/assets/js/domains/finance/credit-detail-read-model.js';
+import {creditForecastCardGroups,selectOrdersCreditDetail} from '../netunim-orders/site/assets/js/domains/finance/credit-detail-read-model.js';
 
 const query={creditDetailMode:'month',creditDetailChargeDay:'all',creditDetailFocus:null,
   creditAccountFilter:'all',creditProviderFilter:'all',creditCardFilter:'all',
@@ -13,6 +13,25 @@ const due=row('due','2026-10-10');
 const later=row('later','2026-10-15',{creditAccountKey:'card-b',card:'Card B',account:'ביתי'});
 const future=row('future','2026-11-10');
 const unknown=row('unknown','',{amount:0,amountStatus:'unknown_amount',includedInIlsTotal:false,coverageIncomplete:true});
+
+test('Orders forecast groups preserve signed charges, coverage warnings and hidden-card anonymity',()=>{
+  const adjustments = [
+    row('refund','2026-10-08',{amount:-3.25}),
+    row('pending','2026-10-12',{amount:5.5,status:'pending',bankPendingSettlementDetected:true}),
+    row('unknown','2026-10-12',{amount:0,coverageIncomplete:true,includedInIlsTotal:false,amountStatus:'unknown_amount'}),
+  ];
+  const hidden = [
+    row('hidden-one','2026-10-13',{card:'Hidden',hidden:true,creditAccountKey:'hidden-1'}),
+    row('hidden-two','2026-10-14',{card:'Hidden',hidden:true,creditAccountKey:'hidden-2',amount:17}),
+  ];
+  const groups = creditForecastCardGroups(freeze([due,later,...adjustments,...hidden]));
+  assert.deepEqual(groups.map(group=>[group.cardKey,group.billingDate,group.total]),[
+    ['card-a','2026-10-08',12.25], ['card-b','2026-10-15',10], ['','2026-10-13',27],
+  ]);
+  const [first] = groups;
+  assert.deepEqual([first.pendingCount,first.incompleteCount,first.missingAmountCount,first.coverageGapCount,
+    first.bankPendingSettlementDetected],[1,1,1,1,true]);
+});
 const months=[
   {key:'2026-09',total:10,items:[past]},
   {key:'2026-10',total:20,items:[due,later]},

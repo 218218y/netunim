@@ -432,6 +432,47 @@ test('controlled PDF preview works without a search query and stays in static-ap
   await controller.destroy();
 });
 
+test('PDF initialization failure releases the observer, copy handler and PDF resources',async t=>{
+  const installed=new Set();
+  const originalObserver=globalThis.ResizeObserver;
+  const originalDocument=globalThis.document;
+  let disconnected=0;
+  globalThis.ResizeObserver=class{observe(){} disconnect(){disconnected++}};
+  globalThis.document={
+    addEventListener:(type,handler)=>{assert.equal(type,'copy');installed.add(handler)},
+    removeEventListener:(type,handler)=>{assert.equal(type,'copy');assert.equal(installed.delete(handler),true)},
+  };
+  t.after(()=>{
+    globalThis.document=originalDocument;
+    globalThis.ResizeObserver=originalObserver;
+  });
+  const {state,runtime}=fakeRuntime(), host=fakeHost();
+  const failure=new Error('synthetic PDF viewer construction failure');
+  runtime.pdfjsViewer.PDFViewer=class{constructor(){throw failure}};
+  await assert.rejects(createPdfSearchViewer({host,data:new Uint8Array([37,80,68,70]),runtime}),error=>error===failure);
+  assert.equal(host.innerHTML,'');
+  assert.equal(disconnected,1);
+  assert.equal(installed.size,0);
+  assert.equal(state.loadingDestroyed,true);
+  assert.equal(state.documentDestroyed,true);
+});
+
+test('replacing a preview aborts its in-flight PDF loading task before publication',async()=>{
+  const {state,runtime}=fakeRuntime(), host=fakeHost(), abort=new AbortController();
+  const started=Promise.withResolvers(), loading=Promise.withResolvers();
+  let destroyed=0;
+  runtime.pdfjsLib.getDocument=()=>{
+    started.resolve();
+    return {promise:loading.promise,destroy:async()=>{destroyed++;loading.reject(abort.signal.reason)}};
+  };
+  const task=createPdfSearchViewer({host,data:new Uint8Array([37,80,68,70]),runtime,signal:abort.signal});
+  await started.promise;
+  abort.abort();
+  await assert.rejects(task,{name:'AbortError'});
+  assert.equal(destroyed,1);
+  assert.equal(state.viewer,null);
+});
+
 test('controlled PDF viewer uses PDFFindController, local support assets and real arrow navigation',async()=>{
   const {state,runtime}=fakeRuntime(),host=fakeHost(),updates=[];
   const input=new Blob([new Uint8Array([37,80,68,70])],{type:'application/pdf'});

@@ -6,7 +6,7 @@ for app in ('kupa', 'orders'):
     with BrowserSession(ROOT / f'netunim-{app}/site', app+'-credit-diagnostics') as browser:
         for width in (390, 1280):
             browser.call('Emulation.setDeviceMetricsOverride', {'width':width,'height':900,'deviceScaleFactor':1,'mobile':False})
-            module='credit/sync-view.js' if app=='kupa' else 'finance/credit-status-view.js'
+            module='credit/presentation.js' if app=='kupa' else 'finance/credit-status-view.js'
             expression=r"""(async()=>{
               const check=(ok,message)=>{if(!ok)throw Error(message)},module=await import('/assets/js/domains/__MODULE__');
               const at='2026-11-17T04:58:51Z',errors=Array.from({length:22},(_,i)=>({provider:'max',profileId:'P'+Math.floor(i/11),

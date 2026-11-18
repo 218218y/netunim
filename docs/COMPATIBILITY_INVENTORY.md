@@ -34,12 +34,13 @@ consumer and removal-proof columns are required review fields, not permission
 to add a second writer. New entries must name their owning implementation,
 live consumer and concrete removal evidence in the same way.
 
-Bank Bridge v75 adds one current compatibility policy owned by
-`bank-bridge/origin-policy.mjs`: absent configuration retains `legacy-reflect`
-for installed browser/native clients. Its removal condition is the isolated
-installed-browser/custom-domain upgrade and rollback evidence in
-[Bank origin rollout](BANK_ORIGIN_POLICY.md). No historical record reader is
-removed by that transition.
+As reviewed on 2026-11-18, Bank Bridge defaults to the exact Origin allowlist in
+`bank-bridge/origin-policy.mjs`. An explicit persisted `legacy-reflect` file
+still selects the older policy. Before retiring that option, verify the
+configuration in use on the installed machines, including any required custom
+origins and rollback paths. The v75 default in the [Bank origin rollout](BANK_ORIGIN_POLICY.md)
+is historical. See the [current operator setup](SECURITY_OPERATOR_ROLLOUT_HE.md)
+for the active configuration and pairing requirements.
 
 No additional historical reader was proven Dead during this continuation.
 A retirement PR must identify the consumer closure, the retained format, the
