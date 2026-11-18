@@ -105,10 +105,10 @@ export function creditCombinedMonthMenuMarkup({historyMonths=[],months=[],select
   const selected=ordered.find(month=>month.key===selectedKey);
   const selectedLabel=selected?(selected.key==='unassigned'?'מחזור לא ודאי':formatMonth(selected.key)):'';
   const selectedMeta=selected?`${selectedLabel}${selectedDay==='10'||selectedDay==='15'?` · ${selectedDay}`:''}`:'';
-  // On initial open, place only the last three past months above today's/next
+  // On initial open, place only the last two past months above today's/next
   // charges. Reopening while inspecting older history keeps the selected month
   // in view instead of unexpectedly jumping away from it.
-  const defaultStart=past[Math.max(0,past.length-3)]||remaining[0];
+  const defaultStart=past[Math.max(0,past.length-2)]||remaining[0];
   const scrollStart=selected&&selected.key!=='unassigned'&&defaultStart&&selected.key<defaultStart.key?selected:defaultStart;
   const render=month=>{
     const markup=cycleSelectorMarkup({month,active:month.key===selectedKey,selectedDay,formatMoney,formatMonth,escapeHtml,monthAction,monthDayAction,header:true});
