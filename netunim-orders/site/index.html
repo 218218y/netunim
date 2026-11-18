@@ -13,7 +13,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32x32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
 <link rel="manifest" href="./manifest.webmanifest">
-<meta name="theme-color" content="#f6f3f0">
+<meta name="theme-color" content="#ffffff">
 <link rel="stylesheet" href="./assets/app.css" />
 <link rel="stylesheet" href="./assets/weather-link.css" />
 <link rel="stylesheet" href="./assets/js/shared/business-position.css" />
@@ -29,19 +29,21 @@
 <header class="topbar">
   <div class="tab-writer-guard" id="tabWriterGuard" hidden role="status" aria-live="polite"><strong>לקריאה בלבד-פתוח בטאב אחר</strong><button class="readonly-reload" type="button" id="retryPrimaryTab" title="רענן כדי לבדוק אם הטאב הראשי נסגר">רענן</button></div>
   <div class="topbar-nav-cluster">
-    <nav class="nav" id="nav">
-      <button data-view="supplier" class="active">ספקים</button>
-      <button data-view="customers">לקוחות וחובות</button>
-      <button data-view="customer-orders">מעקב הזמנות</button>
-      <button data-view="warehouse">מחסן</button>
-      <button data-view="service">שירות</button>
-      <button data-view="kupa">קופה</button>
-      <button data-view="notes">הערות</button>
-      <button data-view="calendar">יומן</button>
-      <button class="global-search-trigger" id="globalSearchButton" type="button" aria-label="חיפוש בכל המאגר" aria-haspopup="dialog" aria-expanded="false" title="חיפוש בכל המאגר (Ctrl+K)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></svg></button>
+    <nav class="nav" id="nav" aria-label="ניווט ראשי">
+      <button type="button" data-view="supplier" class="active" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17H3V7h11v10m0-7h3l4 4v3h-2m-4 0h-5"/><circle cx="8" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>ספקים</button>
+      <button type="button" data-view="customers"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="8" r="3"/><path d="M4 20v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2m1-15a3 3 0 0 1 0 6m3 9v-2a4 4 0 0 0-2-3.5"/></svg>לקוחות וחובות</button>
+      <button type="button" data-view="customer-orders"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5H5v16h14V5h-3M8 3h8v4H8zm0 12 2 2 5-5"/></svg>מעקב הזמנות</button>
+      <button type="button" data-view="warehouse"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9l9-5 9 5v11H3zm5 11V11h8v9m-8-5h8"/></svg>מחסן</button>
+      <button type="button" data-view="service"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13v-1a8 8 0 0 1 16 0v3a5 5 0 0 1-5 5h-3M4 13h3v5H4zm13 0h3v5h-3z"/></svg>שירות</button>
+      <button type="button" data-view="kupa"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8V5H5a2 2 0 0 0 0 4h15v10H5a2 2 0 0 1-2-2V7m17 6h-5v3h5"/></svg>קופה</button>
+      <button type="button" data-view="notes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v11l-5 5H5zm9 16v-5h5M8 8h8m-8 4h8"/></svg>הערות</button>
+      <button type="button" data-view="calendar"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="15" rx="2"/><path d="M8 3v6m8-6v6M4 11h16m-12 5h2m4 0h2"/></svg>יומן</button>
     </nav>
-    <div class="alert-center-slot" id="alertCenterSlot" hidden>
-      <button class="alert-center-trigger" id="alertCenterButton" type="button" aria-label="אין אזהרות פעילות" aria-haspopup="dialog" title="אין אזהרות פעילות"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.8 19h18.4L12 3Z"/><path d="M12 8v5"/><path d="M12 16.5h.01"/></svg><span class="alert-center-count" id="alertCenterCount" hidden>0</span></button>
+    <div class="topbar-nav-tools">
+      <button class="top-settings-btn top-icon-action global-search-trigger" id="globalSearchButton" type="button" aria-label="חיפוש בכל המאגר" aria-haspopup="dialog" aria-expanded="false" title="חיפוש בכל המאגר (Ctrl+K)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></svg></button>
+      <div class="alert-center-slot" id="alertCenterSlot" hidden>
+        <button class="alert-center-trigger" id="alertCenterButton" type="button" aria-label="אין אזהרות פעילות" aria-haspopup="dialog" title="אין אזהרות פעילות"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.8 19h18.4L12 3Z"/><path d="M12 8v5"/><path d="M12 16.5h.01"/></svg><span class="alert-center-count" id="alertCenterCount" hidden>0</span></button>
+      </div>
     </div>
   </div>
   <div class="topbar-actions">

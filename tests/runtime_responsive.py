@@ -107,23 +107,44 @@ def check_orders(browser: BrowserSession) -> list[dict]:
             "(async()=>{" + COMMON_LAYOUT_CHECK + r"""
               const routes=['customers','customer-orders','warehouse','service','kupa','notes','calendar','settings','supplier'];
               const routeResults=[];
+              const nav=document.getElementById('nav');
               for(const route of routes){
-                document.querySelector(`[data-view="${route}"]`)?.click();await frame();
+                const button=document.querySelector(`[data-view="${route}"]`);
+                button.click();await frame();
+                const active=document.querySelectorAll('.topbar [aria-current="page"]');
+                if(active.length!==1||active[0]!==button)throw Error(`Current section is incorrect for ${route}`);
+                if(route!=='settings'){
+                  const tabRect=button.getBoundingClientRect(),navRect=nav.getBoundingClientRect();
+                  if(tabRect.left<navRect.left-1||tabRect.right>navRect.right+1){
+                    throw Error(`Active tab ${route} is clipped at ${innerWidth}px`);
+                  }
+                }
                 if(route==='settings')assertCloudMfaLink('.settings-card');
                 if(route==='warehouse'){
                   const table=document.querySelector('.inventory-table'),scroll=document.querySelector('.warehouse-view-shell .view-scroll');
                   if(table&&table.getBoundingClientRect().width>scroll.clientWidth+2)throw new Error('Inventory table overflows the warehouse viewport');
+                  for(const control of document.querySelectorAll('.warehouse-toolbar-top input, .warehouse-toolbar-top .module-toolbar-actions > .btn, .warehouse-menu > summary')){
+                    if(!control.getClientRects().length)continue;
+                    const rect=control.getBoundingClientRect();
+                    if(rect.left<-1||rect.right>innerWidth+1)throw Error(`Warehouse control is clipped at ${innerWidth}px`);
+                  }
                 }
                 routeResults.push({route,...layoutSnapshot()});
               }
               const folder=document.getElementById('folderAccessButton');
-              folder.hidden=false;folder.textContent='אשר תיקייה';await frame();
+              const alertSlot=document.getElementById('alertCenterSlot');
+              const alertButton=document.getElementById('alertCenterButton');
+              await frame();
+              folder.hidden=false;folder.textContent='אשר תיקייה';alertSlot.hidden=false;alertButton.hidden=false;
               const settings=document.getElementById('settingsTopButton');
               const header={
                 settingsVisible:withinViewport(settings),
                 settingsLabel:settings?.getAttribute('aria-label'),
                 settingsText:settings?.textContent?.trim()||'',
                 folderVisible:withinViewport(folder),
+                searchVisible:withinViewport(document.getElementById('globalSearchButton')),
+                alertVisible:withinViewport(alertButton),
+                tabsWidth:nav.getBoundingClientRect().width,
                 topbarWidth:document.querySelector('.topbar')?.getBoundingClientRect().width||0,
               };
               document.querySelector('[data-view="customers"]')?.click();await frame();
@@ -154,6 +175,9 @@ def check_orders(browser: BrowserSession) -> list[dict]:
         assert result["width"] == width and result["height"] == height, result
         assert result["header"]["settingsVisible"], result
         assert result["header"]["folderVisible"], result
+        assert result["header"]["searchVisible"] and result["header"]["alertVisible"], result
+        if width <= 1100:
+            assert result["header"]["tabsWidth"] >= width - 28, result
         assert result["header"]["settingsLabel"] == "הגדרות", result
         assert not result["header"]["settingsText"], result
         assert result["modalVisible"], result
@@ -192,7 +216,10 @@ def check_kupa(browser: BrowserSession) -> list[dict]:
               const routes=['dashboard','checks','credit','cash','bank','notes','settings'];
               const routeResults=[];
               for(const route of routes){
-                document.querySelector(`[data-page="${route}"]`)?.click();await frame();
+                const button=document.querySelector(`[data-page="${route}"]`);
+                button.click();await frame();
+                const active=document.querySelectorAll('#nav [aria-current="page"]');
+                if(active.length!==1||active[0]!==button)throw Error(`Current section is incorrect for ${route}`);
                 routeResults.push({route,...layoutSnapshot()});
               }
               const menu=document.getElementById('mobileMenu'),sidebar=document.getElementById('sidebar'),backdrop=document.getElementById('sidebarBackdrop');

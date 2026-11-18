@@ -18,7 +18,7 @@ if backend_result.stderr: print(backend_result.stderr.strip())
 ok(backend_result.returncode==0,'calendar auth backend: server-side refresh-token storage and callback security contracts pass')
 
 index=(SITE/'index.html').read_text(encoding='utf-8')
-nav=re.search(r'<nav class="nav" id="nav">(.*?)</nav>',index,re.S)
+nav=re.search(r'<nav\b[^>]*\bid="nav"[^>]*>(.*?)</nav>',index,re.S)
 buttons=re.findall(r'data-view="([^"]+)"',nav.group(1) if nav else '')
 ok(bool(buttons) and buttons[-1]=='calendar','orders: Calendar is the final business navigation tab')
 

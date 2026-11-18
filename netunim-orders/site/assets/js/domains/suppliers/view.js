@@ -96,7 +96,11 @@ export function createDomainsSuppliersView({ model, supplierUi, mountViewLayout,
     function renderSupplier({ scrollMode = 'auto' } = {}) {
         const viewport = captureSupplierViewport(), state = supplierViewState();
         if (!state.displaySuppliers.length) {
-            $('#main').innerHTML = '<div class="empty">אין ספקים.</div>';
+            $('#main').innerHTML = `<section class="supplier-empty">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9l9-5 9 5v11H3zm5 11V11h8v9m-8-5h8"/></svg>
+                <h1>אין ספקים להצגה</h1>
+                <button class="btn primary" type="button" data-action="open-supplier-modal">הוספת ספק</button>
+            </section>`;
             return;
         }
         const { suppliers, allMode, selectedSupplier, contexts, availableYears, selectedArchiveYear } = state;
