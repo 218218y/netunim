@@ -20,7 +20,7 @@ FLOW = r"""(async()=>{
  checksSession.kupaCloudReadState=structuredClone(remoteFinance);checksSession.kupaReadRevision=1;checksSession.financeReadRevision=1;
  localStorage.setItem('netunim_kupa_bank_bridge_token_v1','fixture-pairing');
  localStorage.setItem('netunim_orders_bank_auto_daily_v1','0');localStorage.setItem('netunim_orders_credit_auto_daily_v1','0');
- const entered=deferred(),provider=deferred(),saving=deferred(),saved=deferred();let publications=0,archives=0,releases=0;
+ const entered=deferred(),provider=deferred(),saving=deferred(),saved=deferred();let providerCalls=0,publications=0,archives=0,releases=0;
  cloudTransport.claimFinanceSyncLease=async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1});
  cloudTransport.releaseFinanceSyncLease=async(_kind,_token,options)=>{options?.assertCurrent?.();releases++;return true};
  cloudTransport.readKupaReadOnlyCloud=async()=>({revision:kupaReadRevision,financeRevision,state:structuredClone(remoteFinance)});
@@ -32,13 +32,13 @@ FLOW = r"""(async()=>{
  cloudTransport.saveBankSyncSnapshot=async bank=>publish({...remoteFinance,bank});cloudTransport.rpcSaveFinanceSync=async next=>({r:{ok:true},row:await publish(next)});
  globalThis.fetch=(url,options)=>{
    const path=String(url);
-   if(path.includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:88,contractVersion:2,profiles:[{profileId:'P'}]})));
+   if(path.includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:caseName==='old-runtime'?89:90,contractVersion:2,profiles:[{profileId:'P'}]})));
    if(path.endsWith('/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:74,configured:true})));
-   if(path.includes('/balance')||path.includes('/v2/credit/sync')){entered.resolve();return provider.promise}
+   if(path.includes('/balance')||path.includes('/v2/credit/sync')){providerCalls++;entered.resolve();return provider.promise}
    if(path.includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));
    return originalFetch(url,options);
  };
- const before=JSON.stringify(checksSession.kupaCloudReadState),pending=finance.commands['refresh'+kind]();await entered.promise;
+ const before=JSON.stringify(checksSession.kupaCloudReadState),pending=finance.commands['refresh'+kind]();if(caseName!=='old-runtime')await entered.promise;
  if(caseName==='logout')check(uiCloud.logoutCloud()===true,'production logout rejected');
  if(caseName==='account')cloudAuth.saveSession({user:{id:'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb'},access_token:'other',expires_at:9999999999});
  if(caseName==='relogin'){cloudAuth.saveSession(null);cloudAuth.saveSession({user:{id:owner},access_token:'fixture-2',expires_at:9999999999})}
@@ -51,6 +51,8 @@ FLOW = r"""(async()=>{
  provider.resolve(new Response(JSON.stringify(result),{status:caseName==='invalid-errors'?400:200}));
  if(caseName==='publication'){await saving.promise;cloudAuth.saveSession(null);saved.resolve()}
  check(await pending===false,'former/failed Finance operation reported success');
+ if(caseName==='old-runtime')check(providerCalls===0,'old Bridge reached issuer transport');
+ if(caseName==='old-runtime')check(finance.queries.snapshot().creditError.includes('Bank Bridge'),'missing Bridge upgrade guidance');
  check(JSON.stringify(checksSession.kupaCloudReadState)===before,'former/failed Finance result replaced readout');
  check(finance.queries.snapshot().bank.feed.transactions.length===0,'uncommitted archive replaced display');
  check(publications===(['publication','network','lost-response'].includes(caseName)?1:0),'unexpected Finance write');
@@ -58,7 +60,7 @@ FLOW = r"""(async()=>{
  check(JSON.stringify(await db.load(identity))===beforeMain,'Finance failure changed Main durable journal');
  check(state.notes.find(row=>row.id===note.id)?.content===note.content,'note identity/content lost');
  check(finance.queries.snapshot()[kind.toLowerCase()+'Error'].length>0,'missing operator failure');
- check(['network','lost-response','invalid-result','invalid-errors','future-time','malformed-time'].includes(caseName)?releases===1:releases===0,'former scope released lease under replacement authorization');
+ check(['network','lost-response','invalid-result','invalid-errors','future-time','malformed-time','old-runtime'].includes(caseName)?releases===1:releases===0,'former scope released lease under replacement authorization');
  if(caseName==='lost-response'){
    await finance.queries.refreshFinanceData();const recovered=finance.queries.snapshot();
    if(kind==='Bank'){check(recovered.bank.currentBalance===500,'committed Bank balance not recoverable');check(JSON.stringify(recovered.bank.feed.transactions.map(row=>row.id))==='["uncommitted"]','Bank record identity duplicated or lost')}
@@ -69,14 +71,14 @@ FLOW = r"""(async()=>{
  return {projectionRetained:true,archiveRetained:true,journalRetained:true,noteRetained:true,scopedPublication:true,visibleError:true};
 })()"""
 
-cases=('future-time','malformed-time','logout', 'account', 'relogin', 'secondary', 'publication', 'network', 'lost-response', 'invalid-result', 'invalid-errors')
+cases=('old-runtime','future-time','malformed-time','logout', 'account', 'relogin', 'secondary', 'publication', 'network', 'lost-response', 'invalid-result', 'invalid-errors')
 parser=argparse.ArgumentParser()
 parser.add_argument('--kind',choices=('Bank','Credit'))
 parser.add_argument('--case',choices=cases)
 args=parser.parse_args()
 for kind in ([args.kind] if args.kind else ('Bank', 'Credit')):
     for case in ([args.case] if args.case else cases):
-        if kind=='Bank' and (case.startswith('invalid-') or case in ('future-time','malformed-time')):
+        if kind=='Bank' and (case.startswith('invalid-') or case in ('future-time','malformed-time','old-runtime')):
             continue
         with BrowserSession(ROOT / 'netunim-orders/site', 'orders-finance-' + kind.lower() + '-' + case) as browser:
             result = browser.evaluate(FLOW.replace('__KIND__', json.dumps(kind)).replace('__CASE__', json.dumps(case)), timeout=45)

@@ -48,7 +48,7 @@ FLOW = r"""(async()=>{
  if(kupa)cloudAuth.supaRest=request;else cloudAuth.supaFetch=request;
  globalThis.fetch=(url,options)=>{
    const path=String(url);
-   if(path.includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:88,contractVersion:2,profiles:[{profileId:'P'}]})));
+   if(path.includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:90,contractVersion:2,profiles:[{profileId:'P'}]})));
    if(path.endsWith('/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:74,configured:true})));
    if(path.includes('/balance')||path.includes('/v2/credit/sync')){providers++;providerEntered.resolve();if(phase==='provider')entered.resolve();return providerGate.promise}
    if(path.includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));

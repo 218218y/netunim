@@ -1,7 +1,7 @@
 # Current architecture backlog
 
-This is the current backlog. The 2026-11-18 review was checked against
-`966a9868`. The implementation notes below retain earlier evidence.
+This is the current backlog. The follow-up review on 2026-11-18 was checked
+against `314529ba`. The implementation notes below retain earlier evidence.
 
 ## Release baseline observed on 2026-11-18
 
@@ -38,6 +38,9 @@ This is the current backlog. The 2026-11-18 review was checked against
   remain the source of cash-flow amounts and persisted operations.
 - PDF preview abort and failed setup both release the same owned loading and
   browser resources. Search selection supplies the existing abort signal.
+- The follow-up gives the PDF viewer's early DOM and event setup the same
+  lifetime as loading. Both applications require Bank Bridge 90 for credit
+  refresh. Retained credit views still use the existing data.
 
 ## Implementation and evidence history
 

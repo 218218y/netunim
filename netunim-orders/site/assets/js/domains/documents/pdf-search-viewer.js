@@ -569,10 +569,11 @@ function selectedPdfText(container,selection){
   return joinPdfTextSelectionSegments(segments);
 }
 
-function installPdfCopyHandler(container,normalizeUnicodeFn=value=>value){
-  if(typeof document==='undefined'||!document.addEventListener)return ()=>{};
+function installPdfCopyHandler(container,normalizeUnicodeFn,signal){
+  const owner=container.ownerDocument||globalThis.document;
+  if(!owner?.addEventListener)return;
   const handler=event=>{
-    const selection=document.getSelection?.();
+    const selection=owner.getSelection?.();
     if(!selection?.rangeCount||selection.isCollapsed||!event.clipboardData)return;
     const anchor=selection.anchorNode,focus=selection.focusNode;
     if(!container.contains?.(anchor)||!container.contains?.(focus))return;
@@ -586,8 +587,7 @@ function installPdfCopyHandler(container,normalizeUnicodeFn=value=>value){
     event.preventDefault();
     event.stopPropagation();
   };
-  document.addEventListener('copy',handler,true);
-  return ()=>document.removeEventListener('copy',handler,true);
+  owner.addEventListener('copy',handler,{capture:true,signal});
 }
 
 async function documentRuntimeOptions({url='',blob=null,data=null}={}){
@@ -614,25 +614,12 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   const hasFindQuery=Array.isArray(findQuery)?findQuery.length>0:String(findQuery||'').length>=2;
   const {pdfjsLib,pdfjsViewer}=runtime||await loadRuntime();
   signal?.throwIfAborted();
-  host.innerHTML='<div class="document-pdfjs-container" tabindex="0"><div class="pdfViewer"></div></div>';
-  const container=host.querySelector('.document-pdfjs-container');
-  const eventBus=new pdfjsViewer.EventBus();
-  const linkService=new pdfjsViewer.PDFLinkService({eventBus,externalLinkTarget:2});
-  const findController=hasFindQuery?new pdfjsViewer.PDFFindController({eventBus,linkService,updateMatchesCountOnProgress:true}):null;
-  const findAdapter=new PdfJsFindControllerAdapter(findController,eventBus,linkService);
-  const customPdfTextMatch=findAdapter.installMatcher(needle,search);
-  const viewerOptions={container,eventBus,linkService,findController};
-  // Default to PDF-authored appearance streams. Text-only Hebrew forms whose
-  // synthetic PDF.js glyph order is unreliable use read-only DOM widgets.
-  // Form search/copy logic remains separate and uses the original values.
-  const annotationMode=pdfjsLib.AnnotationMode?.ENABLE;
-  if(annotationMode!==undefined)viewerOptions.annotationMode=annotationMode;
-  if(pdfjsLib.AnnotationEditorType?.DISABLE!==undefined)viewerOptions.annotationEditorMode=pdfjsLib.AnnotationEditorType.DISABLE;
+  const lifetime=new AbortController();
+  let container,eventBus,linkService,findAdapter,customPdfTextMatch;
   let pdfViewer=null;
   let htmlHebrewForms=false,destroyed=false,loadingTask=null,pdfDocument=null,lastState={current:0,total:0},pagesReady=false,lastFitWidth=0,resizeTimer=null,resizeFrame=null,resizeObserver=null,combinedRefreshQueued=false;
   let formSearchReady=!hasFindQuery||!interactiveForms,formSearchCapped=false,combinedReady=false,combinedMatches=[],combinedIndex=-1,externalFormMatchesApplied=false;
   const formMatchesByPage=new Map(),copyFieldGeneration=new Map();
-  const removeCopyHandler=installPdfCopyHandler(container,pdfjsLib.normalizeUnicode||((value)=>value));
   let destruction=null;
   const abortPreview=()=>{void destroy()};
   function destroy(){
@@ -640,14 +627,14 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
     destroyed=true;
     destruction=Promise.resolve().then(async()=>{
       signal?.removeEventListener('abort',abortPreview);
-      removeCopyHandler();
+      lifetime.abort();
       copyFieldGeneration.clear();
       formMatchesByPage.clear();
       cancelScheduledResize();
       resizeObserver?.disconnect?.();
       resizeObserver=null;
       try{pdfViewer?.setDocument(null)}catch{}
-      try{linkService.setDocument(null,null)}catch{}
+      try{linkService?.setDocument(null,null)}catch{}
       try{await loadingTask?.destroy?.()}catch{}
       try{await pdfDocument?.destroy?.()}catch{}
     });
@@ -657,26 +644,23 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   const emit=value=>{if(destroyed)return;const next=normalizeViewerState(value);if(next.current===lastState.current&&next.total===lastState.total&&next.snippet===lastState.snippet&&next.location===lastState.location&&next.capped===lastState.capped)return;lastState=next;onMatchState?.(next)};
   const hasFormMatches=()=>{for(const fields of formMatchesByPage.values())for(const matches of fields.values())if(matches.length)return true;return false};
   const nativeMatchState=value=>{if(formSearchReady&&hasFormMatches())return;emit(normalizeMatchCount(value))};
-  if(hasFindQuery){eventBus.on('updatefindmatchescount',event=>{nativeMatchState(event?.matchesCount);scheduleCombinedRefresh()});eventBus.on('updatefindcontrolstate',event=>{nativeMatchState(event?.matchesCount);scheduleCombinedRefresh()})}
   const currentFormEntry=()=>combinedIndex>=0&&combinedMatches[combinedIndex]?.kind==='form'?combinedMatches[combinedIndex]:null;
   const pageFieldMatches=pageNumber=>formMatchesByPage.get(Number(pageNumber)||0)||null;
   async function refreshRenderedFormLayers(){if(!interactiveForms||!pdfDocument)return;const current=currentFormEntry();for(let pageNumber=1;pageNumber<=pdfDocument.numPages;pageNumber+=1){const pageView=pdfViewer.getPageView?.(pageNumber-1);if(!pageView?.div||!pageView?.pdfPage)continue;const generation=(copyFieldGeneration.get(pageNumber)||0)+1;copyFieldGeneration.set(pageNumber,generation);await renderCopyablePdfFields(pageView,{isCurrent:()=>!destroyed&&copyFieldGeneration.get(pageNumber)===generation,formMatchesByField:pageFieldMatches(pageNumber),currentFormFieldKey:current?.pageNumber===pageNumber?current.fieldKey:'',pdfjsLib}).catch(()=>{})}}
   const renderFormLayerForEvent=event=>{if(!interactiveForms)return;const pageNumber=Number(event?.pageNumber)||0,pageView=event?.source;if(!pageNumber||!pageView?.div)return;const generation=(copyFieldGeneration.get(pageNumber)||0)+1;copyFieldGeneration.set(pageNumber,generation);const current=currentFormEntry();renderCopyablePdfFields(pageView,{isCurrent:()=>!destroyed&&copyFieldGeneration.get(pageNumber)===generation,formMatchesByField:pageFieldMatches(pageNumber),currentFormFieldKey:current?.pageNumber===pageNumber?current.fieldKey:'',pdfjsLib}).then(()=>{if(current?.pageNumber===pageNumber)scrollCurrentFormMatch(current,{behavior:'auto'})}).catch(()=>{})};
-  if(interactiveForms)eventBus.on('pagerendered',renderFormLayerForEvent);
-  eventBus.on('annotationlayerrendered',event=>{
+  const renderAnnotationLayer=event=>{
     if(htmlHebrewForms){
       const pageView=event?.source;
       void applyPdfHtmlHebrewFields(pageView,()=>!destroyed&&pageView?.div?.isConnected!==false).catch(()=>{});
     }
     if(interactiveForms)renderFormLayerForEvent(event);
-  });
+  };
   const dispatch=(type='',findPrevious=false)=>{if(destroyed||!hasFindQuery)return;const request=buildPdfFindRequest(findQuery,{type,findPrevious,entireWord:search.wordMatch==='whole'&&!customPdfTextMatch});request.source=container;eventBus.dispatch('find',request)};
   const cancelScheduledResize=()=>{if(resizeTimer!==null){clearTimeout(resizeTimer);resizeTimer=null}if(resizeFrame!==null){if(typeof cancelAnimationFrame==='function')cancelAnimationFrame(resizeFrame);else clearTimeout(resizeFrame);resizeFrame=null}};
   const measuredWidth=()=>Math.round(Number(container.clientWidth)||Number(container.getBoundingClientRect?.().width)||0);
   const fitToWidth=({force=false}={})=>{if(destroyed||!pagesReady)return false;const width=measuredWidth();if(width<80)return false;if(!force&&Math.abs(width-lastFitWidth)<2)return false;lastFitWidth=width;pdfViewer.currentScaleValue='page-width';pdfViewer.update?.();return true};
   const queueFrame=callback=>{resizeFrame=typeof requestAnimationFrame==='function'?requestAnimationFrame(()=>{resizeFrame=null;callback()}):setTimeout(()=>{resizeFrame=null;callback()},0)};
   const scheduleResize=({immediate=false}={})=>{if(destroyed)return;cancelScheduledResize();if(immediate){queueFrame(()=>fitToWidth());return}resizeTimer=setTimeout(()=>{resizeTimer=null;queueFrame(()=>fitToWidth())},90)};
-  eventBus.on('pagesinit',()=>{if(destroyed)return;pagesReady=true;lastFitWidth=0;fitToWidth({force:true});dispatch('',false)});
   function formMarkerFor(entry){const pageView=pdfViewer.getPageView?.(entry.pageNumber-1),root=pageView?.div?.querySelector?.('.document-pdf-form-overlay');if(!root)return null;return [...(root.querySelectorAll?.('.document-pdf-form-match-marker')||[])].find(marker=>marker.dataset?.pdfFieldKey===entry.fieldKey)||null}
   function scrollElementToCenter(element,{behavior='smooth'}={}){const rect=element?.getBoundingClientRect?.(),hostRect=container.getBoundingClientRect?.();if(!rect||!hostRect)return false;const top=container.scrollTop+(rect.top-hostRect.top)-(container.clientHeight/2)+(rect.height/2);container.scrollTo?.({top:Math.max(0,top),left:Math.max(0,container.scrollLeft||0),behavior});return true}
   function scrollCurrentFormMatch(entry,{behavior='smooth'}={}){if(!entry||destroyed)return false;const marker=formMarkerFor(entry);if(marker)return scrollElementToCenter(marker,{behavior});linkService.page=entry.pageNumber;return false}
@@ -712,6 +696,30 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   async function collectFormSearchMatches(){if(!interactiveForms||!hasFindQuery||!pdfDocument){formSearchReady=true;refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh();return}const scanned=await collectPdfFormSearchMatches(pdfDocument,needle,search,PDF_FORM_MATCH_LIMIT,{isCancelled:()=>destroyed});if(destroyed)return;if(!externalFormMatchesApplied)formMatchesByPage.clear();for(const fields of scanned.matchesByPage.values())for(const matches of fields.values())for(const match of matches)mergeFormMatch(formMatchesByPage,match);formSearchCapped=formSearchCapped||scanned.capped;formSearchReady=true;await refreshRenderedFormLayers();refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh()}
   try{
     signal?.addEventListener('abort',abortPreview,{once:true});
+    host.innerHTML='<div class="document-pdfjs-container" tabindex="0"><div class="pdfViewer"></div></div>';
+    container=host.querySelector('.document-pdfjs-container');
+    eventBus=new pdfjsViewer.EventBus();
+    linkService=new pdfjsViewer.PDFLinkService({eventBus,externalLinkTarget:2});
+    const findController=hasFindQuery?new pdfjsViewer.PDFFindController({eventBus,linkService,updateMatchesCountOnProgress:true}):null;
+    findAdapter=new PdfJsFindControllerAdapter(findController,eventBus,linkService);
+    customPdfTextMatch=findAdapter.installMatcher(needle,search);
+    const optionsSignal={signal:lifetime.signal};
+    const on=(name,listener)=>eventBus.on(name,listener,optionsSignal);
+    installPdfCopyHandler(container,pdfjsLib.normalizeUnicode||(value=>value),lifetime.signal);
+    if(hasFindQuery){
+      const updateMatches=event=>{nativeMatchState(event?.matchesCount);scheduleCombinedRefresh()};
+      on('updatefindmatchescount',updateMatches);
+      on('updatefindcontrolstate',updateMatches);
+    }
+    if(interactiveForms)on('pagerendered',renderFormLayerForEvent);
+    on('annotationlayerrendered',renderAnnotationLayer);
+    on('pagesinit',()=>{if(destroyed)return;pagesReady=true;lastFitWidth=0;fitToWidth({force:true});dispatch('',false)});
+    // Preserve authored appearances by default. Hebrew text-only form widgets
+    // use the original field values through the existing read-only DOM mode.
+    const viewerOptions={container,eventBus,linkService,findController,abortSignal:lifetime.signal};
+    const annotationMode=pdfjsLib.AnnotationMode?.ENABLE;
+    if(annotationMode!==undefined)viewerOptions.annotationMode=annotationMode;
+    if(pdfjsLib.AnnotationEditorType?.DISABLE!==undefined)viewerOptions.annotationEditorMode=pdfjsLib.AnnotationEditorType.DISABLE;
     if(typeof ResizeObserver==='function'){resizeObserver=new ResizeObserver(()=>scheduleResize());resizeObserver.observe(container)}
     const options=await documentRuntimeOptions({url,blob,data});
     signal?.throwIfAborted();
@@ -733,7 +741,7 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
     pdfViewer.setDocument(pdfDocument);linkService.setDocument(pdfDocument,null);void collectFormSearchMatches();
   }catch(error){
     await destroy();
-    if(host.querySelector('.document-pdfjs-container')===container)host.innerHTML='';
+    if(container&&host.querySelector('.document-pdfjs-container')===container)host.innerHTML='';
     throw error;
   }
   return {
