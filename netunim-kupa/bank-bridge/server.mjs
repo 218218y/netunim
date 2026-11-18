@@ -41,7 +41,7 @@ import {createBankDiagnosticRun,finishBankDiagnosticRun,recordBankAccountDiagnos
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=88;
+const BRIDGE_VERSION=89;
 // Capture the installer's marker once. Reading it on each request would let
 // an old process at the same path report the newly staged installation.
 const marker=(await fs.readFile(new URL('./installation-id.txt',import.meta.url),'utf8').catch(()=> '')).trim();
@@ -197,15 +197,12 @@ if(args.has('--doctor')){
   }catch(e){console.error(e?.message||e);process.exit(1)}
 }
 
-const token=await ensureToken();
-if(args.has('--init'))process.exit(0);
-if(args.has('--print-token')){console.log('Bank Bridge key:');console.log(token);console.log(`Credentials directory: ${APP_DIR}`);process.exit(0)}
+if(args.has('--init')||args.has('--print-token')){
+  const token=await ensureToken();
+  if(!args.has('--init')){console.log('Bank Bridge key:');console.log(token);console.log(`Credentials directory: ${APP_DIR}`)}
+  process.exit(0);
+}
 if(args.has('--clear-diagnostics')){await settleConnectionJobs([deleteBankDiagnostic(),deleteCreditDataDiagnostic()]);process.exit(0)}
-// Discard older detailed payloads on upgrade; never export them through the new
-// structural diagnostic route. Periodic reads expire files through their owner.
-const previousDiagnostic=await readBankDiagnostic();
-if(previousDiagnostic&&previousDiagnostic.schemaVersion!==5)await deleteBankDiagnostic();
-setInterval(()=>{void readBankDiagnostic().catch(()=>console.error('Bank diagnostic expiration failed'))},60*60*1000).unref();
 
 const originPolicy=await fs.readFile(path.join(APP_DIR,'origin-policy.json'),'utf8')
   .then(source=>createBankOriginPolicy(JSON.parse(source)))
@@ -230,22 +227,35 @@ const routes=createBankBridgeRoutes({version:BRIDGE_VERSION,contractVersion:CRED
   cheques:{read:async key=>{const image=await images.read(key);return image&&images.inRetention(image.eventDate)?image:null}},
   shutdown:{afterResponse:()=>{void shutdown.request()}},
 });
-const handler=createBankBridgeHttpHandler({token,routes,originPolicy,pairing,admission:{assertAccepting:operations.assertAccepting},health:()=>({ok:true,service:'netunim-kupa-bank-bridge',version:BRIDGE_VERSION,creditContractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,...(installationId?{installationId}:{})})});
-let pairingReady=false, pairingStartup;
+async function initializeListener(){
+  // Only the bound listener may initialize credentials, diagnostics and pairing.
+  const token=await ensureToken();
+  const previousDiagnostic=await readBankDiagnostic();
+  if(previousDiagnostic&&previousDiagnostic.schemaVersion!==5)await deleteBankDiagnostic();
+  await pairing.initialize();
+  setInterval(()=>{void readBankDiagnostic().catch(()=>console.error('Bank diagnostic expiration failed'))},60*60*1000).unref();
+  return createBankBridgeHttpHandler({token,routes,originPolicy,pairing,admission:{assertAccepting:operations.assertAccepting},health:()=>({ok:true,service:'netunim-kupa-bank-bridge',version:BRIDGE_VERSION,creditContractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,...(installationId?{installationId}:{})})});
+}
+
+let handler, startup;
 activeServer=http.createServer((req,res)=>{
-  if(pairingReady)return handler(req,res);
-  void pairingStartup.then(()=>handler(req,res),()=>res.destroy());
+  if(handler)return handler(req,res);
+  void startup.then(dispatch=>dispatch(req,res),()=>res.destroy());
 });
-shutdown.start();
-activeServer.on('error',e=>{if(e?.code==='EADDRINUSE'){console.error(`Bank Bridge already appears to be running on ${HOST}:${PORT}`);process.exit(0)}console.error(e);process.exit(1)});
+activeServer.on('error',error=>{
+  console.error(error?.code==='EADDRINUSE'
+    ? `Bank Bridge could not start because ${HOST}:${PORT} is already in use. Use --check-running to verify an existing installation.`
+    : error);
+  process.exit(1);
+});
 activeServer.listen(PORT,HOST,()=>{
-  // Only the process holding the listener may open the writable registry.
-  pairingStartup=pairing.initialize();
-  void pairingStartup.then(()=>{
-    pairingReady=true;
+  startup=initializeListener();
+  void startup.then(dispatch=>{
+    handler=dispatch;
+    shutdown.start();
     console.log(`Netunim Kupa Bank Bridge v${BRIDGE_VERSION} listening on http://${HOST}:${PORT}`);
   },()=>{
-    console.error('Bank Bridge could not initialize local pairing storage.');
+    console.error('Bank Bridge could not initialize local runtime files.');
     process.exit(1);
   });
 });

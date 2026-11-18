@@ -83,6 +83,7 @@ Maintenance
 - If setup reports that it could not verify automatic recovery, keep the paths printed by setup and check bridge.log in the per-user data directory.
 - For documented legacy recovery, use the Bank local console above and run & $node $server --print-token. Keep bridge-token.txt and its contents local.
 - To start manually for diagnostics: run the installed start_bank_bridge.bat without --hidden.
+- From v89, an occupied port makes a new launch exit with code 1, including a duplicate launch. To verify the existing listener, run & $node $server --check-running from the Bank local console above. This checks the service, release, credit contract, pairing protocol and installation ID.
 - Runtime log for hidden startup: %LOCALAPPDATA%\NetunimKupaBankBridge\bridge.log
 - To remove only Windows autostart: remove_bank_bridge_autostart.bat
 - To remove saved bank credentials: use Kupa's "Delete login details from this computer" button.
