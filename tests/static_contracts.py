@@ -595,7 +595,7 @@ orders_dashboard_view = (O / "site/assets/js/domains/dashboard/view.js").read_te
 kupa_checks_view = (K / "site/assets/js/domains/checks/view.js").read_text(encoding="utf-8")
 kupa_dashboard_view = (K / "site/assets/js/domains/dashboard/view.js").read_text(encoding="utf-8")
 kupa_credit_view = (K / "site/assets/js/domains/credit/view.js").read_text(encoding="utf-8")
-kupa_credit_sync_view = (K / "site/assets/js/domains/credit/sync-view.js").read_text(encoding="utf-8")
+kupa_credit_sync_view = (K / "site/assets/js/domains/credit/presentation.js").read_text(encoding="utf-8")
 kupa_css = (K / "site/assets/app.css").read_text(encoding="utf-8")
 orders_contexts = (O / "site/assets/js/state/contexts.js").read_text(encoding="utf-8")
 orders_finance_controller = finance_controller_source(ROOT/'netunim-orders')

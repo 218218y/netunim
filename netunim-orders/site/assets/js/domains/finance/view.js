@@ -1,6 +1,6 @@
 import {amountRangeMatch,amountRangeMarkup} from '../../shared/search.js';
 import {financeSyncProgressMarkup} from '../../shared/sync-status.js';
-import {selectOrdersCreditDetail} from './credit-detail-read-model.js';
+import {creditForecastCardGroups,selectOrdersCreditDetail} from './credit-detail-read-model.js';
 import {creditViewAllowsMonth} from '../../shared/credit-detail-policy.js';
 import {evidenceDate} from '../../shared/observation-time.js';
 import { createBankConnectionCommands } from './bank-connection-commands.js';
@@ -354,40 +354,8 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
         return (
             `<div class="credit-forecast-list">` +
             `${months.map(month => {
-            const groups = new Map();
-            for (const row of month.items) {
-                const cardKey = row.hidden ? '' : rowCardKey(row),
-                    key = row.hidden ? 'hidden' : cardKey || `${row.card}\u0000${row.account}\u0000${row.ownerLabel || ''}`,
-                    group = groups.get(key) || {
-                    card: row.card,
-                        account: row.account,
-                        ownerLabel: row.ownerLabel,
-                        cardKey,
-                        billingDate: row.date,
-                        total: 0,
-                        pendingCount: 0,
-                        incompleteCount: 0,
-                        missingAmountCount: 0,
-                        coverageGapCount: 0,
-                        bankPendingSettlementDetected: false
-                };
-                if (row.date && (!group.billingDate || row.date < group.billingDate))
-                    group.billingDate = row.date;
-                group.total += row.amount;
-                if (row.status === 'pending')
-                    group.pendingCount++;
-                if (row.amountStatus !== 'known_ils')
-                    group.missingAmountCount++;
-                if (row.coverageIncomplete)
-                    group.coverageGapCount++;
-                if (!row.includedInIlsTotal || row.coverageIncomplete)
-                    group.incompleteCount++;
-                if (row.bankPendingSettlementDetected)
-                    group.bankPendingSettlementDetected = true;
-                groups.set(key, group);
-            }
             const pct = Math.max(2, Math.abs(month.total) / max * 100),
-                detail = [...groups.values()].sort((a, b) => String(a.card).localeCompare(String(b.card), 'he')).map(group => {
+                detail = creditForecastCardGroups(month.items).map(group => {
                 const content = ((
                     `<span><b>${esc(group.card)}</b><small>${esc(group.account)}${group.ownerLabel ? ` · ${esc(group.ownerLabel)}` : ''}${group.billingDate ? ` · תאריך החיוב ${esc(checkDateFmt(group.billingDate))}` : ''}` +
                     `${group.pendingCount ? ` · ${esc(group.pendingCount)} ממתינות` : ''}${group.missingAmountCount ? ` · ${esc(group.missingAmountCount)} ללא סכום ₪` : ''}`

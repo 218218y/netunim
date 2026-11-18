@@ -606,12 +606,14 @@ async function documentRuntimeOptions({url='',blob=null,data=null}={}){
   return options;
 }
 
-export async function createPdfSearchViewer({host,url='',blob=null,data=null,query,contentSearch={},onMatchState,runtime=null,interactiveForms=true}={}){
+export async function createPdfSearchViewer({host,url='',blob=null,data=null,query,contentSearch={},onMatchState,runtime=null,interactiveForms=true,signal}={}){
   if(!host)throw new Error('PDF preview host is missing.');
   if(!url&&!blob&&!data)throw new Error('PDF preview source is missing.');
+  signal?.throwIfAborted();
   const needle=String(query||'').trim(),search=normalizeContentSearch(contentSearch),findQuery=buildViewerFindQuery(needle,search);
   const hasFindQuery=Array.isArray(findQuery)?findQuery.length>0:String(findQuery||'').length>=2;
   const {pdfjsLib,pdfjsViewer}=runtime||await loadRuntime();
+  signal?.throwIfAborted();
   host.innerHTML='<div class="document-pdfjs-container" tabindex="0"><div class="pdfViewer"></div></div>';
   const container=host.querySelector('.document-pdfjs-container');
   const eventBus=new pdfjsViewer.EventBus();
@@ -631,8 +633,28 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   let formSearchReady=!hasFindQuery||!interactiveForms,formSearchCapped=false,combinedReady=false,combinedMatches=[],combinedIndex=-1,externalFormMatchesApplied=false;
   const formMatchesByPage=new Map(),copyFieldGeneration=new Map();
   const removeCopyHandler=installPdfCopyHandler(container,pdfjsLib.normalizeUnicode||((value)=>value));
+  let destruction=null;
+  const abortPreview=()=>{void destroy()};
+  function destroy(){
+    if(destruction)return destruction;
+    destroyed=true;
+    destruction=Promise.resolve().then(async()=>{
+      signal?.removeEventListener('abort',abortPreview);
+      removeCopyHandler();
+      copyFieldGeneration.clear();
+      formMatchesByPage.clear();
+      cancelScheduledResize();
+      resizeObserver?.disconnect?.();
+      resizeObserver=null;
+      try{pdfViewer?.setDocument(null)}catch{}
+      try{linkService.setDocument(null,null)}catch{}
+      try{await loadingTask?.destroy?.()}catch{}
+      try{await pdfDocument?.destroy?.()}catch{}
+    });
+    return destruction;
+  }
   const normalizeViewerState=value=>({current:Math.max(0,Number(value?.current)||0),total:Math.max(0,Number(value?.total)||0),snippet:value?.snippet||null,capped:!!value?.capped,location:String(value?.location||'')});
-  const emit=value=>{const next=normalizeViewerState(value);if(next.current===lastState.current&&next.total===lastState.total&&next.snippet===lastState.snippet&&next.location===lastState.location&&next.capped===lastState.capped)return;lastState=next;onMatchState?.(next)};
+  const emit=value=>{if(destroyed)return;const next=normalizeViewerState(value);if(next.current===lastState.current&&next.total===lastState.total&&next.snippet===lastState.snippet&&next.location===lastState.location&&next.capped===lastState.capped)return;lastState=next;onMatchState?.(next)};
   const hasFormMatches=()=>{for(const fields of formMatchesByPage.values())for(const matches of fields.values())if(matches.length)return true;return false};
   const nativeMatchState=value=>{if(formSearchReady&&hasFormMatches())return;emit(normalizeMatchCount(value))};
   if(hasFindQuery){eventBus.on('updatefindmatchescount',event=>{nativeMatchState(event?.matchesCount);scheduleCombinedRefresh()});eventBus.on('updatefindcontrolstate',event=>{nativeMatchState(event?.matchesCount);scheduleCombinedRefresh()})}
@@ -654,7 +676,6 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   const fitToWidth=({force=false}={})=>{if(destroyed||!pagesReady)return false;const width=measuredWidth();if(width<80)return false;if(!force&&Math.abs(width-lastFitWidth)<2)return false;lastFitWidth=width;pdfViewer.currentScaleValue='page-width';pdfViewer.update?.();return true};
   const queueFrame=callback=>{resizeFrame=typeof requestAnimationFrame==='function'?requestAnimationFrame(()=>{resizeFrame=null;callback()}):setTimeout(()=>{resizeFrame=null;callback()},0)};
   const scheduleResize=({immediate=false}={})=>{if(destroyed)return;cancelScheduledResize();if(immediate){queueFrame(()=>fitToWidth());return}resizeTimer=setTimeout(()=>{resizeTimer=null;queueFrame(()=>fitToWidth())},90)};
-  if(typeof ResizeObserver==='function'){resizeObserver=new ResizeObserver(()=>scheduleResize());resizeObserver.observe(container)}
   eventBus.on('pagesinit',()=>{if(destroyed)return;pagesReady=true;lastFitWidth=0;fitToWidth({force:true});dispatch('',false)});
   function formMarkerFor(entry){const pageView=pdfViewer.getPageView?.(entry.pageNumber-1),root=pageView?.div?.querySelector?.('.document-pdf-form-overlay');if(!root)return null;return [...(root.querySelectorAll?.('.document-pdf-form-match-marker')||[])].find(marker=>marker.dataset?.pdfFieldKey===entry.fieldKey)||null}
   function scrollElementToCenter(element,{behavior='smooth'}={}){const rect=element?.getBoundingClientRect?.(),hostRect=container.getBoundingClientRect?.();if(!rect||!hostRect)return false;const top=container.scrollTop+(rect.top-hostRect.top)-(container.clientHeight/2)+(rect.height/2);container.scrollTo?.({top:Math.max(0,top),left:Math.max(0,container.scrollLeft||0),behavior});return true}
@@ -690,9 +711,18 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   }
   async function collectFormSearchMatches(){if(!interactiveForms||!hasFindQuery||!pdfDocument){formSearchReady=true;refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh();return}const scanned=await collectPdfFormSearchMatches(pdfDocument,needle,search,PDF_FORM_MATCH_LIMIT,{isCancelled:()=>destroyed});if(destroyed)return;if(!externalFormMatchesApplied)formMatchesByPage.clear();for(const fields of scanned.matchesByPage.values())for(const matches of fields.values())for(const match of matches)mergeFormMatch(formMatchesByPage,match);formSearchCapped=formSearchCapped||scanned.capped;formSearchReady=true;await refreshRenderedFormLayers();refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh()}
   try{
-    loadingTask=pdfjsLib.getDocument(await documentRuntimeOptions({url,blob,data}));
-    pdfDocument=await loadingTask.promise;
-    if(destroyed){await pdfDocument.destroy?.();throw new Error('PDF preview was closed before loading finished.')}
+    signal?.addEventListener('abort',abortPreview,{once:true});
+    if(typeof ResizeObserver==='function'){resizeObserver=new ResizeObserver(()=>scheduleResize());resizeObserver.observe(container)}
+    const options=await documentRuntimeOptions({url,blob,data});
+    signal?.throwIfAborted();
+    loadingTask=pdfjsLib.getDocument(options);
+    const opened=await loadingTask.promise;
+    if(destroyed){
+      try{await opened.destroy?.()}catch{}
+      signal?.throwIfAborted();
+      throw new Error('PDF preview was closed before loading finished.');
+    }
+    pdfDocument=opened;
     htmlHebrewForms=await pdfUsesHtmlHebrewTextWidgets(pdfDocument,pdfjsLib);
     if(destroyed)throw new Error('PDF preview was closed before loading finished.');
     if(htmlHebrewForms){
@@ -701,19 +731,17 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
     }
     pdfViewer=new pdfjsViewer.PDFViewer(viewerOptions);linkService.setViewer(pdfViewer);
     pdfViewer.setDocument(pdfDocument);linkService.setDocument(pdfDocument,null);void collectFormSearchMatches();
-  }catch(error){host.innerHTML='';throw error}
+  }catch(error){
+    await destroy();
+    if(host.querySelector('.document-pdfjs-container')===container)host.innerHTML='';
+    throw error;
+  }
   return {
     next(){if(combinedReady&&combinedMatches.length)return goCombined(combinedIndex+1);dispatch('again',false)},
     previous(){if(combinedReady&&combinedMatches.length)return goCombined(combinedIndex-1);dispatch('again',true)},
     resize(options={}){scheduleResize(options);if(combinedReady&&currentFormEntry())queueMicrotask(()=>scrollCurrentFormMatch(currentFormEntry(),{behavior:'auto'}))},
     matchState(){return combinedReady&&combinedMatches.length?combinedState():{...lastState}},
     setExternalMatchInfo(info){return applyExternalFormMatchInfo(info)},
-    async destroy(){
-      if(destroyed)return;destroyed=true;removeCopyHandler();copyFieldGeneration.clear();formMatchesByPage.clear();cancelScheduledResize();resizeObserver?.disconnect?.();resizeObserver=null;
-      try{pdfViewer?.setDocument(null)}catch{}
-      try{linkService.setDocument(null,null)}catch{}
-      try{await loadingTask?.destroy?.()}catch{}
-      try{await pdfDocument?.destroy?.()}catch{}
-    },
+    destroy,
   };
 }

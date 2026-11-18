@@ -1,9 +1,48 @@
 # Current architecture backlog
 
-This is the single current backlog, updated against the 2026-11-03 continuation.
-[Completion stages](COMPLETION_STAGES_20261015.md) and the focused design notes
-are historical implementation/evidence records, not competing remaining-work lists.
-A passed synthetic gate is not evidence of live providers or physical machines.
+This is the current backlog. The 2026-11-18 review was checked against
+`966a9868`. The implementation notes below retain earlier evidence.
+
+## Release baseline observed on 2026-11-18
+
+| Surface | Observed state | Release evidence still required |
+| --- | --- | --- |
+| Production PostgreSQL | Read-only postflight passed. All 65 migration identities and SQL hashes match through `20261117070000`. Catalogs, RLS, grants and two active retention jobs match the reviewed schema. | Refresh the existing postflight before the next upload. |
+| Production Storage protocol | The canonical Orders Main, Kupa Main and Shared Checks heads each have the V2 writer fence. The aggregate audit found zero unfenced heads. | Keep historical local readers until their installed-browser and backup recovery cases have been accepted. |
+| Staging PostgreSQL | The documented portable baseline and the following 55 migrations match through `20261108210000`. The staging bootstrap dry run reported nine pending migrations dated November 15–17. | Upgrade through the isolated bootstrap workflow before using Staging to accept those changes. |
+| Production Edge | Calendar OAuth 55, Drive OAuth 35, Morning Documents 63, Morning Expenses 41 are active. | Verify workflow-specific acceptance if an Edge release changes. |
+| Staging Edge | Calendar OAuth 3, Drive OAuth 3, Morning Documents 3, Morning Expenses 4 are active. | Match the intended release against the isolated environment and its test credentials. |
+| Orders and Kupa production Pages | Both public entries and workers returned their corresponding release labels for source `88dd7ae5`. Orders `orders-app-shell-build-3cfb7c50df7e1f8151907ab0`, Kupa `kupa-app-shell-build-4a3a2cbfb609e6b9517d0e2f`. | Log in and exercise offline startup on the intended devices after the next rollout. Use the paired-site sequence in [deployment compatibility](DEPLOYMENT_COMPATIBILITY.md). |
+| Local Windows Bridge listeners | The current machine reported Bank Bridge 88 with credit contract 2 and pairing protocol 1, and Document Bridge 48. The Bank health route accepted the two production app origins and rejected an unrelated origin. | Check installation identity, active origin/pairing settings, and install/upgrade/rollback on the remaining machines. |
+
+## Open work and acceptance evidence
+
+| Work | Evidence needed |
+| --- | --- |
+| Independent backup continuity | The [November 12 closeout](SECURITY_CLOSEOUT_20261112_HE.md) records an encrypted external copy, isolated database restore and Storage checksum verification. Establish the backup cadence, retention and recovery objectives, keep an independent recovery key copy and record a fresh isolated restore of database, Storage and service configuration. Cover unsynchronized local work separately. |
+| Physical and live-provider acceptance | Run the [physical protocol](OPERATIONAL_ACCEPTANCE_20261022.md) on the intended Windows machines and isolated provider accounts. Record installation/rollback, old-tab startup, cross-device persistence, network/power interruption and recovery. |
+| Measured performance | Keep the existing synthetic startup/storage and loaded-search gates. Record cold and warm latency, P50/P95 and memory on the weak target, including PDF/Office viewing and time to commit/ACK. Investigate repeatable regressions with the same corpus and environment. |
+| Compatibility retirement | Follow the [compatibility inventory](COMPATIBILITY_INVENTORY.md) and retain readers with current consumers or recoverable old records. Exercise old-browser, old-backup and Journal recovery before retiring any reader. |
+| Session and provider contracts | Continue risk-based checking of Bridge orchestrators and transport using the [feature entry contract](FEATURE_ENTRY_CONTRACT.md). The browser session model and management-account MFA follow the [session review](SESSION_ARCHITECTURE_REVIEW_20261109.md) and operator closeout. |
+
+## Changes from the November 18 review
+
+- Bank Bridge startup reports a bind collision as a failure. The listener
+  initializes writable files after binding, and the installer verifies the
+  release and installation marker before reporting readiness.
+- MAX and CAL response models run under strict checking. CAL coverage requires
+  explicit provider data, including its verified no-pending response. Malformed
+  collections keep the existing failure and retained-data path.
+- Orders calculates forecast card groups in a read model, and Kupa assembles
+  transaction rows in its row presenter. The existing billing and write owners
+  remain the source of cash-flow amounts and persisted operations.
+- PDF preview abort and failed setup both release the same owned loading and
+  browser resources. Search selection supplies the existing abort signal.
+
+## Implementation and evidence history
+
+[Completion stages](COMPLETION_STAGES_20261015.md) and the sections below
+record implementation and acceptance at the dates shown.
 On 2026-11-03 the operator enabled Windows Sandbox and a VM. The new
 [test lab](TEST_LAB.md) prepares an offline synthetic guest without mapping work
 data. Availability of a VM is not acceptance evidence: installed interruption,
