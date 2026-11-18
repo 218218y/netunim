@@ -27,10 +27,15 @@ for app in ('kupa', 'orders'):
                   check(toggle.left>=bounds.left&&toggle.right<bounds.left+45,'advanced button is not at the left edge of search');
                   button.click();check(panel.matches(':popover-open'),'advanced search did not open');
                   const popup=panel.getBoundingClientRect();check(popup.left>=0&&popup.right<=innerWidth,'popup overflows viewport');
-                  change('from','150');await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+                  for(const input of panel.querySelectorAll('input')){
+                    input.value='150';input.stepUp();check(input.value==='151','amount arrow must increase by one shekel');
+                    input.stepDown();check(input.value==='150','amount arrow must decrease by one shekel');input.value='';
+                  }
+                  change('from','150.25');await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
                   check(document.querySelector('[popover]').matches(':popover-open'),'editing first bound closed the panel');
-                  change('to','250');
+                  change('to','250.75');
                   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+                  check(document.querySelector('[data-change="__PREFIX____KIND__-amount-from"]').value==='150.25'&&document.querySelector('[data-change="__PREFIX____KIND__-amount-to"]').value==='250.75','typed cents must be retained');
                   const text=document.querySelector('__SELECTOR__ tbody')?.textContent||'';
                   check(text.includes('movement-200')&&!text.includes('movement-100')&&!text.includes('movement-300'),'incorrect filtered table: '+text);
                   change('from','');await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));change('to','');

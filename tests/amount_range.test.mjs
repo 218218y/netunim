@@ -9,5 +9,10 @@ test('movement ranges include endpoints, cents, debits/refunds and independent o
   assert.equal(amountRangeMatch(-100,'','250'),true);
   assert.equal(amountRangeMatch(null,'',''),true);
   for(const [from,to] of [['250','150'],['invalid',''],['-1','250']])assert.equal(amountRangeMatch(200,from,to),false);
-  assert.match(amountRangeMarkup({action:'credit-amount',escapeHtml:x=>x}),/data-change="credit-amount-from"/);
+  const markup=amountRangeMarkup({action:'credit-amount',from:'150.25',to:'250.75',escapeHtml:x=>x});
+  assert.match(markup,/data-change="credit-amount-from"/);
+  assert.equal((markup.match(/step="1" inputmode="decimal"/g)||[]).length,2);
+  assert.match(markup,/value="150\.25"/);assert.match(markup,/value="250\.75"/);
+  assert.equal(amountRangeMatch(150.25,'150.25','250.75'),true);
+  assert.equal(amountRangeMatch(150.24,'150.25','250.75'),false);
 });

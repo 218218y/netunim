@@ -63,7 +63,7 @@ export function amountRangeMatch(value,from='',to=''){
 
 export function amountRangeMarkup({from='',to='',action='',fromAction=action+'-from',toAction=action+'-to',searchMarkup='',className='',escapeHtml}){
   const id='advanced-'+fromAction,anchor='--'+id,active=String(from||to).trim()!=='';
-  const input=(side,value,label)=>`<label>${label}<input type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(value??''))}" aria-label="סכום ${label} בשקלים" data-change="${escapeHtml(side==='from'?fromAction:toAction)}"></label>`;
+  const input=(side,value,label)=>`<label>${label}<input type="number" min="0" step="1" inputmode="decimal" value="${escapeHtml(String(value??''))}" aria-label="סכום ${label} בשקלים" data-change="${escapeHtml(side==='from'?fromAction:toAction)}"></label>`;
   const toggle=`<button type="button" class="movement-advanced-toggle ${active?'active':''}" popovertarget="${escapeHtml(id)}" style="anchor-name:${escapeHtml(anchor)}" aria-label="חיפוש מתקדם לפי סכום" title="חיפוש מתקדם לפי סכום">`+
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4"/></svg></button>';
   const panel=`<div id="${escapeHtml(id)}" popover class="movement-advanced-panel" style="position-anchor:${escapeHtml(anchor)}"><strong>חיפוש מתקדם</strong>`+
