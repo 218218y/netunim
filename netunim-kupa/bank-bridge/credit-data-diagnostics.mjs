@@ -1,4 +1,6 @@
 import {safeMaxResponseEvidence} from './max-response-diagnostics.mjs';
+import {maxRawTransactionTime} from './max-model.mjs';
+export {maxRawTransactionTime};
 export const CREDIT_DATA_DIAGNOSTIC_SCHEMA_VERSION=5;
 const MAX_FIELDS=120;
 const MAX_SAMPLES_PER_CARD=2;
@@ -32,24 +34,6 @@ function flatten(value,path='',depth=0,out=[]){
   if(path)out.push({path,type:'object',keys:keys.slice(0,60)});
   for(const key of keys){if(out.length>=MAX_FIELDS)break;flatten(value[key],path?`${path}.${key}`:key,depth+1,out)}
   return out;
-}
-function clockFromValue(value,{standalone=false}={}){
-  const raw=String(value??'').trim();if(!raw)return '';
-  const dateTimePattern=/[T\s](\d{1,2}):([0-5]\d)(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/;
-  let match=standalone?/^(\d{1,2}):([0-5]\d)(?::[0-5]\d(?:\.\d+)?)?$/.exec(raw):dateTimePattern.exec(raw),dateTimeMatch=!standalone&&!!match;
-  if(!match&&standalone&&/^\d{3,4}$/.test(raw)){const compact=raw.padStart(4,'0');match=[raw,compact.slice(0,2),compact.slice(2)]}
-  if(!match&&standalone){match=dateTimePattern.exec(raw);dateTimeMatch=!!match}
-  if(!match)return '';
-  const hour=Number(match[1]),minute=Number(match[2]);if(hour<0||hour>23||minute<0||minute>59)return '';
-  const clock=`${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
-  return dateTimeMatch&&clock==='00:00'?'':clock;
-}
-const MAX_PURCHASE_TIME_PATH='dealData.purchaseTime';
-export function maxRawTransactionTime(rawTransaction){
-  const value=rawTransaction?.dealData?.purchaseTime,time=clockFromValue(value,{standalone:true});
-  if(!time)return {time:'',sourcePath:'',ambiguous:false,candidates:[]};
-  const candidate={path:MAX_PURCHASE_TIME_PATH,time,value};
-  return {time,sourcePath:MAX_PURCHASE_TIME_PATH,ambiguous:false,candidates:[candidate]};
 }
 export function rawTransactionFieldInventory(rawTransaction){return flatten(rawTransaction)}
 function normalizedTransactions(account){

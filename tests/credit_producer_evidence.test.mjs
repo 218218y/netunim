@@ -13,7 +13,7 @@ function rejected(fn){assert.throws(fn,{code:'CREDIT_PROVIDER_SCHEMA_ERROR',stag
 test('raw issuer amount adapters reject JSON containers and booleans before sign/format conversion',()=>{
   for(const bad of [true,false,[],[120],{},Infinity,NaN]){
     rejected(()=>creditDebitAmount(bad));
-    rejected(()=>normalizeVisaCalTransaction({trnAmt:bad}));
+    rejected(()=>normalizeVisaCalTransaction({trnPurchaseDate:'2026-10-01',trnAmt:bad}));
     rejected(()=>normalizeMaxRawTransaction({shortCardNumber:'1234',purchaseDate:'2026-10-01',merchantName:'Test',originalAmount:bad,actualPaymentAmount:120}));
   }
   assert.equal(creditDebitAmount('120.50'),-120.5);

@@ -46,6 +46,7 @@ const maxResponsePolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/max-res
 const maxForecastPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/max-forecast-policies.json',import.meta.url),'utf8'));
 const maxEmptyPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/max-empty-policies.json',import.meta.url),'utf8'));
 const monthIntegrityPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/credit-month-integrity-policies.json',import.meta.url),'utf8'));
+const providerDecoderPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/credit-provider-decoder-policies.json',import.meta.url),'utf8'));
 
 test('credit provider methods, normalization, wire constants and fallback policy match the reviewed baseline', () => {
   const active = { ...fixture.policies };
@@ -88,6 +89,12 @@ test('credit provider methods, normalization, wire constants and fallback policy
   for(const [name,{before,after}] of Object.entries(maxForecastPolicies)){assert.equal(reviewed[name],before,name);reviewed[name]=after}
   assert.deepEqual(Object.keys(maxEmptyPolicies).sort(),['MAX_PROVIDER_SCHEMA_VERSION','maxProviderReply','extractMaxTransactionCandidates'].sort());
   for(const [name,{before,after}] of Object.entries(maxEmptyPolicies)){assert.equal(reviewed[name]??null,before,name);reviewed[name]=after}
+  // CAL now requires explicit coverage, and both issuer models decode unknown inputs.
+  for (const [name, {before, after}] of Object.entries(providerDecoderPolicies)) {
+    assert.equal(reviewed[name] ?? null, before, name);
+    if (after === null) delete reviewed[name];
+    else reviewed[name] = after;
+  }
   assert.deepEqual(creditAdapterPolicyHashes(sources()).policies,reviewed);
   assert.equal(Object.keys(fixture.policies).length, 118);
 });
