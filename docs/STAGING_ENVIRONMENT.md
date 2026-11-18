@@ -32,6 +32,21 @@ and privileges, and applies all later migrations unchanged. Changes to that
 allowlist fail closed. It never changes production migration files or history,
 copies seeds, updates Vault secrets or targets the production project.
 
+The bootstrap checks the local canonical manifest and every installed staging
+SQL hash before pushing. An incomplete but exact prefix can be resumed by
+running the same command. The push verifies the full ledger again before it
+reports success. Use `python tools/staging_bootstrap.py --verify` for a read-only
+check of the installed ledger.
+
+On 2026-11-18, the nine migrations from `20261115160000` through
+`20261117070000` were applied to `netunim-staging`. All 65 installed SQL hashes
+matched. The application catalog, including functions, grants, RLS and retention
+jobs, matched an authenticated read-only reference after excluding the already
+documented Production-only Morning operations archive. A disposable staging user
+verified MFA admission on all four deployed Edge functions, a Finance V6 write,
+export hash, Credit-only restore with the newer Bank balance intact, and
+idempotent replay. The test user was removed.
+
 Cloudflare Access still requires the account's Access configuration; the build
 guard is not an Access policy. A separately registered staging Google OAuth
 client and Morning sandbox credentials are required before enabling those

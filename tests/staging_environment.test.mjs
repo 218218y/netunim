@@ -20,15 +20,26 @@ test('Preview builds select staging and cannot opt into production; invalid envi
 });
 test('fresh staging bootstrap rejects production and changes only managed platform defaults', () => {
   const result = spawnSync('python', ['-c', `
-import sys,json
+import sys,json,hashlib
 from pathlib import Path
 sys.path.insert(0,'tools')
-from staging_bootstrap import portable_baseline,staging_project,ROOT,BASELINE
+from staging_bootstrap import portable_baseline,staging_project,verify_staging_manifest,ROOT,BASELINE
+from supabase_migration_manifest import manifest,split_sql_statements
 source=(ROOT/'supabase/migrations'/BASELINE).read_text(encoding='utf-8')
 filtered=portable_baseline(source)
 removed=[line for line in source.splitlines() if line not in filtered.splitlines()]
 assert len(removed)==15 and all(line.startswith('ALTER DEFAULT PRIVILEGES FOR ROLE "supabase_admin"') for line in removed)
 assert '\\n'.join(line for line in source.splitlines() if line not in removed)=='\\n'.join(filtered.splitlines())
+reviewed=manifest()
+assert verify_staging_manifest([],reviewed)==reviewed
+for stored in (filtered,'\\n'.join(split_sql_statements(filtered))):
+ portable={**reviewed[0],'sha256':hashlib.sha256(stored.encode('utf8')).hexdigest()}
+ assert verify_staging_manifest([portable,*reviewed[1:3]],reviewed)==reviewed[3:]
+ assert verify_staging_manifest([portable,*reviewed[1:]],reviewed)==[]
+ for bad in [[reviewed[0]], [portable,reviewed[2]], [portable,{**reviewed[1],'sha256':'0'*64}], [portable,*reviewed[1:],reviewed[-1]]]:
+  try:verify_staging_manifest(bad,reviewed)
+  except ValueError:pass
+  else:raise AssertionError('Staging ledger drift silently accepted')
 for bad in [source+'\\nALTER DEFAULT PRIVILEGES FOR ROLE "supabase_admin" IN SCHEMA "private" GRANT EXECUTE ON FUNCTIONS TO "anon";\\n',source.replace('IN SCHEMA "public" GRANT','IN SCHEMA "private" GRANT',1)]:
  try:portable_baseline(bad)
  except ValueError:pass
