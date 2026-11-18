@@ -9,7 +9,17 @@ import {spawnSync} from 'node:child_process';
 
 class FakeEventBus{
   constructor(){this.listeners=new Map();this.dispatched=[]}
-  on(name,handler){const list=this.listeners.get(name)||[];list.push(handler);this.listeners.set(name,list)}
+  on(name,handler,{signal}={}){
+    if(signal?.aborted)return;
+    const list=this.listeners.get(name)||[];
+    list.push(handler);
+    this.listeners.set(name,list);
+    signal?.addEventListener('abort',()=>{
+      const remaining=this.listeners.get(name).filter(listener=>listener!==handler);
+      if(remaining.length)this.listeners.set(name,remaining);
+      else this.listeners.delete(name);
+    },{once:true});
+  }
   dispatch(name,payload){this.dispatched.push({name,payload});for(const handler of this.listeners.get(name)||[])handler(payload)}
 }
 
@@ -432,29 +442,48 @@ test('controlled PDF preview works without a search query and stays in static-ap
   await controller.destroy();
 });
 
-test('PDF initialization failure releases the observer, copy handler and PDF resources',async t=>{
+for(const failureStage of ['event registration','viewer construction'])test(`PDF ${failureStage} failure releases owned resources`,async t=>{
   const installed=new Set();
   const originalObserver=globalThis.ResizeObserver;
   const originalDocument=globalThis.document;
   let disconnected=0;
   globalThis.ResizeObserver=class{observe(){} disconnect(){disconnected++}};
   globalThis.document={
-    addEventListener:(type,handler)=>{assert.equal(type,'copy');installed.add(handler)},
-    removeEventListener:(type,handler)=>{assert.equal(type,'copy');assert.equal(installed.delete(handler),true)},
+    addEventListener:(type,handler,{capture,signal})=>{
+      assert.equal(type,'copy');
+      assert.equal(capture,true);
+      installed.add(handler);
+      signal.addEventListener('abort',()=>{assert.equal(installed.delete(handler),true)},{once:true});
+    },
   };
   t.after(()=>{
     globalThis.document=originalDocument;
     globalThis.ResizeObserver=originalObserver;
   });
   const {state,runtime}=fakeRuntime(), host=fakeHost();
-  const failure=new Error('synthetic PDF viewer construction failure');
-  runtime.pdfjsViewer.PDFViewer=class{constructor(){throw failure}};
-  await assert.rejects(createPdfSearchViewer({host,data:new Uint8Array([37,80,68,70]),runtime}),error=>error===failure);
+  const failure=new Error(`synthetic PDF ${failureStage} failure`);
+  let viewerSignal;
+  if(failureStage==='event registration'){
+    const EventBus=runtime.pdfjsViewer.EventBus;
+    runtime.pdfjsViewer.EventBus=class extends EventBus{
+      on(name,handler,options){
+        super.on(name,handler,options);
+        if(name==='annotationlayerrendered')throw failure;
+      }
+    };
+  }else{
+    runtime.pdfjsViewer.PDFViewer=class{constructor(options){viewerSignal=options.abortSignal;throw failure}};
+  }
+  await assert.rejects(createPdfSearchViewer({host,data:new Uint8Array([37,80,68,70]),query:'needle',runtime}),error=>error===failure);
   assert.equal(host.innerHTML,'');
-  assert.equal(disconnected,1);
+  assert.equal(disconnected,failureStage==='viewer construction'?1:0);
   assert.equal(installed.size,0);
-  assert.equal(state.loadingDestroyed,true);
-  assert.equal(state.documentDestroyed,true);
+  assert.equal(state.eventBus.listeners.size,0);
+  if(failureStage==='viewer construction'){
+    assert.equal(viewerSignal.aborted,true);
+    assert.equal(state.loadingDestroyed,true);
+    assert.equal(state.documentDestroyed,true);
+  }else assert.equal(state.documentOptions,null);
 });
 
 test('replacing a preview aborts its in-flight PDF loading task before publication',async()=>{
@@ -471,6 +500,7 @@ test('replacing a preview aborts its in-flight PDF loading task before publicati
   await assert.rejects(task,{name:'AbortError'});
   assert.equal(destroyed,1);
   assert.equal(state.viewer,null);
+  assert.equal(state.eventBus.listeners.size,0);
 });
 
 test('controlled PDF viewer uses PDFFindController, local support assets and real arrow navigation',async()=>{

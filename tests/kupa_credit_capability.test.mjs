@@ -10,7 +10,7 @@ function fixture(){
   const preferences={read:()=>({ok:true,value:{enabled:false,mode:'smart',attemptAt:0}}),setEnabled:noop,setMode:noop,markAttempt:noop,reset:noop};
   const effects={writeText:async()=>events.push('clipboard'),saveJson:()=>events.push('download'),dispose:()=>events.push('effects disposed')};
   const credit=createKupaCreditRuntime({model,ui:{},platform:{effects,preferences,timers}});
-  const bridge={getBridgeToken:()=> 'paired',creditStatus:async()=>({bridgeVersion:88,contractVersion:2,profiles:[{profileId:'P'}]})};
+  const bridge={getBridgeToken:()=> 'paired',creditStatus:async()=>({bridgeVersion:90,contractVersion:2,profiles:[{profileId:'P'}]})};
   const ports={bridge,authority:{scope:{capture:()=>noop},automaticAccess:()=> 'local'},
     cloud:{refresh:async()=>({verified:true,state:model.state}),commit:async mutate=>{events.push('commit');return {saved:true,row:{state:mutate(model.state)}}},
       claimLease:async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1}),releaseLease:async(_kind,_token,{assertCurrent})=>{assertCurrent();events.push('release')}},

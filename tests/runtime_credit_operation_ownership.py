@@ -20,7 +20,7 @@ FLOW = r"""(async()=>{
  session.connectionMode='supabase';session.backendReady=true;session.storageProtocolBlocked=false;
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');const db=createStorageJournalDb(),identity=owner+':kupa',durableBefore=JSON.stringify(await db.load(identity));
  localStorage.setItem('netunim_kupa_bank_bridge_token_v1','fixture-pairing');localStorage.setItem('netunim_kupa_credit_auto_daily_v1','0');
- const entered=deferred(),provider=deferred(),saving=deferred(),saved=deferred();let publications=0,releases=0;
+ const entered=deferred(),provider=deferred(),saving=deferred(),saved=deferred();let providerCalls=0,publications=0,releases=0;
  cloudTransport.claimFinanceSyncLease=async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1});
  cloudTransport.releaseFinanceSyncLease=async()=>{releases++;return true};
  cloudTransport.saveFinancePatch=async(mutator,_lease,options)=>{
@@ -31,11 +31,11 @@ FLOW = r"""(async()=>{
  };
  cloudTransport.readSupabaseDocument=async()=>({revision:session.dbRevision,financeRevision:session.financeRevision,state:structuredClone(state)});
  globalThis.fetch=(url,options)=>{
-   if(String(url).includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:88,contractVersion:2,profiles:[{profileId:'P'}]})));
-   if(String(url).includes('/v2/credit/sync')){entered.resolve();return provider.promise}
+   if(String(url).includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:caseName==='old-runtime'?89:90,contractVersion:2,profiles:[{profileId:'P'}]})));
+   if(String(url).includes('/v2/credit/sync')){providerCalls++;entered.resolve();return provider.promise}
    return originalFetch(url,options);
  };
- const before=JSON.stringify(state.creditSync),pending=credit.commands.refreshCreditSync();await entered.promise;
+ const before=JSON.stringify(state.creditSync),pending=credit.commands.refreshCreditSync();if(caseName!=='old-runtime')await entered.promise;
  if(caseName==='logout')check(uiCloud.logoutSupabase()===true,'production logout rejected');
  if(caseName==='account')cloudAuth.storeSupaSession({user:{id:'fixture-other-owner'},access_token:'fixture-other',expires_at:9999999999});
  if(caseName==='relogin'){cloudAuth.storeSupaSession(null);cloudAuth.storeSupaSession({user:{id:owner},access_token:'fixture-2',expires_at:9999999999})}
@@ -48,16 +48,18 @@ FLOW = r"""(async()=>{
  provider.resolve(new Response(JSON.stringify(payload),{status:caseName==='invalid-errors'?400:200}));
  if(caseName==='publication'){await saving.promise;cloudAuth.storeSupaSession(null);saved.resolve()}
  await pending;
+ if(caseName==='old-runtime')check(providerCalls===0,'old Bridge reached issuer transport');
+ if(caseName==='old-runtime')check(credit.queries.uiState().error.includes('Bank Bridge'),'missing Bridge upgrade guidance');
  check(JSON.stringify(state.creditSync)===before,'former/failed issuer result changed the displayed credit data');
  check(publications===(caseName==='network'||caseName==='publication'?1:0),'unexpected finance publication');
  check(JSON.stringify(await db.load(identity))===durableBefore,'credit failure changed durable Main/pending journal');
  check(state.notes.find(row=>row.id===note.id)?.content===note.content,'durable note identity/content lost');
  check(credit.queries.uiState().error.length>0,'failure did not offer an operator error');
- check(['network','invalid-result','invalid-errors','future-time','malformed-time'].includes(caseName)?releases===1:releases===0,'former authorization released a lease under the new scope');
+ check(['network','invalid-result','invalid-errors','future-time','malformed-time','old-runtime'].includes(caseName)?releases===1:releases===0,'former authorization released a lease under the new scope');
  globalThis.fetch=originalFetch;financeAutomation.stop();cloudAuth.storeSupaSession(null);return {projectionRetained:true,journalRetained:true,noteRetained:true,visibleError:true,scopedPublication:true};
 })()"""
 
-cases=('future-time','malformed-time','logout', 'account', 'relogin', 'secondary', 'publication', 'network', 'invalid-result', 'invalid-errors')
+cases=('old-runtime','future-time','malformed-time','logout', 'account', 'relogin', 'secondary', 'publication', 'network', 'invalid-result', 'invalid-errors')
 parser=argparse.ArgumentParser()
 parser.add_argument('--case',choices=cases)
 args=parser.parse_args()

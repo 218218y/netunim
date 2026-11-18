@@ -1,3 +1,4 @@
+import {CREDIT_MINIMUM_BRIDGE_VERSION} from '../shared/credit-refresh-result.js';
 import {createFinanceBridgeIntegration} from '../integrations/bank-bridge.js';
 import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import {createFinanceOperationScope} from '../shared/finance-fence.js';
@@ -188,7 +189,7 @@ export function createOrdersFinanceCapability({
       },
       presentation:{toast:(...args) => { if (!disposed) toast(...args); }},
       effects:connectionEffects,
-      protocol:{minimumBridgeVersion:88,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},
+      protocol:{minimumBridgeVersion:CREDIT_MINIMUM_BRIDGE_VERSION,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},
     });
     bankConnections = createOrdersBankConnectionOwner({
       pairing:{token:() => bridge.getBridgeToken()},

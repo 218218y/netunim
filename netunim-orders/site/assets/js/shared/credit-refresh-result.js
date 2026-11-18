@@ -1,6 +1,9 @@
 // @ts-check
 import {creditResponseProtocol,assertCreditProfileTransactions,assertCreditIdentity} from './credit-transaction-evidence.js';
 import { observationTimeMs } from './observation-time.js';
+
+// The credit wire contract stayed at 2 when CAL and MAX gained validated coverage.
+export const CREDIT_MINIMUM_BRIDGE_VERSION = 90;
 /** @typedef {Readonly<Record<string,unknown>>} CreditIssue */
 /** @typedef {Readonly<Record<string,unknown>&{profiles:CreditStatusProfile[],errors?:CreditIssue[],attemptedCount?:number,deferredCount?:number}>} CreditRefreshResult */
 /** @typedef {Readonly<Record<string,unknown>&{profileId:string}>} CreditStatusProfile */

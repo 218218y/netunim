@@ -1,3 +1,4 @@
+import {CREDIT_MINIMUM_BRIDGE_VERSION} from '../shared/credit-refresh-result.js';
 import {createDomainsCreditSelectors} from '../domains/credit/selectors.js';
 import {createDomainsCreditView} from '../domains/credit/view.js';
 import {createDomainsCreditEditor} from '../domains/credit/editor.js';
@@ -46,7 +47,7 @@ export function createKupaCreditRuntime({model,ui,platform={}}){
     historyPorts={projectCredit:normalizeCreditSync,subscribeAccountScope:cloud.subscribeAccountScope,request:(...args)=>cloud.historyRequest(...args),readHead:(...args)=>cloud.readHistoryHead(...args),capture:()=>authority.scope.capture(),
       refresh:(...args)=>cloud.refresh(...args),leases:{claim:(...args)=>cloud.claimLease(...args),release:(...args)=>cloud.releaseLease(...args)}};
     connections=createCreditConnectionOwner({
-      protocol:{minimumBridgeVersion:88,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},
+      protocol:{minimumBridgeVersion:CREDIT_MINIMUM_BRIDGE_VERSION,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},
       pairing:{token:()=>bridge.getBridgeToken()},
       transport:{readStatus:()=>bridge.creditStatus(),readDiagnostics:()=>bridge.creditDiagnostics(),
         readData:()=>bridge.creditDataDiagnostics(),saveProfile:payload=>bridge.saveCreditProfile(payload),

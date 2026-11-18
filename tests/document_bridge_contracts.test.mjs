@@ -423,7 +423,8 @@ test('preview stays local: filename Office preview stays native while content se
   assert.doesNotMatch(pdfViewer,/Object\.defineProperty\((?:Math|Map|Promise|Uint8Array)/,'browser PDF.js must not mutate native APIs with private polyfills');
   assert.match(pdfCore,/Map\.prototype\.getOrInsertComputed/);
   assert.doesNotMatch(pdfCore,/Object\.defineProperty\((?:Math|Map|Promise|Uint8Array)/);
-  assert.match(pdfViewer,/eventBus\.on\('pagerendered',renderFormLayerForEvent\)/);
+  assert.match(pdfViewer,/on\('pagerendered',renderFormLayerForEvent\)/);
+  assert.match(pdfViewer,/const optionsSignal=\{signal:lifetime\.signal\}/);
   assert.match(css,/document-pdf-form-match-marker/);
   assert.match(pdfViewer,/updatefindmatchescount/);
   assert.match(pdfViewer,/currentScaleValue='page-width'/);
