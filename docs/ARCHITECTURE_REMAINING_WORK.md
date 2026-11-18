@@ -19,7 +19,7 @@ against `314529ba`. The implementation notes below retain earlier evidence.
 
 | Work | Evidence needed |
 | --- | --- |
-| Independent backup continuity | The [November 12 closeout](SECURITY_CLOSEOUT_20261112_HE.md) records an encrypted external copy, isolated database restore and Storage checksum verification. Establish the backup cadence, retention and recovery objectives, keep an independent recovery key copy and record a fresh isolated restore of database, Storage and service configuration. Cover unsynchronized local work separately. |
+| Independent backup continuity | The [recovery runbook](ENCRYPTED_BACKUP_RECOVERY.md) documents envelope and Storage verification, isolated database rehearsal, daily recovery objectives and separate handling of pending local work. Confirm independent custody of the active recovery key, enable the recurring capture and rehearse a complete service recovery on isolated infrastructure. |
 | Physical and live-provider acceptance | Run the [physical protocol](OPERATIONAL_ACCEPTANCE_20261022.md) on the intended Windows machines and isolated provider accounts. Record installation/rollback, old-tab startup, cross-device persistence, network/power interruption and recovery. |
 | Measured performance | Keep the existing synthetic startup/storage and loaded-search gates. Record cold and warm latency, P50/P95 and memory on the weak target, including PDF/Office viewing and time to commit/ACK. Investigate repeatable regressions with the same corpus and environment. |
 | Compatibility retirement | Follow the [compatibility inventory](COMPATIBILITY_INVENTORY.md) and retain readers with current consumers or recoverable old records. Exercise old-browser, old-backup and Journal recovery before retiring any reader. |

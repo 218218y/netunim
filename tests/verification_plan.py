@@ -26,6 +26,7 @@ GROUPS = {
         "offline_dependencies_contracts.py",
         "confirmation_contracts.py",
         "cloud_backup_contracts.py",
+        "encrypted_backup_contracts.py",
         "asset_contracts.py",
         "deploy_preflight.py",
         "public_asset_names_contracts.py",
@@ -69,6 +70,7 @@ GROUPS["browser-sync"].append("runtime_kupa_source_transition.py")
 GROUPS["browser-sync"].append("runtime_spreadsheet_lifecycle.py")
 GROUPS["database"].append("sync_incidents_postgres.py")
 GROUPS["database"].append("mfa_security_postgres.py")
+GROUPS["database"].append("encrypted_backup_restore_server.py")
 GROUPS["browser-sync"].append("runtime_sync_incidents.py")
 GROUPS["browser-sync"].append("runtime_idb_receipts.py")
 GROUPS["browser-sync"].append("runtime_lab_local_crash.py")
