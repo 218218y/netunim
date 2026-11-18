@@ -4,4 +4,5 @@
 .topbar-actions .weather-link:hover{background:#eaf3f7;border-color:#afcbd8;color:#245e7a}
 .topbar-actions .weather-link:focus-visible{outline:3px solid #4086ac;outline-offset:3px}
 @media(max-width:650px){.topbar-actions .weather-link{padding:7px 9px}}
+@media(max-width:400px){.topbar-actions .weather-link{min-width:42px;min-height:42px}.weather-link span{display:none}}
 @media print{.topbar-actions .weather-link{display:none!important}}

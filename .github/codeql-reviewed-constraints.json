@@ -26,7 +26,7 @@
   {
     "rule": "py/incomplete-url-substring-sanitization",
     "path": "tests/calendar_contracts.py",
-    "sha256": "ac7613ce561c7df377c778be377543e8061f9368273397c9c65921542bd1d53d",
+    "sha256": "8c7642bd7d3e6a9fb9f1e48f092d33778f76bba583a32357cc5bc53ccadd1619",
     "reason": "Assertions inspect checked-in CSP/OAuth source configuration. They do not admit caller URLs or perform network navigation; exact CSP source token checks are used for the Google API origin."
   },
   {

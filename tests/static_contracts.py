@@ -446,18 +446,17 @@ orders_css = (O / "site/assets/app.css").read_text(encoding="utf-8")
 orders_settings = (O / "site/assets/js/ui/settings.js").read_text(encoding="utf-8")
 ok('<div class="brand">ניהול הזמנות</div>' not in orders_html
    and 'grid-template-areas:"nav actions"' in orders_css
-   and '.topbar-nav-cluster{grid-area:nav;min-width:0;max-width:100%;display:flex;align-items:center;gap:7px;justify-self:start}' in orders_css
-   and '.nav{min-width:0;max-width:100%;flex:1 1 auto;display:flex;gap:4px;margin:0;' in orders_css,
-   "orders: redundant top-right title is removed and the tab cluster occupies the RTL start edge")
-nav_open = orders_html.find('<nav class="nav" id="nav">')
+   and 'grid-template-areas:"nav nav" "tools actions"' in orders_css,
+   "orders: tabs sit at the RTL start and get their own full-width row on narrow screens")
+nav_open = orders_html.find('<nav class="nav" id="nav"')
 nav_close = orders_html.find('</nav>', nav_open)
+nav_tools_pos = orders_html.find('class="topbar-nav-tools"')
+search_button_pos = orders_html.find('id="globalSearchButton"')
 alert_slot_pos = orders_html.find('id="alertCenterSlot"')
 alert_button_pos = orders_html.find('id="alertCenterButton"')
-ok(-1 not in (nav_open, nav_close, alert_slot_pos, alert_button_pos)
-   and nav_open < nav_close < alert_slot_pos < alert_button_pos
-   and '.alert-center-slot{flex:0 0 auto;display:flex;align-items:center;padding-inline-start:7px;border-inline-start:1px solid' in orders_css
-   and '.alert-center-slot[hidden]{display:none!important}' in orders_css,
-   "orders warning indicator: alerts live in a dedicated non-scrolling slot beside the tabs and disappear as a unit when empty")
+ok(0 <= nav_open < nav_close < nav_tools_pos < search_button_pos < alert_slot_pos < alert_button_pos
+   and '.alert-center-slot[hidden]{display:none}' in orders_css,
+   "orders: search and alerts live outside the scrolling tab strip and empty alerts disappear")
 ok('.folder-access-slot{display:flex;flex:0 0 5rem;inline-size:5rem}' in orders_css,
    "orders: desktop folder-access slot keeps stable header geometry")
 ok('.main{flex:1 1 auto;min-width:0;min-height:0;width:100%;max-width:none;margin:0;padding:0 env(safe-area-inset-right,0px) max(22px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px);overflow:hidden}' in orders_css
@@ -788,7 +787,7 @@ ok("6 חודשים קדימה — אשראי עסקי והוצאות" not in kup
    and "monthSumBusinessInstallments" not in kupa_dashboard_view
    and "monthSumExpenses" not in kupa_dashboard_view,
    "kupa dashboard: obsolete six-month business-credit-and-expenses panel is removed at the source")
-ok('> הוצאות</button>' in (K / "site/index.html").read_text(encoding="utf-8")
+ok(re.search(r'<button\b[^>]*data-page="credit"[^>]*>(?:<svg\b.*?</svg>)?\s*הוצאות</button>', (K / "site/index.html").read_text(encoding="utf-8"), re.S)
    and "credit:['הוצאות','']" in (K / "site/assets/js/state/constants.js").read_text(encoding="utf-8")
    and 'data-action="expenses-hub-tab"' in kupa_credit_view
    and 'data-click-arg0="credit">אשראי</button>' in kupa_credit_view
@@ -1244,7 +1243,13 @@ kupa_contexts=(ROOT/'netunim-kupa/site/assets/js/state/contexts.js').read_text(e
 kupa_checks_view=(ROOT/'netunim-kupa/site/assets/js/domains/checks/view.js').read_text(encoding='utf-8')
 kupa_notes_model=(ROOT/'shared/notes-sheet-model.js').read_text(encoding='utf-8')
 kupa_notes_controller=(ROOT/'shared/notes-workbook.js').read_text(encoding='utf-8')
-ok('data-view="customers">לקוחות וחובות</button>' in orders_index and 'data-view="customer-orders">מעקב הזמנות</button>' in orders_index and orders_index.index('data-view="customers"') < orders_index.index('data-view="customer-orders"') < orders_index.index('data-view="warehouse"') and "ui.currentView==='customers'||ui.currentView==='customer-orders'" in orders_navigation and "customerUi.customerTab='orders'" in orders_navigation and 'onTabChange(tab)' in orders_customer_bulk, 'orders navigation: order tracking has a direct main tab and stays synchronized with the existing inner customer tabs')
+ok(re.search(r'<button\b[^>]*data-view="customers"[^>]*>(?:<svg\b.*?</svg>)?\s*לקוחות וחובות</button>', orders_index, re.S)
+   and re.search(r'<button\b[^>]*data-view="customer-orders"[^>]*>(?:<svg\b.*?</svg>)?\s*מעקב הזמנות</button>', orders_index, re.S)
+   and orders_index.index('data-view="customers"') < orders_index.index('data-view="customer-orders"') < orders_index.index('data-view="warehouse"')
+   and "ui.currentView==='customers'||ui.currentView==='customer-orders'" in orders_navigation
+   and "customerUi.customerTab='orders'" in orders_navigation
+   and 'onTabChange(tab)' in orders_customer_bulk,
+   'orders navigation: order tracking has a direct main tab and stays synchronized with the existing inner customer tabs')
 ok('<h1>קריאות שירות</h1>' not in orders_service_view and 'module-toolbar service-toolbar' in orders_service_view and 'service-toolbar-controls' in orders_service_view and 'data-input="service-search"' in orders_service_view and 'data-action="open-service-modal"' in orders_service_view and '${serviceBulkControls()}' in orders_service_view and "headCount:1,className:'service-view-shell'" in orders_service_view, 'orders service: search, filters, selection and open-call action share one fixed toolbar without the redundant title row')
 ok('<h1>מחסן ומלאי</h1>' not in orders_warehouse_view and 'module-toolbar warehouse-toolbar' in orders_warehouse_view and 'open-inventory-item-modal-2' in orders_warehouse_view and 'open-warehouse-order-modal' in orders_warehouse_view and "headCount:1,className:'warehouse-view-shell'" in orders_warehouse_view, 'orders warehouse: search, tabs and item/customer actions share one fixed toolbar without the redundant title row')
 ok(all('credit-account-filter-chips' in source and 'data-click-arg0="all">הכל</button>' in source and 'data-click-arg0="עסקי">עסקי</button>' in source and 'data-click-arg0="ביתי">ביתי</button>' in source and 'עסקי + ביתי' not in source for source in (orders_finance_view,kupa_credit_view)) and presentation_contains(kupa_actions,"element.dataset.clickArg0||element.value||'all'") and presentation_contains(orders_actions,"element.dataset.clickArg0||element.value||'all'"), 'credit account scope: embedded Orders Kupa and standalone Kupa both use three direct chip buttons backed by the existing all/business/home filter state')

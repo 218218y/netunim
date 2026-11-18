@@ -24,14 +24,14 @@
 <div class="app">
   <aside class="sidebar" id="sidebar" aria-label="ניווט ראשי" aria-hidden="false">
     <div class="brand"><h1>ניהול קופה</h1></div>
-    <nav class="nav" id="nav">
-      <button data-page="dashboard"><span class="ico">⌂</span> לוח בקרה</button>
-      <button data-page="checks"><span class="ico">✓</span> צקים</button>
-      <button data-page="credit"><span class="ico">▣</span> הוצאות</button>
-      <button data-page="cash" class="active"><span class="ico">₪</span> מזומן</button>
-      <button data-page="bank"><span class="ico">▤</span> בנק</button>
-      <button data-page="notes"><span class="ico">✎</span> הערות</button>
-      <button data-page="settings"><span class="ico">⚙</span> הגדרות וגיבוי</button>
+    <nav class="nav" id="nav" aria-label="מדורי הקופה">
+      <button type="button" data-page="dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zm10 0h6v7h-6zM4 14h7v6H4zm10 0h6v6h-6z"/></svg>לוח בקרה</button>
+      <button type="button" data-page="checks"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m7 12 2 2 4-4m3 5h2"/></svg>צקים</button>
+      <button type="button" data-page="credit"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg>הוצאות</button>
+      <button type="button" data-page="cash" class="active" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M7 12h.01m10 0h.01"/></svg>מזומן</button>
+      <button type="button" data-page="bank"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 9 9-5 9 5H3zm2 11h14M7 10v7m5-7v7m5-7v7"/></svg>בנק</button>
+      <button type="button" data-page="notes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v11l-5 5H5zm9 16v-5h5M8 8h8m-8 4h8"/></svg>הערות</button>
+      <button type="button" data-page="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><path d="M8 4v4m8 2v4m-6 2v4"/></svg>הגדרות וגיבוי</button>
     </nav>
   </aside>
   <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" aria-label="סגור תפריט" tabindex="-1"></button>

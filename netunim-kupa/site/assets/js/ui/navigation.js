@@ -18,7 +18,24 @@ function viewStateKey(page){
 const cacheablePage=page=>['dashboard','checks','credit','cash','bank','expenses','notes'].includes(page);
 const viewCache=createCleanViewCache({container:()=>document.getElementById('content'),dataRevision,viewStateKey,cacheable:cacheablePage,maxEntries:3});
 function afterNavigation(){refreshCheckBankIndicator();maybeAutoRefreshBankBalance();maybeAutoRefreshCreditSync();maybeShowCashflowStartupAlert()}
-function setPage(p){ui.bulkCollection=null;ui.bulkSelected.clear();ui.currentPage=p;document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));const [t,s]=TITLES[p];document.getElementById('pageTitle').textContent=t;document.getElementById('pageSub').textContent=s;document.getElementById('sidebar').classList.remove('open');if(viewCache.activate(p)){afterNavigation();onPageActivated(p);return}render();onPageActivated(p)}
+function setPage(p){
+  ui.bulkCollection=null;
+  ui.bulkSelected.clear();
+  ui.currentPage=p;
+  for(const button of document.querySelectorAll('#nav button')){
+    const active=button.dataset.page===p;
+    button.classList.toggle('active',active);
+    if(active)button.setAttribute('aria-current','page');
+    else button.removeAttribute('aria-current');
+  }
+  const [title,sub]=TITLES[p];
+  document.getElementById('pageTitle').textContent=title;
+  document.getElementById('pageSub').textContent=sub;
+  document.getElementById('sidebar').classList.remove('open');
+  if(viewCache.activate(p))afterNavigation();
+  else render();
+  onPageActivated(p);
+}
 
 function render(){return runFinance(renderContent)}
 function renderContent(){const done=beginMeasure(`kupa:render:${ui.currentPage}`);try{if(ui.currentPage==='dashboard')renderDashboard();

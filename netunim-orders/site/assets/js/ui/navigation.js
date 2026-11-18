@@ -19,7 +19,19 @@ function viewStateKey(view){
 }
 const cacheableView=view=>['supplier','customers','customer-orders','service','warehouse','checks','summary'].includes(view);
 const viewCache=createCleanViewCache({container:()=>document.getElementById('main'),dataRevision,viewStateKey,cacheable:cacheableView,maxEntries:3});
-function syncActiveNav(){document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===ui.currentView))}
+function syncActiveNav(){
+  const nav=document.getElementById('nav');
+  for(const button of document.querySelectorAll('#nav [data-view], #settingsTopButton')){
+    const active=button.dataset.view===ui.currentView;
+    const becameActive=active&&!button.hasAttribute('aria-current');
+    button.classList.toggle('active',active);
+    if(active)button.setAttribute('aria-current','page');
+    else button.removeAttribute('aria-current');
+    if(becameActive&&nav?.contains(button)&&nav.scrollWidth>nav.clientWidth){
+      button.scrollIntoView({block:'nearest',inline:'nearest'});
+    }
+  }
+}
 
 function render({supplierScrollMode='auto'}={}){const done=beginMeasure(`orders:render:${ui.currentView}`);try{syncActiveNav();if(ui.currentView==='dashboard')renderDashboard();else if(ui.currentView==='supplier')renderSupplier({scrollMode:supplierScrollMode});else if(ui.currentView==='customers'||ui.currentView==='customer-orders')renderCustomers();else if(ui.currentView==='service')renderService();else if(ui.currentView==='kupa')renderKupa();else if(ui.currentView==='checks')renderChecks();else if(ui.currentView==='warehouse')renderWarehouse();else if(ui.currentView==='summary')renderSummary();else if(ui.currentView==='notes')renderNotes();else if(ui.currentView==='calendar')renderCalendar();else if(ui.currentView==='tax-calculator')renderTaxCalculator();else renderSettings();viewCache.markRendered(ui.currentView);refreshAlertCenter();startupMark('first-view-render')}finally{done()}}
 
