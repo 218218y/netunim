@@ -222,7 +222,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     const next=readStorageCheckpoint(checkpoint);
     if(next.owner!==owner||next.epoch!==epoch||next.seq!==current.metadata.seq)throw new Error('storage_cloud_recovery_stale');
     tx.objectStore('checkpoints').put(checkpoint,owner);
-    if(conflictKind==='concurrent-ack')tx.objectStore('controls').delete(owner);
+    if(conflictKind!==null)tx.objectStore('controls').delete(owner);
     // The base/ACK, journal, physical keys and operation IDs are untouched.
     done(true);
   })}

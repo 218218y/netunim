@@ -1,4 +1,4 @@
-import {readSharedChecksState,readStorageState} from './storage-operation.js';
+import {readSharedChecksState,readStorageOperation,readStorageState} from './storage-operation.js';
 import {createStorageJournal} from './storage-journal.js';
 import {createStorageJournalDb} from './storage-journal-idb.js';
 import {readStorageCheckpoint} from './storage-checkpoint.js';
@@ -133,6 +133,27 @@ export function createSharedChecksStorageV2({owner:configuredOwner,primary:confi
     if(!equalSyncJson(current.bankEvents,authoritative.bankEvents))throw new Error('shared_checks_rebase_bank_events_missing');
     return journal.rejectAndRebase(flightId,revision,authoritative,{checkpointState:current,expectedSeq,control});
   }
+  async function readConflictRecovery(){
+    assertCloudWriter();
+    const evidence=await journal.readCloudRecovery(),{epoch,ackSeq,seq}=evidence.expectedHead;
+    assertCloudWriter();
+    const changedIds=new Set();
+    for(const entry of evidence.backup.journal){
+      const operation=readStorageOperation(entry,SCHEMA);
+      if(operation.owner!==scopedOwner||operation.epoch!==epoch)throw new Error('storage_foreign_operation');
+      if(operation.seq<=ackSeq||operation.seq>seq)continue;
+      for(const change of operation.changes){
+        if((change.type!=='put'&&change.type!=='delete')||change.collection!=='checks')return null;
+        changedIds.add(change.id);
+      }
+    }
+    return {...evidence,changedIds};
+  }
+  /** @type {Methods['commitConflictRecovery']} */
+  async function commitConflictRecovery(state,expectedHead,isCurrent){
+    assertCloudWriter();
+    return journal.commitCloudRecovery(canonicalState(state),{expectedHead,conflictKind:'shared-checks-entity',isCurrent});
+  }
   /** @type {Methods['adoptCloudHead']} */
   async function adoptCloudHead(revision,authoritativeState){
     assertCloudWriter();const authoritative=canonicalState(authoritativeState);validate(authoritative);
@@ -156,7 +177,7 @@ export function createSharedChecksStorageV2({owner:configuredOwner,primary:confi
   /** @type {Methods['resetCloudHead']} */
   async function resetCloudHead(revision,state,{boundaryId=null}={}){assertCloudWriter();const canonical=canonicalState(state);validate(canonical);return journal.resetCloudHead(revision,canonical,canonical,{appMetadata:{storageRole:'shared-checks-primary',...boundaryId?{boundaryId}:{}}})}
   async function settled(){assertTrusted();await journal.settled();assertTrusted();if(journal.error)throw journal.error}
-  return {settled,recoverReadOnly,open,initializeCloudHead,append,captureCloudCursor,cloudState,materializeFlight,acknowledge,rejectAndRebase,adoptCloudHead,
+  return {settled,recoverReadOnly,open,initializeCloudHead,append,captureCloudCursor,cloudState,materializeFlight,acknowledge,rejectAndRebase,readConflictRecovery,commitConflictRecovery,adoptCloudHead,
     replaceAuthoritativeState,replaceLocalWithPending,replaceLocalAuthoritativeState,resetCloudHead,recover:()=>{assertTrusted();return journal.recover()},compact:()=>{assertTrusted();return journal.compact()},setCloudControl:(/** @type {import('./storage-journal-contracts.js').ControlInput} */ value)=>{assertCloudWriter();return journal.setCloudControl(value)},clearCloudControl:()=>{assertCloudWriter();return journal.clearCloudControl()},
     get epoch(){return journal.epoch},get ready(){return trusted&&journal.ready},get journalBlocked(){return !!journal.error},get owner(){return identity},get seq(){return journal.seq}};
 }

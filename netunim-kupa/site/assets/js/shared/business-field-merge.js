@@ -16,8 +16,27 @@ const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)
 /** @param {Record<string,unknown>} a @param {Record<string,unknown>} b @param {string} key */
 const sameField=(a,b,key)=>Object.hasOwn(a,key)===Object.hasOwn(b,key)&&equalSyncJson(a[key],b[key]);
 
+/** @param {Record<string,unknown>} base @param {Record<string,unknown>} review @param {Record<string,unknown>} updated */
+function mergeCheckReview(base,review,updated){
+  const event=review.bankReview,original=base.bankMatch;
+  if(typeof event!=='string'||!event||event===base.bankReview||!object(original)||original.eventId!==event)return null;
+  const fields=new Set([...Object.keys(base),...Object.keys(review)]);
+  if([...fields].some(key=>key!=='bankReview'&&!sameField(base,review,key)))return null;
+  if(!sameField(updated,base,'bankReview')&&!sameField(updated,review,'bankReview'))return null;
+  const match=updated.bankMatch,history=updated.bankHistory;
+  const recorded=(object(match)&&match.eventId===event)||(Array.isArray(history)&&history.some(entry=>object(entry)&&entry.eventId===event));
+  // An acknowledgement belongs to its event, even if the bank has since
+  // reported a new match. A local rejection or business edit follows the
+  // ordinary conflict rules.
+  return recorded?{...structuredClone(updated),bankReview:event}:null;
+}
+
 /** @param {unknown} base @param {unknown} local @param {unknown} remote @param {string} policy */
 export function mergeBusinessRecord3(base,local,remote,policy){
+  if(policy==='orders.check'||policy==='kupa.checks'){
+    if(!object(base)||!object(local)||!object(remote))return null;
+    return mergeCheckReview(base,local,remote);
+  }
   const fields=policies[policy];
   if(!fields||!object(base)||!object(local)||!object(remote))return null;
   const result=structuredClone(base),keys=new Set([...Object.keys(base),...Object.keys(local),...Object.keys(remote)]);

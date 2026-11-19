@@ -21,6 +21,7 @@ export interface Methods {
   materializeFlight(options?:{operationId?:string,throughSeq?:number,snapshot?:unknown,prepareAudit?:((flight:import('./storage-records.js').StorageCloudFlight<State>)=>State)|null}):Promise<StoredCloudFlight|null>;
   acknowledge(id:string,revision:number,state:unknown,options:{currentState:unknown,expectedSeq:number,control?:ControlInput|null}):ReturnType<JournalMethods['acknowledge']>;
   rejectAndRebase(id:string,revision:number,state:unknown,options:{currentState:unknown,expectedSeq:number,control?:ControlInput|null}):ReturnType<JournalMethods['rejectAndRebase']>;
+  commitConflictRecovery(state:unknown,expectedHead:import('./storage-cloud-recovery.js').CloudRecoveryHead,isCurrent:()=>boolean):ReturnType<JournalMethods['commitCloudRecovery']>;
   adoptCloudHead(revision:number,state:unknown):ReturnType<JournalMethods['adoptCloudHead']>;
   replaceAuthoritativeState(state:unknown,options?:{boundaryId?:string|null}):ReturnType<JournalMethods['replaceAuthoritativeState']>;
   replaceLocalWithPending(state:unknown,options:{boundaryId:string,expectedSeq:number,expectedBaseRevision:number}):ReturnType<JournalMethods['replaceLocalWithPending']>;
