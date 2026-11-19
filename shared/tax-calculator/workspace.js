@@ -490,10 +490,23 @@ data-action="tax-cancel-preview">
       ? morningBusinessMarkup({selection:morningSelection, report:morningReport, busy:!!morningRead,
         message:morningMessage, today:israelDate(), result:output})
       : '';
-    root.innerHTML = `<section
-class="tax-page"
-dir="rtl">
-<header
+    let page = root.querySelector(':scope > .tax-page');
+    if (!page) {
+      page = document.createElement('section');
+      page.className = 'tax-page';
+      page.dir = 'rtl';
+      root.replaceChildren(page);
+    }
+    const screen = `${year}:${tab}`;
+    const keepScroll = page.dataset.taxScreen === screen;
+    const scrollPositions = [];
+    // Orders scrolls the calculator itself. Kupa can scroll its outer page.
+    for (let node = page; node; node = node.parentElement) {
+      if (node.scrollTop || node.scrollLeft)
+        scrollPositions.push({node, top:keepScroll ? node.scrollTop : 0, left:keepScroll ? node.scrollLeft : 0});
+    }
+    page.dataset.taxScreen = screen;
+    page.innerHTML = `<header
 class="tax-hero">
 <div>
 <button
@@ -648,12 +661,16 @@ data-action="tax-retry">
 נסה לטעון</button>
 </div>
 `
-    }</section>
+    }
 `;
     refreshStatus();
     for (const element of root.querySelectorAll('[data-field]')) {
       const pending = pendingInputs.get(element.dataset.field);
       if (pending) element.value = pending.value;
+    }
+    for (const {node, top, left} of scrollPositions) {
+      node.scrollTop = top;
+      node.scrollLeft = left;
     }
   }
   async function refresh() {

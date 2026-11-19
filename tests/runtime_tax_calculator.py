@@ -88,7 +88,15 @@ SETUP=r"""(async()=>{
     if(!document.querySelector('.tax-morning-context')?.textContent.includes('2025'))throw Error('Morning summary lost source');
     await taxCalculator.command('tax-tab',{dataset:{tab:'business'}});
     change('tax-morning-mode','monthly');await wait(()=>document.getElementById('tax-morning-month-1'));
-    for(const month of [1,2,3,7]){change('tax-morning-month-'+month,true);await new Promise(r=>setTimeout(r,0));}
+    for(const month of [1,2,3]){change('tax-morning-month-'+month,true);await new Promise(r=>setTimeout(r,0));}
+    const monthId='tax-morning-month-7';
+    const monthControl=document.getElementById(monthId);
+    monthControl.scrollIntoView({block:'center'});monthControl.focus({preventScroll:true});
+    const page=document.querySelector('.tax-page'), beforeScroll=page.scrollTop;
+    monthControl.click();await new Promise(requestAnimationFrame);
+    const selectedMonth=document.getElementById(monthId), afterScroll=document.querySelector('.tax-page').scrollTop;
+    if(!page.isConnected||beforeScroll<20||Math.abs(beforeScroll-afterScroll)>1||document.activeElement!==selectedMonth||!selectedMonth.checked)
+      throw Error('Morning month check changed scroll or focus: '+beforeScroll+' → '+afterScroll);
     action('tax-morning-load').click();await wait(()=>shown()?.includes('61.38'));
     const periods=new Set(taxFixture.morningCalls.slice(2).map(row=>row.fromDate+'|'+row.toDate));
     if(periods.size!==2||!periods.has('2025-01-01|2025-03-31')||!periods.has('2025-07-01|2025-07-31'))throw Error('summary read months outside selection');
@@ -134,6 +142,8 @@ SETUP=r"""(async()=>{
 
 for app in ['orders','kupa']:
     with BrowserSession(ROOT/f'netunim-{app}/site',app+'-tax') as browser:
+        if app=='orders':
+            browser.call('Emulation.setDeviceMetricsOverride',{'width':390,'height':470,'deviceScaleFactor':1,'mobile':False})
         result=browser.evaluate(SETUP.replace('__APP__',json.dumps(app)),timeout=45)
         assert result['offline'] and result['snapshot'],result
         for width in [320,393,768,1280]:
@@ -148,6 +158,16 @@ for app in ['orders','kupa']:
                 for table in compact['tables']:
                     assert table['scroll']<=table['width']+1 and table['width']<=table['wrap']+1,(app,width,tab,table)
             browser.evaluate("taxCalculator.command('tax-tab',{dataset:{tab:'summary'}})")
+            if width==393:
+                rerender=browser.evaluate("""(async()=>{
+                  const page=document.querySelector('.tax-page'), scroller=__APP__==='orders'?page:document.scrollingElement;
+                  scroller.scrollTop=240;
+                  const before=scroller.scrollTop;
+                  await taxCalculator.command('tax-retry');
+                  await new Promise(requestAnimationFrame);
+                  return {attached:page.isConnected,before,after:scroller.scrollTop};
+                })()""".replace('__APP__',json.dumps(app)))
+                assert rerender['attached'] and rerender['before']>20 and abs(rerender['before']-rerender['after'])<=1, (app,rerender)
             scroll=browser.evaluate("""(async()=>{const root=document.querySelector('.tax-page'),scroller=__APP__==='orders'?root:document.scrollingElement;scroller.scrollTop=scroller.scrollHeight;await new Promise(requestAnimationFrame);const footer=root.querySelector('footer').getBoundingClientRect(),result={bottom:footer.bottom,viewport:innerHeight,scrolled:scroller.scrollTop};scroller.scrollTop=0;return result;})()""".replace('__APP__',json.dumps(app)))
             assert scroll['scrolled']>0 and scroll['bottom']<=scroll['viewport']+1,scroll
         if app=='orders':
