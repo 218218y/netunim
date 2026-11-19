@@ -45,7 +45,7 @@ interface JournalTransactions {
   rejectFlight(owner:string,epoch:string,writer:string,operationId:string,base:Base,options:{checkpoint:Checkpoint,expectedSeq:number,control?:Control|null}): Promise<boolean>;
   setControl(owner:string,epoch:string,writer:string,control:Control): Promise<boolean>;
   clearControl(owner:string,epoch:string,writer:string,options?:{expectedHead?:import('./storage-journal-authority.js').CloudHead|null}): Promise<boolean>;
-  commitCloudRecovery(owner:string,epoch:string,writer:string,checkpoint:Checkpoint,options:{expectedHead:import('./storage-cloud-recovery.js').CloudRecoveryHead,conflictKind?:'concurrent-ack'|null,isCurrent?:()=>boolean}): Promise<boolean>;
+  commitCloudRecovery(owner:string,epoch:string,writer:string,checkpoint:Checkpoint,options:{expectedHead:import('./storage-cloud-recovery.js').CloudRecoveryHead,conflictKind?:import('./storage-cloud-recovery.js').CloudRecoveryKind|null,isCurrent?:()=>boolean}): Promise<boolean>;
   adoptCloudHead(owner:string,epoch:string,writer:string,checkpoint:Checkpoint,base:Base,options?:{expectedHead?:import('./storage-journal-authority.js').CloudHead|null}): Promise<boolean>;
   resetState(owner:string,epoch:string,writer:string,checkpoint:Checkpoint,options?:{expectedLocalHead?:import('./storage-journal-authority.js').LocalHead|null}): Promise<boolean>;
   resetCloudHead(owner:string,epoch:string,writer:string,checkpoint:Checkpoint,base:Base,options?:{expectedCleanHead?:(import('./storage-journal-authority.js').LocalHead & {revision:number})|null}): Promise<boolean>;

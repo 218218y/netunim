@@ -23,7 +23,7 @@ function fixture(site='orders',options={}){
   let head={revision:7,state:clone(visible)},rpcHook=null,readHook=null,refreshHook=null;
   const databases=new Map(),emergency=emergencyStore(),calls=[],refreshCalls=[],ledger=new Map();
   const merge=(site==='orders'?ordersChecks:kupaChecks)({}).mergeSharedChecks;
-  const create=()=>createSharedChecksV2Runtime({site,owner:()=>owner,primary:()=>true,mode:()=>mode,readState:()=>visible,applyState:value=>{visible=clone(value)},merge,now:()=>time,random:()=>0,
+  const create=(mergeChecks=merge)=>createSharedChecksV2Runtime({site,owner:()=>owner,primary:()=>true,mode:()=>mode,readState:()=>visible,applyState:value=>{visible=clone(value)},merge:mergeChecks,now:()=>time,random:()=>0,
     createStorage:args=>{if(!databases.has(owner))databases.set(owner,memoryDb());return createSharedChecksStorageV2({...args,db:databases.get(owner),emergency,...options})},
     operationId:()=>`flight-${++n}`,readRemote:async()=>readHook?readHook():clone(head),
     refreshBankRpc:async revision=>{refreshCalls.push(revision);return refreshHook?refreshHook():{status:'checked'}},
@@ -36,7 +36,7 @@ function fixture(site='orders',options={}){
     }});
   return {create,calls,refreshCalls,databases,ledger,advance:ms=>{time+=ms},get time(){return time},get visible(){return visible},set visible(value){visible=value},get head(){return head},set head(value){head=value},
     set owner(value){owner=value},set mode(value){mode=value},set rpcHook(value){rpcHook=value},set readHook(value){readHook=value},set refreshHook(value){refreshHook=value},
-    async start(){const runtime=create();await runtime.initialize({state:visible,revision:7,intent:'cloud-authoritative',sourceOwner:'A'});return runtime},
+    async start(mergeChecks){const runtime=create(mergeChecks);await runtime.initialize({state:visible,revision:7,intent:'cloud-authoritative',sourceOwner:'A'});return runtime},
     edit(runtime,id,values){visible.checks=visible.checks.map(row=>row.id===id?{...row,...values}:row);return runtime.persist([put(id)],{generation:++n})}};
 }
 
@@ -170,6 +170,26 @@ for(const site of ['orders','kupa']){
     f.head={revision:8,state:state([{...f.head.state.checks[0],note:'remote'},f.head.state.checks[1]])};
     assert.equal(await runtime.sync(),false);assert.equal(runtime.hasLocalWork,true);assert.equal(f.visible.checks[0].note,'local');
     const restarted=f.create();await restarted.recover();assert.ok((await restarted.cloudState()).control.conflict);assert.equal(restarted.hasLocalWork,true);assert.equal(await restarted.sync(),false);assert.equal(f.calls.length,1);
+  });
+  for(const blocked of [false,true])test(`${site}: ${blocked?'recovers a persisted conflict':'rebases a bank update'} with an acknowledgement of the prior event`,async()=>{
+    const f=fixture(site),prior={eventId:'unverified-C',phase:'unverified'};
+    f.visible=state([{...f.visible.checks[0],status:'הופקד - במעקב',depositDate:'2026-11-18',bankMatch:prior},f.visible.checks[1]]);
+    let runtime=await f.start(blocked?()=>({checks:[],conflicts:[`${site==='orders'?'check':'checks'}:C`]}):undefined);
+    await f.edit(runtime,'C',{bankReview:prior.eventId}).committed;
+    const remote={...f.visible.checks[0],depositDate:'2026-11-19',bankMatch:{eventId:'bank-deposit-C',phase:'deposited'},bankHistory:[prior]};
+    delete remote.bankReview;
+    const other={...f.visible.checks[1],note:'new remote note'};
+    f.head={revision:8,state:state([remote,other],[{seq:9,checkId:'C'}])};
+    if(blocked){
+      assert.equal(await runtime.sync(),false);
+      assert.equal((await runtime.cloudState()).base.ackSeq,0);
+      runtime=f.create();await runtime.recover();
+    }
+    assert.equal(await runtime.sync(),true);
+    assert.deepEqual(f.calls[1].slice(0,2),[[{...remote,bankReview:prior.eventId},other],8]);
+    assert.deepEqual(f.visible.checks,f.head.state.checks);
+    const head=await runtime.cloudState();
+    assert.equal(head.base.ackSeq,1);assert.equal(head.control,null);assert.equal(head.pending,false);
   });
   test(`${site}: an edit during RPC is retained by atomic ACK`,async()=>{
     const f=fixture(site),runtime=await f.start(),entered=gate(),release=gate();await f.edit(runtime,'C',{note:'first'}).committed;

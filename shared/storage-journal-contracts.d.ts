@@ -5,7 +5,7 @@ import type {StoredCloudBase,StoredCloudFlight,StoredCloudControl} from './stora
 import type {SealedStorageRecord} from './storage-json-codec.js';
 import type {StorageJournalDb,Snapshot,Envelope,Metadata} from './storage-journal-db.js';
 import type {ReplayedStorageJournal} from './storage-journal-model.js';
-import type {CloudRecoveryHead} from './storage-cloud-recovery.js';
+import type {CloudRecoveryHead,CloudRecoveryKind} from './storage-cloud-recovery.js';
 import type {LocalHead} from './storage-journal-authority.js';
 
 export type {State,StorageDeleteIntents,StoredStorageOperation};
@@ -58,7 +58,7 @@ export interface JournalMethods {
   rejectAndRebase(flightId:string,revision:number,state:State,options:{validateBase?:Validate,checkpointState:State,expectedSeq:number,appMetadata?:State,control?:ControlInput|null}):Promise<{rejected:StoredCloudFlight,base:StoredCloudBase,checkpoint:import('./storage-checkpoint.js').StoredStorageCheckpoint,control:StoredCloudControl|null,cloudState:CloudSnapshot}>;
   setCloudControl(control?:ControlInput,options?:{expectedEpoch?:string|null,isCurrent?:()=>boolean}):Promise<StoredCloudControl>;
   readCloudRecovery(options?:RecoveryOptions & {afterSeq?:number|null,previousState?:State|null}):Promise<CloudRecovery>;
-  commitCloudRecovery(state:State,options:{expectedHead:CloudRecoveryHead,conflictKind?:'concurrent-ack'|null,validateBase?:Validate,isCurrent?:()=>boolean}):Promise<CloudSnapshot>;
+  commitCloudRecovery(state:State,options:{expectedHead:CloudRecoveryHead,conflictKind?:CloudRecoveryKind|null,validateBase?:Validate,isCurrent?:()=>boolean}):Promise<CloudSnapshot>;
   clearCloudControl(options?:{onlyIfClean?:{kind:string,seq:number,baseRevision:number}|null,project?:Project,validateBase?:Validate}):Promise<boolean>;
   replaceCurrentState(state:State,options?:{appMetadata?:State,expectedSeq?:number|null}):Promise<number>;
   replaceLocalAuthoritativeState(state:State,options:{boundaryId:string,expectedSeq:number}):Promise<{epoch:string,seq:number}>;

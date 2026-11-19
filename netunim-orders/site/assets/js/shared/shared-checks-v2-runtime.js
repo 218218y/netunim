@@ -8,7 +8,7 @@ const canonical=state=>{const verified=validateSharedChecksState(state);return s
 /** @param {unknown} error */
 const errorMessage=error=>error!==null&&typeof error==='object'&&'message' in error?String(error.message||''):'';
 /** @param {unknown} error */
-const stale=error=>/^storage_(ack_checkpoint_stale|rebase_checkpoint_stale|checkpoint_stale|cloud_adoption_stale)$/.test(errorMessage(error));
+const stale=error=>/^storage_(ack_checkpoint_stale|rebase_checkpoint_stale|checkpoint_stale|cloud_adoption_stale|cloud_recovery_stale)$/.test(errorMessage(error));
 
 // One owner, one journal and one immutable RPC payload. Application adapters
 // supply their existing check merge/normalization; this module owns durability.
@@ -187,11 +187,46 @@ export function createSharedChecksV2Runtime({owner:configuredOwner,primary:confi
     throw new Error('shared_checks_concurrent_checkpoint');
   }
   /** @param {Store} store */
+  async function recoverEntityConflict(store){
+    const evidence=await store.readConflictRecovery();assertSyncAllowed(store);
+    if(!evidence)return false;
+    const {head,expectedHead,changedIds}=evidence,conflict=head.control?.conflict;
+    if(!head.base||!head.pending||conflict?.kind!=='entity-conflict'||conflict.domain!=='shared-checks'||
+      conflict.currentRemoteRevision!==head.base.revision||!Array.isArray(conflict.items)||!conflict.items.length)return false;
+    const local=canonical(evidence.state),remote=canonical(head.base.state);
+    const localRows=new Map(local.checks.map(row=>[row.id,row])),remoteRows=new Map(remote.checks.map(row=>[row.id,row]));
+    const resolved=new Set();
+    for(const value of conflict.items){
+      const item=readStorageState(value),id=item.entityId;
+      if(typeof id!=='string'||!changedIds.has(id)||resolved.has(id)||!equalSyncJson(item.remote,remoteRows.get(id)??null))return false;
+      const base=canonical({checks:item.base===null?[]:[item.base],bankEvents:[]});
+      if(base.checks.some(row=>row.id!==id))return false;
+      const left=localRows.get(id),right=remoteRows.get(id);
+      const merged=merge(base.checks,left?[left]:[],right?[right]:[],{deleteIds:head.pendingDeleteIntents.checks||[]});
+      if(merged.conflicts.length)return false;
+      const row=merged.checks[0];
+      if(row)remoteRows.set(id,row);else remoteRows.delete(id);
+      resolved.add(id);
+    }
+    // Legacy conflict controls only carry ancestors for the conflicted rows.
+    // Untouched rows come from the cloud. Other pending edits require their
+    // own ancestor unless their final value already matches the cloud.
+    if([...changedIds].some(id=>!resolved.has(id)&&!equalSyncJson(localRows.get(id),remoteRows.get(id))))return false;
+    try{
+      await store.commitConflictRecovery({checks:[...remoteRows.values()],bankEvents:remote.bankEvents},expectedHead,()=>
+        current(store)&&primary()&&primaryMode()&&active&&!boundaryGate()&&store.seq===expectedHead.seq);
+    }catch(error){
+      if(stale(error)||errorMessage(error)==='storage_cloud_scope_changed'&&current(store)&&store.seq!==expectedHead.seq)return false;
+      throw error;
+    }
+    assertSyncAllowed(store);await publish(store);return true;
+  }
+  /** @param {Store} store */
   async function synchronize(store){
     assertContext(store);if(!active)throw new Error('shared_checks_not_recovered');await store.settled();assertContext(store);
     let cloud=await store.cloudState();assertContext(store);
     if(!cloud.base)throw new Error('shared_checks_cursor_missing');
-    if(cloud.control?.conflict)return false;
+    if(cloud.control?.conflict&&(cloud.control.conflict.domain!=='shared-checks'||cloud.control.conflict.kind!=='entity-conflict'||!await recoverEntityConflict(store)))return false;
     if(Date.parse(cloud.control?.retry?.nextAttemptAt||'')>now())return false;
     for(let attempt=0;attempt<CLOUD_WRITE_POLICY.conflictAttempts;attempt++){
       assertContext(store);cloud=await store.cloudState();assertContext(store);
