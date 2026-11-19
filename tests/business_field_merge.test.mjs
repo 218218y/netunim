@@ -39,6 +39,26 @@ test('same-field contradictions, financial/identity/unknown edits, delete/edit a
   assert.equal(kupa([base],[{...base,message:'new'}],[remote],'checks').conflicts.length,1);
 });
 
+test('check notes merge with evidenced reconciliation but keep unrelated and competing edits fenced',()=>{
+  const prior={eventId:'pending',phase:'unverified'};
+  const b={id:'C',amount:100,checkNumber:'123',note:'old',status:'בקופה',bankMatch:prior};
+  const note={...b,note:'local'},review={...b,bankReview:prior.eventId};
+  const bank={...b,status:'הופקד - במעקב',depositDate:'2026-11-19',
+    bankMatch:{eventId:'deposit',phase:'deposited'},bankHistory:[prior]};
+  for(const merge of [(l,r)=>orders([b],[l],[r],'check'),(l,r)=>kupa([b],[l],[r],'checks')]){
+    for(const update of [bank,review]){
+      const expected={rows:[{...update,note:note.note}],conflicts:[]};
+      assert.deepEqual(merge(note,update),expected);
+      assert.deepEqual(merge(update,note),expected);
+    }
+    for(const edit of [{...b,status:'בוטל'},{...b,unknownField:true},{...bank,amount:200},
+      {...bank,checkNumber:'1234'},{...bank,note:'remote'}]){
+      assert.equal(merge(note,edit).conflicts.length,1);
+      assert.equal(merge(edit,note).conflicts.length,1);
+    }
+  }
+});
+
 test('a move can combine with commentary but competing topology changes are fenced across rows',()=>{
   const second={...base,id:'B',sequence:2},third={...base,id:'C',sequence:3};
   const b={transactions:[base,second,third]},merge=createSyncMerge({normalizeState:copy}).merge3;

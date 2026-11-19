@@ -16,7 +16,10 @@ const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)
 /** @param {Record<string,unknown>} a @param {Record<string,unknown>} b @param {string} key */
 const sameField=(a,b,key)=>Object.hasOwn(a,key)===Object.hasOwn(b,key)&&equalSyncJson(a[key],b[key]);
 
-/** @param {Record<string,unknown>} base @param {Record<string,unknown>} review @param {Record<string,unknown>} updated */
+const checkReconciliationFields=new Set(['bankMatch','bankHistory','status','depositDate','clearedDate','depositedAt','depositSeq']);
+
+/** @param {Record<string,unknown>} base @param {Record<string,unknown>} review @param {Record<string,unknown>} updated
+ * @returns {Record<string,unknown>|null} */
 function mergeCheckReview(base,review,updated){
   const event=review.bankReview,original=base.bankMatch;
   if(typeof event!=='string'||!event||event===base.bankReview||!object(original)||original.eventId!==event)return null;
@@ -38,19 +41,27 @@ function checkWithoutNote(check){
   return fields;
 }
 
+/** @param {Record<string,unknown>} base @param {Record<string,unknown>} updated */
+function checkReconciliationOnly(base,updated){
+  if(sameField(base,updated,'bankMatch')&&sameField(base,updated,'bankHistory'))return false;
+  const fields=new Set([...Object.keys(base),...Object.keys(updated)]);
+  return [...fields].every(key=>checkReconciliationFields.has(key)||sameField(base,updated,key));
+}
+
 /** @param {Record<string,unknown>} base @param {Record<string,unknown>} local @param {Record<string,unknown>} remote */
 function mergeCheck(base,local,remote){
   const localNoteChanged=!sameField(base,local,'note'),remoteNoteChanged=!sameField(base,remote,'note');
   if(!localNoteChanged&&!remoteNoteChanged)return mergeCheckReview(base,local,remote);
   if(localNoteChanged&&remoteNoteChanged&&!sameField(local,remote,'note'))return null;
 
-  // Notes do not affect the bank or financial state. Keep the existing review
-  // proof and whole-record conflict rules for the remaining fields.
+  // A note can accompany reconciliation or a verified review. Other edits
+  // still require the existing whole-record conflict checks.
   const baseFields=checkWithoutNote(base),localFields=checkWithoutNote(local),remoteFields=checkWithoutNote(remote);
-  let merged;
-  if(equalSyncJson(baseFields,localFields))merged=remoteFields;
-  else if(equalSyncJson(baseFields,remoteFields)||equalSyncJson(localFields,remoteFields))merged=localFields;
-  else merged=mergeCheckReview(baseFields,localFields,remoteFields);
+  let merged=mergeCheckReview(baseFields,localFields,remoteFields);
+  if(!merged&&equalSyncJson(baseFields,localFields)){
+    merged=checkReconciliationOnly(baseFields,remoteFields)?remoteFields:mergeCheckReview(baseFields,remoteFields,localFields);
+  }
+  if(!merged&&equalSyncJson(baseFields,remoteFields)&&checkReconciliationOnly(baseFields,localFields))merged=localFields;
   if(!merged)return null;
   const noteSource=localNoteChanged?local:remote;
   if(Object.hasOwn(noteSource,'note'))return structuredClone({...merged,note:noteSource.note});
