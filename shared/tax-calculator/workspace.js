@@ -26,7 +26,6 @@ import {
   normalizeDate,
   arnonaResultsMarkup,
   insuranceSettlementMarkup,
-  morningBusinessMarkup,
 } from './view.js';
 
 const statusLabels = {
@@ -73,7 +72,7 @@ export function createTaxWorkspace({
   container,
   back,
   confirmDialog,
-  loadMorningBusiness,
+  morning,
   subscribeAccountScope = () => () => {},
 }) {
   let year = currentTaxYear(),
@@ -172,7 +171,7 @@ export function createTaxWorkspace({
     morningSelection = null;
   }
   function selectBusinessSource(element) {
-    if (!loadMorningBusiness || !isCurrent()) return false;
+    if (!morning || !isCurrent()) return false;
     const useMorning = element.dataset.clickArg0 === 'morning';
     if (useMorning === !!morningSelection) return true;
     if (pendingInputs.size) return fail(new Error('יש להשלים את השדות שבעריכה לפני שינוי מקור הנתונים'));
@@ -183,7 +182,7 @@ export function createTaxWorkspace({
       morningSelection = {year:sourceYear, mode:sourceYear < current ? 'annual' : 'monthly', months:[]};
     }
     render();
-    container()?.querySelector(`[data-action="tax-business-source"][data-click-arg0="${useMorning ? 'morning' : 'manual'}"]`)?.focus({preventScroll:true});
+    document.getElementById(element.id)?.focus({preventScroll:true});
     return true;
   }
   function changeMorningSelection(element) {
@@ -213,7 +212,7 @@ export function createTaxWorkspace({
     return true;
   }
   async function readMorning() {
-    if (!loadMorningBusiness || !morningSelection || !isCurrent() || morningRead) return false;
+    if (!morning || !morningSelection || !isCurrent() || morningRead) return false;
     const guard = capture(), controller = new AbortController();
     const selection = clone(morningSelection), today = israelDate();
     const assertCurrent = () => {
@@ -225,7 +224,7 @@ export function createTaxWorkspace({
     morningRead = controller;
     render();
     try {
-      const report = await loadMorningBusiness({selection, today, signal:controller.signal, assertCurrent});
+      const report = await morning.read({selection, today, signal:controller.signal, assertCurrent});
       assertCurrent();
       calculateTax(draft, draft.rules, {morning:report});
       morningReport = report;
@@ -486,8 +485,8 @@ data-action="tax-cancel-preview">
     }
     const output = draft ? result() : null,
       ruleAlerts = draft?.rules ? ruleWarnings(draft.rules, year) : [];
-    const businessSourceMarkup = tab === 'business' && loadMorningBusiness
-      ? morningBusinessMarkup({selection:morningSelection, report:morningReport, busy:!!morningRead,
+    const businessSourceMarkup = tab === 'business' && morning
+      ? morning.markup({selection:morningSelection, report:morningReport, busy:!!morningRead,
         message:morningMessage, today:israelDate(), result:output})
       : '';
     let page = root.querySelector(':scope > .tax-page');

@@ -3,7 +3,10 @@ export function createLazyTaxCalculator(ports) {
   let workspace=null,loading=null,previous=null;
   async function ready(){
     if(workspace)return workspace;
-    if(!loading)loading=import('./workspace.js').then(({createTaxWorkspace})=>{workspace=createTaxWorkspace({...ports,back:()=>ports.navigate(previous??ports.defaultPage)});return workspace;}).catch(error=>{loading=null;throw error;});
+    if(!loading)loading=Promise.all([import('./workspace.js'),ports.loadMorning?.()]).then(([{createTaxWorkspace},morning])=>{
+      workspace=createTaxWorkspace({...ports,morning,back:()=>ports.navigate(previous??ports.defaultPage)});
+      return workspace;
+    }).catch(error=>{loading=null;throw error;});
     return loading;
   }
   async function open(){previous=ports.currentPage();ports.navigate('tax-calculator');const feature=await ready();return feature.activate();}
