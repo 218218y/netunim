@@ -1,6 +1,7 @@
 import {createSharedChecksStorageV2,validateSharedChecksState} from './shared-checks-storage-v2.js';
 import {readStorageState} from './storage-operation.js';
 import {storageRecoveryFailure} from './storage-v2-runtime.js';
+import {readDocumentWriteAck} from './document-write-ack.js';
 import {CLOUD_WRITE_POLICY,cloudWriteError,createCloudRetryControl,createOperationId,equalSyncJson,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy,structuredSyncConflict} from './cloud-sync.js';
 
 /** @param {unknown} state */
@@ -166,21 +167,25 @@ export function createSharedChecksV2Runtime({owner:configuredOwner,primary:confi
   }
   /** @param {Store} store @param {Flight} flight @param {Row|null|undefined} row @param {boolean} rejected */
   async function integrate(store,flight,row,rejected){
-    if(!row||!Number.isSafeInteger(row.revision)||row.revision<=flight.baseRevision)throw new Error('shared_checks_response_revision_invalid');
-    const remote=canonical(row.state);
+    if(!row||rejected&&(!Number.isSafeInteger(row.revision)||row.revision<=flight.baseRevision))throw new Error('shared_checks_response_revision_invalid');
+    const receipt=rejected?null:readDocumentWriteAck(row,{
+      baseRevision:flight.baseRevision,sentState:canonical(flight.snapshot),prepareState:canonical,
+      errorCode:'shared_checks_response_revision_invalid',stateErrorCode:'shared_checks_response_state_invalid',
+    });
+    const revision=receipt?.revision??row.revision,remote=receipt?.state??canonical(row.state);
     for(let attempt=0;attempt<8;attempt++){
       assertContext(store);const local=await store.recover(),cloud=await store.cloudState();assertContext(store);
       if(!local||!cloud.base)throw new Error('shared_checks_not_recovered');
       if(local.seq!==cloud.seq||local.seq!==store.seq)continue;
       const base=canonical(rejected?cloud.base.state:flight.snapshot),localState=canonical(local.state),deleteIds=(rejected?cloud.pendingDeleteIntents:cloud.afterFlightDeleteIntents)?.checks||[];
       const merged=merge(base.checks,localState.checks,remote.checks,{deleteIds});
-      const control=merged.conflicts.length?conflictControl(base,localState,{...remote,revision:row.revision},merged.conflicts,{...cloud,base:cloud.base}):null;
+      const control=merged.conflicts.length?conflictControl(base,localState,{...remote,revision},merged.conflicts,{...cloud,base:cloud.base}):null;
       // A same-check conflict retains the visible local version and the remote
       // base for explicit resolution. Server bank events are still checkpointed.
       const currentState={checks:control?localState.checks:merged.checks,bankEvents:remote.bankEvents};
       try{
-        if(rejected)await store.rejectAndRebase(flight.operationId,row.revision,remote,{currentState,expectedSeq:local.seq,control});
-        else await store.acknowledge(flight.operationId,row.revision,remote,{currentState,expectedSeq:local.seq,control});
+        if(rejected)await store.rejectAndRebase(flight.operationId,revision,remote,{currentState,expectedSeq:local.seq,control});
+        else await store.acknowledge(flight.operationId,revision,remote,{currentState,expectedSeq:local.seq,control});
       }catch(error){if(stale(error))continue;throw error}
       assertContext(store);diagnostics[rejected?'rebases':'acks']++;lastRemoteUpdatedAt=row.updated_at||lastRemoteUpdatedAt;await publish(store);return !control;
     }

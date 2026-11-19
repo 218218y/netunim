@@ -157,6 +157,58 @@ for(const site of ['orders','kupa']){
     assert.equal(await runtime.sync(),true);assert.deepEqual(f.calls[1],first);assert.equal(f.visible.checks[1].note,'during outage');
     assert.notEqual(f.calls[2][2],first[2]);assert.equal(f.visible.bankEvents[0].seq,42);
   });
+  test(`${site}: a verified no-op advances the journal without advancing the cloud revision`,async()=>{
+    const f=fixture(site),runtime=await f.start();
+    await f.edit(runtime,'C',{amount:100}).committed;
+    f.rpcHook=()=>({r:{ok:true},row:{...clone(f.head),operation_revision:7,operation_replayed:false}});
+    assert.equal(await runtime.sync(),true);
+    const cloud=await runtime.cloudState();
+    assert.equal(cloud.base.revision,7);assert.equal(cloud.base.ackSeq,1);
+    assert.equal(cloud.flight,null);assert.equal(cloud.pending,false);
+    assert.equal(f.calls.length,1);
+    assert.equal(classifySyncIncident(await runtime.incidentSample()).state,'clean_verified');
+  });
+  test(`${site}: unverified HTTP successes retain the durable flight`,async()=>{
+    const f=fixture(site),runtime=await f.start();
+    await f.edit(runtime,'C',{note:'must survive'}).committed;
+    f.rpcHook=()=>({r:{ok:true},row:clone(f.head)});
+    await assert.rejects(runtime.sync(),/shared_checks_response_revision_invalid/);
+    f.rpcHook=()=>({r:{ok:true},row:{...clone(f.head),revision:9,operation_revision:9,operation_replayed:false}});
+    await assert.rejects(runtime.sync(),/shared_checks_response_revision_invalid/);
+    const restarted=f.create();await restarted.recover();
+    const cloud=await restarted.cloudState();
+    assert.equal(cloud.base.revision,7);assert.equal(cloud.base.ackSeq,0);
+    assert.equal(cloud.flight.operationId,f.calls[0][2]);assert.equal(cloud.pending,true);
+    assert.deepEqual(f.calls[1],f.calls[0]);
+    assert.equal(f.visible.checks[0].note,'must survive');
+  });
+  test(`${site}: a replayed no-op merges the newer bank head with an edit made while the receipt was missing`,async()=>{
+    const f=fixture(site),runtime=await f.start();
+    await f.edit(runtime,'C',{amount:100}).committed;
+    f.rpcHook=()=>{throw new TypeError('Failed to fetch')};
+    await assert.rejects(runtime.sync(),/fetch/);
+    const first=f.calls[0];
+    const restarted=f.create();await restarted.recover();
+    await f.edit(restarted,'C',{note:'edited while waiting'}).committed;
+    const bankMatch={eventId:'new-C',phase:'deposited'};
+    f.head={revision:8,state:state([{...f.head.state.checks[0],bankMatch,depositDate:'2026-11-19'},f.head.state.checks[1]],
+      [{seq:9,checkId:'C',delta:100}])};
+    f.rpcHook=(checks,revision,id)=>{
+      if(id===first[2])return {r:{ok:true},row:{...clone(f.head),operation_revision:7,operation_replayed:true}};
+      f.head={revision:revision+1,state:state(checks,f.head.state.bankEvents)};
+      return {r:{ok:true},row:{...clone(f.head),operation_revision:f.head.revision,operation_replayed:false}};
+    };
+    f.advance(10000);
+    assert.equal(await restarted.sync(),true);
+    assert.deepEqual(f.calls[1],first);
+    assert.equal(f.calls[2][1],8);assert.notEqual(f.calls[2][2],first[2]);
+    assert.equal(f.calls[2][0][0].note,'edited while waiting');
+    assert.deepEqual(f.calls[2][0][0].bankMatch,bankMatch);
+    assert.deepEqual(f.visible.bankEvents.map(event=>event.seq),[9]);
+    const cloud=await restarted.cloudState();
+    assert.equal(cloud.base.revision,9);assert.equal(cloud.base.ackSeq,2);
+    assert.equal(cloud.control,null);assert.equal(cloud.pending,false);
+  });
   test(`${site}: confirmed conflict durably rebases remote check and event before replacement flight`,async()=>{
     const f=fixture(site),runtime=await f.start();await f.edit(runtime,'C',{note:'local'}).committed;
     f.head={revision:8,state:state([{...f.head.state.checks[0]},{...f.head.state.checks[1],note:'remote'}],[{seq:9,checkId:'D',delta:200}])};
@@ -171,11 +223,11 @@ for(const site of ['orders','kupa']){
     assert.equal(await runtime.sync(),false);assert.equal(runtime.hasLocalWork,true);assert.equal(f.visible.checks[0].note,'local');
     const restarted=f.create();await restarted.recover();assert.ok((await restarted.cloudState()).control.conflict);assert.equal(restarted.hasLocalWork,true);assert.equal(await restarted.sync(),false);assert.equal(f.calls.length,1);
   });
-  for(const blocked of [false,true])test(`${site}: ${blocked?'recovers a persisted conflict':'rebases a bank update'} with an acknowledgement of the prior event`,async()=>{
+  for(const blocked of [false,true])test(`${site}: ${blocked?'recovers a persisted conflict':'rebases a bank update'} with an acknowledgement and a note`,async()=>{
     const f=fixture(site),prior={eventId:'unverified-C',phase:'unverified'};
     f.visible=state([{...f.visible.checks[0],status:'הופקד - במעקב',depositDate:'2026-11-18',bankMatch:prior},f.visible.checks[1]]);
     let runtime=await f.start(blocked?()=>({checks:[],conflicts:[`${site==='orders'?'check':'checks'}:C`]}):undefined);
-    await f.edit(runtime,'C',{bankReview:prior.eventId}).committed;
+    await f.edit(runtime,'C',{bankReview:prior.eventId,note:'local note'}).committed;
     const remote={...f.visible.checks[0],depositDate:'2026-11-19',bankMatch:{eventId:'bank-deposit-C',phase:'deposited'},bankHistory:[prior]};
     delete remote.bankReview;
     const other={...f.visible.checks[1],note:'new remote note'};
@@ -186,7 +238,7 @@ for(const site of ['orders','kupa']){
       runtime=f.create();await runtime.recover();
     }
     assert.equal(await runtime.sync(),true);
-    assert.deepEqual(f.calls[1].slice(0,2),[[{...remote,bankReview:prior.eventId},other],8]);
+    assert.deepEqual(f.calls[1].slice(0,2),[[{...remote,bankReview:prior.eventId,note:'local note'},other],8]);
     assert.deepEqual(f.visible.checks,f.head.state.checks);
     const head=await runtime.cloudState();
     assert.equal(head.base.ackSeq,1);assert.equal(head.control,null);assert.equal(head.pending,false);

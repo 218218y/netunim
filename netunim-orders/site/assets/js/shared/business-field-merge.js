@@ -31,11 +31,37 @@ function mergeCheckReview(base,review,updated){
   return recorded?{...structuredClone(updated),bankReview:event}:null;
 }
 
+/** @param {Record<string,unknown>} check */
+function checkWithoutNote(check){
+  const fields={...check};
+  delete fields.note;
+  return fields;
+}
+
+/** @param {Record<string,unknown>} base @param {Record<string,unknown>} local @param {Record<string,unknown>} remote */
+function mergeCheck(base,local,remote){
+  const localNoteChanged=!sameField(base,local,'note'),remoteNoteChanged=!sameField(base,remote,'note');
+  if(!localNoteChanged&&!remoteNoteChanged)return mergeCheckReview(base,local,remote);
+  if(localNoteChanged&&remoteNoteChanged&&!sameField(local,remote,'note'))return null;
+
+  // Notes do not affect the bank or financial state. Keep the existing review
+  // proof and whole-record conflict rules for the remaining fields.
+  const baseFields=checkWithoutNote(base),localFields=checkWithoutNote(local),remoteFields=checkWithoutNote(remote);
+  let merged;
+  if(equalSyncJson(baseFields,localFields))merged=remoteFields;
+  else if(equalSyncJson(baseFields,remoteFields)||equalSyncJson(localFields,remoteFields))merged=localFields;
+  else merged=mergeCheckReview(baseFields,localFields,remoteFields);
+  if(!merged)return null;
+  const noteSource=localNoteChanged?local:remote;
+  if(Object.hasOwn(noteSource,'note'))return structuredClone({...merged,note:noteSource.note});
+  return structuredClone(merged);
+}
+
 /** @param {unknown} base @param {unknown} local @param {unknown} remote @param {string} policy */
 export function mergeBusinessRecord3(base,local,remote,policy){
   if(policy==='orders.check'||policy==='kupa.checks'){
     if(!object(base)||!object(local)||!object(remote))return null;
-    return mergeCheckReview(base,local,remote);
+    return mergeCheck(base,local,remote);
   }
   const fields=policies[policy];
   if(!fields||!object(base)||!object(local)||!object(remote))return null;
