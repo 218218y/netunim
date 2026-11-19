@@ -333,7 +333,7 @@ class SupabaseContracts(unittest.TestCase):
         # and acknowledgement RPCs are still intentionally browser callable.
         tests = ((ROOT / 'tests/supabase_authorization.py').read_text(encoding='utf8') +
                  (ROOT / 'tests/storage_writer_protocol_server.py').read_text(encoding='utf8'))
-        review = (ROOT / 'supabase/REVIEW.md').read_text(encoding='utf8')
+        review = (ROOT / 'docs/operations/supabase.md').read_text(encoding='utf8')
         for rpc in expected:
             function = next(f for f in inventory['functions'] if f['schema'] == 'public' and f['name'] == rpc)
             self.assertTrue(function['security_definer'])

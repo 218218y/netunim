@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 const read=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 
 test('the operator rollout lists the versions published by both Bridge listeners',()=>{
-  const rollout=read('docs/SECURITY_OPERATOR_ROLLOUT_HE.md');
+  const rollout=read('docs/operations/connectors.md');
   for (const [service,file] of [
     ['Bank Bridge','netunim-kupa/bank-bridge/server.mjs'],
     ['Document Bridge','netunim-orders/document-bridge/lib.mjs'],

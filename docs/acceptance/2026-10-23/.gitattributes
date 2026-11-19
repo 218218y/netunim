@@ -1,2 +1,0 @@
-# Preserve downloaded evidence bytes (including Windows CRLF) and their SHA-256.
-*.json -text

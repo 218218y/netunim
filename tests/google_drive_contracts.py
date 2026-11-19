@@ -6,7 +6,7 @@ FUNCTION=ROOT/'netunim-orders/supabase/functions/google-drive-oauth/index.ts'
 SQL=ROOT/'netunim-orders/supabase/google_drive_oauth.sql'
 MIGRATION=ROOT/'supabase/migrations/20260927121000_google_drive_oauth_search.sql'
 CONFIGS=[ROOT/'netunim-orders/supabase/config.toml',ROOT/'supabase/config.toml']
-SETUP=ROOT/'netunim-orders/GOOGLE_DRIVE_SEARCH_SETUP.txt'
+SETUP=ROOT/'docs/integrations/google.md'
 errors=[]
 
 def ok(condition,message):

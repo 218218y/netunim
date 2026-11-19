@@ -13,7 +13,7 @@ BASELINE=ROOT/'supabase/migrations/20260906200304_production_schema_baseline.sql
 SETUP=ROOT/'netunim-orders/supabase/setup.sql'
 MORNING_SQL=ROOT/'netunim-orders/supabase/morning_documents.sql'
 EDGE=ROOT/'netunim-orders/supabase/functions/morning-documents/index.ts'
-DOCS=ROOT/'netunim-orders/MORNING_SETUP.md'
+DOCS=ROOT/'docs/integrations/morning-income.md'
 errors=[]
 
 def contains_js(source,fragment):

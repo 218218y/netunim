@@ -74,7 +74,7 @@ class SupabaseDeployGateContracts(unittest.TestCase):
                 candidate.assert_not_called()
 
     def test_recorded_bank_observation_matches_reviewed_sql_without_claiming_full_postflight(self):
-        observation = json.loads((gate.ROOT/'docs/evidence/bank-authority-production-20261016.json').read_text(encoding='utf8'))
+        observation = json.loads((gate.ROOT/'tests/fixtures/bank-authority-production-20261016.json').read_text(encoding='utf8'))
         self.assertEqual(observation['project_id'], self.target['project_id'])
         self.assertIn('not a replacement', observation['limitations'][0])
         # This historical read-only observation covers the two earlier migrations.

@@ -113,7 +113,7 @@ ok("error?.status!==409" in journal and 'getEvent' in journal and 'insertMatches
 ok("error?.status===404||error?.status===410" in journal,'calendar journal: repeated deletes acknowledge already-deleted events')
 ok('accounts.google.com/gsi' not in headers and 'https://www.googleapis.com' in headers.replace(';',' ').split() and "script-src 'self'" in headers and "frame-src blob:;" in headers and 'Cross-Origin-Opener-Policy: same-origin' in headers,'calendar security: CSP/COOP prohibit remote iframes; local Morning PDF blobs and Calendar API access remain allowed')
 ok('./assets/js/composition/calendar.js' in worker and './assets/js/calendar/journal.js' in worker and './assets/js/platform/calendar-delivery-owner.js' in worker and './assets/js/calendar/view.js' in worker and './assets/js/domains/calendar/controller.js' in worker and './assets/js/domains/calendar/action-ports.js' in worker,'calendar PWA: composition, delivery ownership, journal, view, controller, and action ports are part of the deterministic app shell')
-ok((ROOT/'netunim-orders/GOOGLE_CALENDAR_SETUP.txt').is_file(),'calendar setup: deployment/OAuth instructions are included')
+ok((ROOT/'docs/integrations/google.md').is_file(),'calendar setup: deployment/OAuth instructions are included')
 
 if errors:
     print('\nERRORS',len(errors))

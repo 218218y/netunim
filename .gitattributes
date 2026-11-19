@@ -11,7 +11,7 @@ tests/fixtures/pdf-corpus/*.pdf -text -diff
 tests/fixtures/prebundle/*.zip -text -diff
 
 # Original diagnostic job logs retain their manifest's byte hashes on Windows.
-docs/evidence/crash-history/*.txt -text
+tests/fixtures/crash-history/*.txt -text
 
 # Vendored document viewers are integrity-checked byte-for-byte.
 netunim-orders/site/assets/vendor/document-viewers/** -text

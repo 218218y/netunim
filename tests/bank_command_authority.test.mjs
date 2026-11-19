@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {parse} from 'acorn';
 import {createBankBridgeRoutes} from '../netunim-kupa/bank-bridge/http-routes.mjs';
 
-const manifest=JSON.parse(readFileSync(new URL('../docs/evidence/bank-command-authority.json',import.meta.url),'utf8'));
+const manifest=JSON.parse(readFileSync(new URL('./fixtures/bank-command-authority.json',import.meta.url),'utf8'));
 const source=readFileSync(new URL('../netunim-kupa/bank-bridge/http-routes.mjs',import.meta.url),'utf8');
 
 test('every registered Bank private route has an explicit reviewed effect and owner',()=>{

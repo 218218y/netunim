@@ -22,7 +22,7 @@ def balanced_dollars(text):
 orders_sql = (ORDERS / "supabase/sync_integrity_v5_upgrade.sql").read_text(encoding="utf-8")
 kupa_sql = (KUPA / "supabase/sync_integrity_v5_upgrade.sql").read_text(encoding="utf-8")
 lower = orders_sql.lower()
-runbook = (ROOT / "SYNC_HARDENING_V5.md").read_text(encoding="utf-8")
+runbook = (ROOT / "tests/fixtures/storage-v5-cutover-runbook.md").read_text(encoding="utf-8")
 
 ok(orders_sql == kupa_sql, "sync-integrity v5 migration is byte-identical in Orders and Kupa")
 ok(balanced_dollars(orders_sql) and lower.rstrip().endswith("commit;"), "v5 migration is transactionally and dollar-quote balanced")

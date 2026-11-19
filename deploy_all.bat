@@ -44,7 +44,7 @@ set "DEPLOY_EXIT=%ERRORLEVEL%"
 if not "%DEPLOY_EXIT%"=="0" (
   echo.
   echo ERROR: Kupa deployment failed after Orders completed. The pair may be partially deployed.
-  echo Follow docs\DEPLOYMENT_COMPATIBILITY.md for per-project roll-forward or rollback.
+  echo Follow docs\operations\deployment.md for per-project roll-forward or rollback.
   if /I not "%MODE%"=="--preflight-only" pause
   exit /b %DEPLOY_EXIT%
 )
