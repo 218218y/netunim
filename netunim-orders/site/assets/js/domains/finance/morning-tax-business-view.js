@@ -1,4 +1,5 @@
 import {displayDate, esc, money} from '../../shared/tax-calculator/view.js';
+import {FIRST_MORNING_TAX_YEAR} from '../../shared/tax-calculator/contracts.js';
 
 const monthLabel = new Intl.DateTimeFormat('he-IL', {month:'long', timeZone:'UTC'});
 export function morningBusinessMarkup({selection, report, busy, message, today, result}) {
@@ -13,8 +14,8 @@ export function morningBusinessMarkup({selection, report, busy, message, today, 
     ${selection ? `<div class="tax-fields">
       <label class="tax-field">שנת נתוני Morning
         <select id="tax-morning-year" data-change="tax-morning-selection" data-morning-key="year">
-          ${Array.from({length:currentYear - 1999}, (_, index) => {
-            const year = currentYear - index;
+          ${Array.from({length:currentYear - FIRST_MORNING_TAX_YEAR + 1}, (_, index) => {
+            const year = FIRST_MORNING_TAX_YEAR + index;
             return `<option value="${year}" ${year === selection.year ? 'selected' : ''}>${year}</option>`;
           }).join('')}
         </select>

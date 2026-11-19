@@ -1,6 +1,7 @@
 // @ts-check
 /** Money is integer agorot; rates are integer basis points (10000 = 100%). */
 export const ENGINE_VERSION = '1.3.0';
+export const FIRST_MORNING_TAX_YEAR = 2026;
 export const GROUPS = [
   'vat',
   'insurance',

@@ -6,6 +6,7 @@ import {
   createAnnual,
   createProfile,
   currentTaxYear,
+  FIRST_MORNING_TAX_YEAR,
   israelDate,
   toMinor,
   validDate,
@@ -178,7 +179,9 @@ export function createTaxWorkspace({
     resetMorning();
     if (useMorning) {
       const today = israelDate(), current = Number(today.slice(0, 4));
-      const sourceYear = Math.min(year, current);
+      if (current < FIRST_MORNING_TAX_YEAR)
+        return fail(new Error(`נתוני Morning זמינים לחישוב משנת ${FIRST_MORNING_TAX_YEAR}`));
+      const sourceYear = Math.max(FIRST_MORNING_TAX_YEAR, Math.min(year, current));
       morningSelection = {year:sourceYear, mode:sourceYear < current ? 'annual' : 'monthly', months:[]};
     }
     render();
@@ -191,9 +194,9 @@ export function createTaxWorkspace({
     const next = {...morningSelection};
     if (element.dataset.morningKey === 'year') {
       const selectedYear = Number(element.value);
-      if (!Number.isInteger(selectedYear) || selectedYear < 2000 || selectedYear > current) {
+      if (!Number.isInteger(selectedYear) || selectedYear < FIRST_MORNING_TAX_YEAR || selectedYear > current) {
         element.value = morningSelection.year;
-        return fail(new Error('יש לבחור שנת Morning שכבר התחילה'));
+        return fail(new Error(`יש לבחור שנת Morning מ־${FIRST_MORNING_TAX_YEAR} ועד השנה הנוכחית`));
       }
       next.year = selectedYear;
       next.months = [];

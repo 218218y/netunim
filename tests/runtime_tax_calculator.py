@@ -26,12 +26,12 @@ SETUP=r"""(async()=>{
       if (taxFixture.morningFailure && body.source==='expenses')
         return Response.json({ok:false,message:'מקור ההוצאות אינו זמין'},{status:502});
       const rows=body.source==='documents' ? [1,3,6].map((month,index)=>({id:'doc-'+month,kind:'document',type:305,
-        date:'2025-0'+month+'-10',businessType:1,grossCents:index===1?23600:11800,vatCents:index===1?3600:1800})) :
-        [{id:'expense-1',kind:'expense',date:'2025-01-01',type:305,status:10,grossCents:5900,vatCents:900,deductibleVatCents:450}];
+        date:'2026-0'+month+'-10',businessType:1,grossCents:index===1?23600:11800,vatCents:index===1?3600:1800})) :
+        [{id:'expense-1',kind:'expense',date:'2026-01-01',type:305,status:10,grossCents:5900,vatCents:900,deductibleVatCents:450}];
       const items=rows.filter(row=>row.date>=body.fromDate&&row.date<=body.toDate);
       const {source,fromDate,toDate,page}=body;
       return Response.json({version:1,source,fromDate,toDate,page,pageSize:50,environment:'sandbox',
-        readAt:'2026-10-19T12:00:00Z',total:items.length,pages:items.length?1:0,items});
+        readAt:'2027-11-19T12:00:00Z',total:items.length,pages:items.length?1:0,items});
     }
     if(options.method==='POST'){
       const b=JSON.parse(options.body),key=scope.owner+'/'+b.p_document_name;let ack=ops.get(scope.owner+'/'+b.p_operation_id);
@@ -67,6 +67,9 @@ SETUP=r"""(async()=>{
   await taxCalculator.command('tax-input',input);await taxCalculator.command('tax-save');await taxCalculator.command('tax-sync');
   const row=cloud.get(scope.owner+'/year/2026');if(row.state.revenue!==18000000)throw Error('wrong cloud amount');
   if(app==='orders'){
+    const OriginalDate=globalThis.Date;
+    let morningToday='2026-11-19T12:00:00Z';
+    globalThis.Date=class extends OriginalDate{constructor(...args){super(...(args.length?args:[morningToday]));}};
     morningOperationScope.captureRead=()=>()=>{};
     taxFixture.morningCalls=[];
     const action=(name,arg)=>document.querySelector('[data-action="'+name+'"]'+(arg?'[data-click-arg0="'+arg+'"]':''));
@@ -78,14 +81,22 @@ SETUP=r"""(async()=>{
     const wait=async predicate=>{for(let n=0;n<100;n++){if(predicate())return;await new Promise(r=>setTimeout(r,20))}throw Error('Morning calculator did not settle: '+document.querySelector('.tax-morning-status')?.textContent)};
     action('tax-business-source','morning').click();await wait(()=>document.getElementById('tax-morning-mode'));
     if(taxFixture.morningCalls.length||document.querySelector('[data-field="revenue"]'))throw Error('Morning source triggered a hidden request or left manual inputs active');
-    change('tax-morning-year','2025');await wait(()=>document.getElementById('tax-morning-year').value==='2025');
+    const morningYears=()=>Array.from(document.getElementById('tax-morning-year').options,option=>option.value).join(',');
+    if(morningYears()!=='2026'||!document.querySelector('#tax-morning-mode option[value="annual"]').disabled)
+      throw Error('only 2026 should be available while it is the current year');
+    action('tax-business-source','manual').click();await wait(()=>document.querySelector('[data-field="revenue"]'));
+    morningToday='2027-11-19T12:00:00Z';
+    action('tax-business-source','morning').click();await wait(()=>document.getElementById('tax-morning-mode'));
+    if(morningYears()!=='2026,2027')throw Error('Morning year options did not advance with the calendar');
+    change('tax-morning-year','2027');await wait(()=>document.querySelector('#tax-morning-mode option[value="annual"]').disabled);
+    change('tax-morning-year','2026');await wait(()=>!document.querySelector('#tax-morning-mode option[value="annual"]').disabled);
     change('tax-morning-mode','annual');await wait(()=>!document.getElementById('tax-morning-month-1'));
     action('tax-morning-load').click();await wait(()=>document.querySelector('.tax-morning-result'));
     const shown=()=>document.querySelector('.tax-morning-result strong')?.textContent;
     if(!shown().includes('345.50')||!document.querySelector('.tax-morning-result').textContent.includes('Sandbox'))
       throw Error('annual Morning profit or environment incorrect');
     await taxCalculator.command('tax-tab',{dataset:{tab:'summary'}});
-    if(!document.querySelector('.tax-morning-context')?.textContent.includes('2025'))throw Error('Morning summary lost source');
+    if(!document.querySelector('.tax-morning-context')?.textContent.includes('2026'))throw Error('Morning summary lost source');
     await taxCalculator.command('tax-tab',{dataset:{tab:'business'}});
     change('tax-morning-mode','monthly');await wait(()=>document.getElementById('tax-morning-month-1'));
     for(const month of [1,2,3]){change('tax-morning-month-'+month,true);await new Promise(r=>setTimeout(r,0));}
@@ -99,7 +110,7 @@ SETUP=r"""(async()=>{
       throw Error('Morning month check changed scroll or focus: '+beforeScroll+' → '+afterScroll);
     action('tax-morning-load').click();await wait(()=>shown()?.includes('61.38'));
     const periods=new Set(taxFixture.morningCalls.slice(2).map(row=>row.fromDate+'|'+row.toDate));
-    if(periods.size!==2||!periods.has('2025-01-01|2025-03-31')||!periods.has('2025-07-01|2025-07-31'))throw Error('summary read months outside selection');
+    if(periods.size!==2||!periods.has('2026-01-01|2026-03-31')||!periods.has('2026-07-01|2026-07-31'))throw Error('summary read months outside selection');
     taxFixture.morningFailure=true;action('tax-morning-load').click();
     await wait(()=>document.querySelector('.tax-morning-status')?.textContent.includes('מקור ההוצאות'));
     if(shown())throw Error('partial source published a profit');
@@ -111,6 +122,7 @@ SETUP=r"""(async()=>{
     taxFixture.releaseMorning();await obsolete;
     if(shown()||document.querySelector('[data-field="revenue"]').value!=='180000'||
        cloud.get(scope.owner+'/year/2026').state.revenue!==18000000)throw Error('Morning changed stored manual input');
+    globalThis.Date=OriginalDate;
   }
   await taxCalculator.command('tax-tab',{dataset:{tab:'family'}});
   document.getElementById('tax-new-child').value='2020-05-01';await taxCalculator.command('tax-add-child');

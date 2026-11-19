@@ -1,9 +1,11 @@
 import {reportPeriod, validReportDate} from '../../core/morning-report-period.js';
+import {FIRST_MORNING_TAX_YEAR} from '../../shared/tax-calculator/contracts.js';
 import {buildMorningReport, reportMetric} from './morning-report-model.js';
 import {createMorningReportCache} from './morning-report-cache.js';
 import {readMorningReportBundle} from './morning-report-reader.js';
 
 function selectedRanges({year, mode, months}, today) {
+  if (year < FIRST_MORNING_TAX_YEAR) throw new Error(`נתוני Morning זמינים לחישוב משנת ${FIRST_MORNING_TAX_YEAR}`);
   const yearRange = reportPeriod('year', year);
   if (!validReportDate(today) || yearRange.fromDate > today) throw new Error('יש לבחור שנה שכבר התחילה');
   if (mode === 'annual') {
