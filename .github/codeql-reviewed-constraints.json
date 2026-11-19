@@ -26,13 +26,13 @@
   {
     "rule": "py/incomplete-url-substring-sanitization",
     "path": "tests/calendar_contracts.py",
-    "sha256": "8c7642bd7d3e6a9fb9f1e48f092d33778f76bba583a32357cc5bc53ccadd1619",
+    "sha256": "5fc8306579f1da4435a47b1e07e9fe5cf7a7a06a733fa3535590e50723f86e76",
     "reason": "Assertions inspect checked-in CSP/OAuth source configuration. They do not admit caller URLs or perform network navigation; exact CSP source token checks are used for the Google API origin."
   },
   {
     "rule": "py/incomplete-url-substring-sanitization",
     "path": "tests/google_drive_contracts.py",
-    "sha256": "ae7e110bfbbbc23678d8318c01e94b6cc5687e0ae64758c1f33c1b3ce8d1ca69",
+    "sha256": "847aa457b759491350d8b774ad2378c8eeeebfa3e01bf291005297cadcf57ce1",
     "reason": "Assertions inspect checked-in CSP tokens and read-only OAuth source constants. This is not a URL admission/sanitization routine and receives no external URL."
   },
   {
