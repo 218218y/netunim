@@ -19,15 +19,28 @@ for(const provider of ['hapoalim','visaCal','max']){
     assert.equal(typeof instance[method],'function',`visaCal.${method}`);
 }
 const packageFile=require.resolve('puppeteer/package.json');
-assert.equal(JSON.parse(await fs.readFile(packageFile,'utf8')).version,'25.16.0');
+assert.equal(JSON.parse(await fs.readFile(packageFile,'utf8')).version,manifest.dependencies.puppeteer);
+const modernPackageFile=require.resolve('puppeteer-modern/package.json');
+const modernVersion=JSON.parse(await fs.readFile(modernPackageFile,'utf8')).version;
+assert.equal('npm:puppeteer@'+modernVersion,manifest.dependencies['puppeteer-modern']);
 const modern=await import(pathToFileURL(require.resolve('puppeteer-modern')).href);
-assert.equal(typeof modern.default.launch,'function');
 const directory=await fs.mkdtemp(path.join(os.tmpdir(),'netunim-dependency-smoke-'));
 let scraper;
 try{
   assert.ok(process.env.NETUNIM_BROWSER,'a real Chromium executable is required');
+  const browser=await modern.default.launch({
+    headless:true,
+    executablePath:process.env.NETUNIM_BROWSER,
+    args:['--no-sandbox'],
+    userDataDir:path.join(directory,'digital-v3'),
+  });
+  try{
+    assert.match(await browser.version(),/^(?:HeadlessChrome|Chrome|Chromium|Edg|Edge)\/\d/);
+  }finally{
+    await browser.close();
+  }
   scraper=createScraper({companyId:CompanyTypes.hapoalim,startDate:new Date(),combineInstallments:false,
-    executablePath:process.env.NETUNIM_BROWSER,showBrowser:false,args:['--no-sandbox',`--user-data-dir=${directory}`],
+    executablePath:process.env.NETUNIM_BROWSER,showBrowser:false,args:['--no-sandbox',`--user-data-dir=${path.join(directory,'scraper')}`],
     preparePage:async page=>{await page.setRequestInterception(true);page.on('request',request=>{
       if(request.url().startsWith('data:')||request.url()==='about:blank')void request.continue();else void request.abort();
     })}});
@@ -36,7 +49,7 @@ try{
   assert.equal(await scraper.page.$eval('#synthetic',element=>element.value),'isolated');
   await scraper.page.setUserAgent({userAgent:'Netunim synthetic compatibility probe'});
   assert.equal(await scraper.page.evaluate(()=>navigator.userAgent),'Netunim synthetic compatibility probe');
-  console.log('PASS actual scraper initializes and closes Chromium with locked Puppeteer; no provider navigation');
+  console.log('PASS both locked Puppeteer packages launch Chromium in disposable profiles; no provider navigation');
 }finally{
   if(scraper)await scraper.terminate(true);
   await fs.rm(directory,{recursive:true,force:true,maxRetries:5,retryDelay:100});

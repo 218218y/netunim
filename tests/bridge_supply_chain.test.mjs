@@ -28,7 +28,11 @@ test('every bank runtime dependency is exact and covered by one integrity-protec
     assert.match(item.integrity,/^sha512-/,name);
   }
   assert.equal(manifest.overrides.puppeteer,'$puppeteer');
-  assert.equal(lock.packages['node_modules/puppeteer'].version,'25.16.0');
+  assert.equal(lock.packages['node_modules/puppeteer'].version,manifest.dependencies.puppeteer);
+  assert.equal(
+    'npm:puppeteer@'+lock.packages['node_modules/puppeteer-modern'].version,
+    manifest.dependencies['puppeteer-modern'],
+  );
   const installer=read(directory+'setup-bank-bridge.mjs');
   assert.match(installer,/node_modules\/npm\/bin\/npm-cli\.js/);
   assert.match(installer,/'ci', '--omit=dev', '--ignore-scripts'/);
