@@ -625,8 +625,31 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 .morning-report-trigger{display:flex;align-items:center;gap:12px;min-width:0;border:0;background:none;padding:0;color:#174c3c;text-align:start;cursor:pointer;font:inherit}
 .morning-report-trigger b{display:block;font-size:16px}.morning-report-trigger small{display:block;margin-top:2px;font-size:12px;color:#557467}
 .morning-report-logo{display:grid;place-items:center;width:34px;height:34px;flex-shrink:0;background:#d8f3ac;color:#174c3c;border-radius:10px;font:bold 28px Georgia,serif}
-.morning-report-heading>.btn{flex-shrink:0;background:#fff;color:#285b48}
 #morningReportBody{padding:12px 14px}#morningReportBody[hidden]{display:none}
+.finance-summary-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:stretch}
+.finance-summary-actions>.morning-reports,.finance-summary-actions .morning-report-heading,.finance-summary-actions>[data-morning-expense-launcher]{display:contents}
+.finance-summary-actions .morning-expense-trigger,.finance-summary-actions .morning-report-trigger,.finance-summary-actions .finance-tax-shortcut{
+  display:flex;align-items:center;justify-content:flex-start;gap:8px;grid-row:1;width:100%;min-width:0;min-height:58px;
+  padding:8px 12px;border:1px solid;border-radius:12px;text-align:start;white-space:normal;line-height:1.25;overflow-wrap:anywhere;
+}
+.finance-summary-actions .morning-expense-trigger{grid-column:1;background:#ecf7f1;border-color:#b4d8c4;color:#164d3a}
+.finance-summary-actions .morning-report-trigger{grid-column:2;background:#edf5fb;border-color:#b9d3e4;color:#194c65}
+.finance-summary-actions .finance-tax-shortcut{grid-column:3;background:#f8f2e8;border-color:#dfcfb6;color:#654b2e;font-size:inherit}
+.finance-summary-actions :is(.morning-expense-trigger,.morning-report-trigger,.finance-tax-shortcut):is(:hover,[aria-expanded="true"]){filter:brightness(.95)}
+.finance-summary-actions :is(.morning-expense-trigger,.morning-report-trigger,.finance-tax-shortcut):focus-visible{outline:2px solid currentColor;outline-offset:2px}
+.finance-summary-actions .morning-report-trigger b,.finance-summary-actions .morning-expense-trigger b{font-size:inherit}
+.finance-summary-actions .morning-report-trigger small{color:#365d72}
+.finance-summary-actions .morning-report-logo{width:24px;height:24px;font-size:18px;background:#dbeaf3;color:inherit}
+.finance-summary-actions #morningReportBody{
+  grid-column:1/-1;grid-row:2;min-width:0;border:1px solid #b9d3e4;border-radius:14px;background:#fff;
+  container-type:inline-size;container-name:morning-report;
+}
+.morning-report-links{display:flex;justify-content:flex-end;margin-bottom:8px}
+@media(max-width:600px){
+  .finance-summary-actions{gap:5px}
+  .finance-summary-actions .morning-expense-trigger,.finance-summary-actions .morning-report-trigger,.finance-summary-actions .finance-tax-shortcut{font-size:12px;padding:6px;gap:4px;justify-content:center;text-align:center}
+  .finance-summary-actions .morning-report-logo,.finance-summary-actions .morning-report-trigger small{display:none}
+}
 .morning-report-controls{display:flex;flex-wrap:wrap;align-items:end;justify-content:flex-start;gap:10px 16px;padding-bottom:10px;border-bottom:1px solid var(--line)}
 .morning-report-periods,.morning-report-tabs{display:flex;flex-wrap:wrap;gap:5px}.morning-report-periods{padding:4px;background:#f1f4f1;border-radius:10px}
 .morning-report-periods .btn{border-color:transparent;background:transparent;min-height:34px}.morning-report-periods .btn.primary,.morning-report-tabs .btn.primary{background:#215e49;color:#fff}

@@ -1,6 +1,10 @@
 export function createTaxCalculatorActions({tax}) {
   return {
     'tax-open':()=>tax.open(),
+    'tax-business-source':(element,event)=>tax.command('tax-business-source',element,event),
+    'tax-morning-selection':(element,event)=>tax.command('tax-morning-selection',element,event),
+    'tax-morning-load':(element,event)=>tax.command('tax-morning-load',element,event),
+    'tax-morning-cancel':(element,event)=>tax.command('tax-morning-cancel',element,event),
     'tax-input':(element,event)=>tax.command('tax-input',element,event),
     'tax-reset-automatic':(element,event)=>tax.command('tax-reset-automatic',element,event),
     'tax-save':(element,event)=>tax.command('tax-save',element,event),

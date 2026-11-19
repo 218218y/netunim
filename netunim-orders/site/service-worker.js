@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-97a2459334c4';
+const CACHE='orders-app-shell-esm-54e54997c7da';
 const SHELL=[
   './',
   './index.html',
@@ -212,6 +212,7 @@ const SHELL=[
   './assets/js/domains/finance/morning-report-reconciliation-view.js',
   './assets/js/domains/finance/morning-report-reconciliation.js',
   './assets/js/domains/finance/morning-reports.js',
+  './assets/js/domains/finance/morning-tax-business.js',
   './assets/js/domains/finance/morning-vat-summary.js',
   './assets/js/domains/finance/reporting.js',
   './assets/js/domains/finance/status-view.js',

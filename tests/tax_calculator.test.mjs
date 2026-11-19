@@ -19,6 +19,23 @@ test('monthly/annual and VAT-inclusive/exclusive entries yield identical annual 
   assert.equal(annual.annual.outputVat,3240000);
   const refund=calculateTax(input({inputVatMonthly:10000}));assert.equal(refund.annual.netVat,-120000);
 });
+test('Morning profit drives the estimate while leaving manual values available',()=>{
+  const manual=input({revenue:18000000,vatIncluded:true,expensesMonthly:40000,inputVatMonthly:5000});
+  const source={income:10000001,expenseCost:4000003,outputVat:null,inputVat:80801};
+  const annual=calculateTax(manual,rules,{morning:{...source,monthCount:null}});
+  assert.equal(annual.annual.profit,5999998);
+  assert.equal(annual.annual.taxable,5999998);
+  assert.equal(annual.arnona.businessAnnual,5999998);
+  assert.equal(annual.annual.netVat,null);
+  assert.equal(annual.annual.inputVat,80801);
+  const monthly=calculateTax(manual,rules,{morning:{...source,monthCount:4}});
+  assert.equal(monthly.monthly.profit,1500000);
+  assert.equal(monthly.annual.taxable,18000000);
+  const pending=calculateTax(manual,rules,{morning:null});
+  assert.ok(pending.missing.includes('מחזור עסקי'));
+  assert.equal(pending.arnona.businessAnnual,null);
+  assert.equal(manual.revenue,18000000);
+});
 test('money uses integer agorot with explicit half-away-from-zero rounding',()=>{
   assert.equal(toMinor('12.34'),1234);assert.equal(toMinor('0.29'),29);assert.equal(ratio(-1,1,2),-1);
   for(const bad of ['NaN','Infinity','1.234','1e4',''])assert.throws(()=>toMinor(bad));

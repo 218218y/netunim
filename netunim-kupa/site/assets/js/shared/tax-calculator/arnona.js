@@ -3,11 +3,11 @@ import { rate, ratio } from './contracts.js';
 const DISCOUNTS = [9000, 7000, 5000, 3000];
 
 /** Resolve amounts and their provenance before testing bands. Never turn a forecast into a tax assessment. */
-export function calculateArnona(input, rules, businessProfit, people) {
+export function calculateArnona(input, rules, businessProfit, people, businessKnown = input.revenue !== null) {
   const businessAutomatic = input.arnonaBusinessAnnual === null;
   const rentalAutomatic = input.arnonaRentReceivedMonthly === null;
   const businessAnnual = businessAutomatic
-    ? input.revenue === null ? null : Math.max(0, businessProfit)
+    ? businessKnown ? Math.max(0, businessProfit) : null
     : input.arnonaBusinessAnnual;
   const receivedRent = rentalAutomatic ? input.rentMonthly : input.arnonaRentReceivedMonthly;
   const rentalMonthly = Math.max(0, receivedRent - input.rentPaidMonthly);

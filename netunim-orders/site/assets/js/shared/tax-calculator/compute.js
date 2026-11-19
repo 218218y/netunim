@@ -22,26 +22,39 @@ export function ageOn(birth, date) {
     Number(date.slice(0, 4)) - Number(birth.slice(0, 4)) - (date.slice(5) < birth.slice(5) ? 1 : 0)
   );
 }
-export function calculateTax(input, rules = input.rules) {
+function morningFigures(report) {
+  if (!report) return {known:false, revenue:0, expenses:0, profit:0, outputVat:null, inputVat:null};
+  // Round the average profit once in agorot before using it as a monthly input.
+  const annualize = value => value === null ? null : report.monthCount
+    ? ratio(ratio(value, 1, report.monthCount), 12, 1)
+    : ratio(value, 1, 1);
+  const revenue = annualize(report.income);
+  const profit = annualize(report.income - report.expenseCost);
+  return {known:true, revenue, expenses:revenue - profit, profit,
+    outputVat:annualize(report.outputVat), inputVat:annualize(report.inputVat)};
+}
+export function calculateTax(input, rules = input.rules, {morning} = {}) {
   const i = assertAnnual(input),
     r = assertRules(rules),
     g = r.groups,
     warnings = ruleWarnings(r, i.taxYear),
     missing = [];
-  if (i.revenue === null) missing.push('מחזור עסקי');
-  if (i.arnonaAnnual === null) missing.push('חיוב ארנונה שנתי');
   const annualRevenue = (i.revenue ?? 0) * (i.revenuePeriod === 'monthly' ? 12 : 1);
-  const revenue =
+  const manualRevenue =
     i.vatIncluded && !i.vatExempt
       ? ratio(annualRevenue, 10000, 10000 + g.vat.values.rate)
       : annualRevenue;
-  const outputVat = i.vatExempt ? 0 : rate(revenue, g.vat.values.rate),
-    inputVat = i.vatExempt ? 0 : i.inputVatMonthly * 12;
-  if (i.vatExempt && i.inputVatMonthly)
+  const manualExpenses = i.expensesMonthly * 12;
+  const {known, revenue, expenses, profit, outputVat, inputVat} = morning === undefined ? {
+    known:i.revenue !== null, revenue:manualRevenue, expenses:manualExpenses, profit:manualRevenue - manualExpenses,
+    outputVat:i.vatExempt ? 0 : rate(manualRevenue, g.vat.values.rate),
+    inputVat:i.vatExempt ? 0 : i.inputVatMonthly * 12,
+  } : morningFigures(morning);
+  if (!known) missing.push('מחזור עסקי');
+  if (i.arnonaAnnual === null) missing.push('חיוב ארנונה שנתי');
+  if (morning === undefined && i.vatExempt && i.inputVatMonthly)
     warnings.push('בעוסק פטור לא חושב קיזוז מע״מ תשומות; יש לכלול הוצאה מוכרת לפי הכללים');
-  const expenses = i.expensesMonthly * 12,
-    profit = revenue - expenses,
-    p = g.pension.values;
+  const p = g.pension.values;
   const halfAverage = p.averageMonthly * 6,
     average = p.averageMonthly * 12;
   const pensionMinimum = i.pensionRequired
@@ -161,11 +174,11 @@ export function calculateTax(input, rules = input.rules) {
   const incomeTax = route === 'ordinary' ? ordinary : route === 'flat' ? flat : baseTax,
     rentTax = positive(incomeTax - baseTax);
   const people = i.profile.adults + children.filter((c) => c.resident && c.age >= 0).length;
-  const arnonaCalculation = calculateArnona(i, r, profit, people);
+  const arnonaCalculation = calculateArnona(i, r, profit, people, known);
   warnings.push(...arnonaCalculation.warnings);
   const arnona = arnonaCalculation.annualPayment;
   const net = profit + rent - i.rentExpenses - national - health - pension - incomeTax - arnona;
-  const insuranceLiability = i.revenue === null ? null : national + health;
+  const insuranceLiability = known ? national + health : null;
   const advanceMonthly = i.insuranceAdvanceMonthly ?? null;
   const advancesAnnual = advanceMonthly === null ? null : advanceMonthly * 12;
   const insuranceBalance = insuranceLiability === null || advancesAnnual === null
@@ -176,7 +189,7 @@ export function calculateTax(input, rules = input.rules) {
     profit,
     outputVat,
     inputVat,
-    netVat: outputVat - inputVat,
+    netVat: outputVat === null || inputVat === null ? null : outputVat - inputVat,
     national,
     health,
     insurance: national + health,
@@ -204,7 +217,7 @@ export function calculateTax(input, rules = input.rules) {
     missing,
     warnings,
     annual,
-    monthly: Object.fromEntries(Object.entries(annual).map(([k, v]) => [k, ratio(v, 1, 12)])),
+    monthly: Object.fromEntries(Object.entries(annual).map(([k, v]) => [k, v === null ? null : ratio(v, 1, 12)])),
     family: { children, childPoints, points, people },
     arnona: arnonaCalculation.detail,
     insuranceSettlement: {
@@ -226,7 +239,7 @@ export function calculateTax(input, rules = input.rules) {
       ],
     },
     trace: [
-      { label: 'מחזור ללא מע״מ פחות הוצאות מוכרות', value: profit },
+      { label: morning === undefined ? 'מחזור ללא מע״מ פחות הוצאות מוכרות' : 'הכנסות ללא מע״מ פחות עלות הוצאות לפי Morning', value: profit },
       { label: 'הפקדה לפנסיה (ריק = מינימום; אפס = לא הופקד)', value: pension },
       { label: 'בסיס ביטוח לאחר התאמת ניכוי 52% ולאחר מינימום/תקרה', value: insuranceBase },
       { label: 'רווח פחות ניכוי פנסיה ופחות 52% ביטוח לאומי', value: taxable },

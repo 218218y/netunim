@@ -12,5 +12,5 @@ export function createLazyTaxCalculator(ports) {
     const node=ports.container();if(node)node.innerHTML='<section class="tax-page" dir="rtl"><p role="status">טוען מחשבון מסים וארנונה…</p></section>';
     return ready().then(feature=>feature.activate()).catch(()=>{if(ports.active()&&node)node.textContent='טעינת המחשבון נכשלה. רענן את הדף ונסה שוב.';});
   }
-  return {open,render,command:async(key,element,event)=>(await ready()).command(key,element,event),dispose:async()=>{if(loading)await loading;return workspace?.dispose();}};
+  return {open,render,leave:()=>workspace?.deactivate(),command:async(key,element,event)=>(await ready()).command(key,element,event),dispose:async()=>{if(loading)await loading;return workspace?.dispose();}};
 }

@@ -15,6 +15,24 @@ SETUP=r"""(async()=>{
   window.taxFixture={scope,cloud,ops,listeners,online:true,drop:false};
   const request=async(path,options)=>{
     options.assertRequestScope?.();if(!taxFixture.online)throw Error('offline');
+    if(path==='/functions/v1/morning-documents'){
+      const body=JSON.parse(options.body);
+      if(body.action!=='report_page')throw Error('unexpected Morning write');
+      taxFixture.morningCalls.push(body);
+      if(taxFixture.morningGate){
+        taxFixture.morningWaiting=true;
+        await taxFixture.morningGate;
+      }
+      if (taxFixture.morningFailure && body.source==='expenses')
+        return Response.json({ok:false,message:'מקור ההוצאות אינו זמין'},{status:502});
+      const rows=body.source==='documents' ? [1,3,6].map((month,index)=>({id:'doc-'+month,kind:'document',type:305,
+        date:'2025-0'+month+'-10',businessType:1,grossCents:index===1?23600:11800,vatCents:index===1?3600:1800})) :
+        [{id:'expense-1',kind:'expense',date:'2025-01-01',type:305,status:10,grossCents:5900,vatCents:900,deductibleVatCents:450}];
+      const items=rows.filter(row=>row.date>=body.fromDate&&row.date<=body.toDate);
+      const {source,fromDate,toDate,page}=body;
+      return Response.json({version:1,source,fromDate,toDate,page,pageSize:50,environment:'sandbox',
+        readAt:'2026-10-19T12:00:00Z',total:items.length,pages:items.length?1:0,items});
+    }
     if(options.method==='POST'){
       const b=JSON.parse(options.body),key=scope.owner+'/'+b.p_document_name;let ack=ops.get(scope.owner+'/'+b.p_operation_id);
       if(!ack){const head=cloud.get(key);if((head?.revision??0)!==b.p_expected_revision)return new Response(JSON.stringify({code:'40001'}),{status:409});ack={owner_id:scope.owner,document_name:b.p_document_name,revision:b.p_expected_revision+1,state:structuredClone(b.p_state),operation_id:b.p_operation_id,operation_replayed:false};cloud.set(key,ack);ops.set(scope.owner+'/'+b.p_operation_id,ack);}else ack={...ack,operation_replayed:true};
@@ -48,6 +66,44 @@ SETUP=r"""(async()=>{
   const input=document.querySelector('[data-field="revenue"]');input.value='180000';
   await taxCalculator.command('tax-input',input);await taxCalculator.command('tax-save');await taxCalculator.command('tax-sync');
   const row=cloud.get(scope.owner+'/year/2026');if(row.state.revenue!==18000000)throw Error('wrong cloud amount');
+  if(app==='orders'){
+    morningOperationScope.captureRead=()=>()=>{};
+    taxFixture.morningCalls=[];
+    const action=(name,arg)=>document.querySelector('[data-action="'+name+'"]'+(arg?'[data-click-arg0="'+arg+'"]':''));
+    const change=(id,value)=>{
+      const input=document.getElementById(id);
+      if(input.type==='checkbox')input.checked=value;else input.value=value;
+      input.dispatchEvent(new Event('change',{bubbles:true}));
+    };
+    const wait=async predicate=>{for(let n=0;n<100;n++){if(predicate())return;await new Promise(r=>setTimeout(r,20))}throw Error('Morning calculator did not settle: '+document.querySelector('.tax-morning-status')?.textContent)};
+    action('tax-business-source','morning').click();await wait(()=>document.getElementById('tax-morning-mode'));
+    if(taxFixture.morningCalls.length||document.querySelector('[data-field="revenue"]'))throw Error('Morning source triggered a hidden request or left manual inputs active');
+    change('tax-morning-year','2025');await wait(()=>document.getElementById('tax-morning-year').value==='2025');
+    change('tax-morning-mode','annual');await wait(()=>!document.getElementById('tax-morning-month-1'));
+    action('tax-morning-load').click();await wait(()=>document.querySelector('.tax-morning-result'));
+    const shown=()=>document.querySelector('.tax-morning-result strong')?.textContent;
+    if(!shown().includes('345.50')||!document.querySelector('.tax-morning-result').textContent.includes('Sandbox'))
+      throw Error('annual Morning profit or environment incorrect');
+    await taxCalculator.command('tax-tab',{dataset:{tab:'summary'}});
+    if(!document.querySelector('.tax-morning-context')?.textContent.includes('2025'))throw Error('Morning summary lost source');
+    await taxCalculator.command('tax-tab',{dataset:{tab:'business'}});
+    change('tax-morning-mode','monthly');await wait(()=>document.getElementById('tax-morning-month-1'));
+    for(const month of [1,2,3,7]){change('tax-morning-month-'+month,true);await new Promise(r=>setTimeout(r,0));}
+    action('tax-morning-load').click();await wait(()=>shown()?.includes('61.38'));
+    const periods=new Set(taxFixture.morningCalls.slice(2).map(row=>row.fromDate+'|'+row.toDate));
+    if(periods.size!==2||!periods.has('2025-01-01|2025-03-31')||!periods.has('2025-07-01|2025-07-31'))throw Error('summary read months outside selection');
+    taxFixture.morningFailure=true;action('tax-morning-load').click();
+    await wait(()=>document.querySelector('.tax-morning-status')?.textContent.includes('מקור ההוצאות'));
+    if(shown())throw Error('partial source published a profit');
+    taxFixture.morningFailure=false;
+    taxFixture.morningGate=new Promise(resolve=>{taxFixture.releaseMorning=resolve;});
+    const obsolete=taxCalculator.command('tax-morning-load');
+    await wait(()=>taxFixture.morningWaiting);
+    action('tax-business-source','manual').click();await wait(()=>document.querySelector('[data-field="revenue"]'));
+    taxFixture.releaseMorning();await obsolete;
+    if(shown()||document.querySelector('[data-field="revenue"]').value!=='180000'||
+       cloud.get(scope.owner+'/year/2026').state.revenue!==18000000)throw Error('Morning changed stored manual input');
+  }
   await taxCalculator.command('tax-tab',{dataset:{tab:'family'}});
   document.getElementById('tax-new-child').value='2020-05-01';await taxCalculator.command('tax-add-child');
   const approved=document.querySelector('[data-field="approvedDiscount"]');approved.value='0';await taxCalculator.command('tax-input',approved);await taxCalculator.command('tax-save');await taxCalculator.command('tax-sync');

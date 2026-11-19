@@ -5,7 +5,7 @@ import {checkTodayISO} from '../core/dates.js';
 
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiNavigation({renderTaxCalculator=()=>{},ui, model, supplierUi, customerUi, serviceUi, warehouseUi, notesUi, renderKupa, renderChecks, renderSummary, renderSupplier, renderCustomers, renderService, renderWarehouse, renderNotes, renderCalendar, renderSettings, refreshAlertCenter=()=>{},dataRevision=()=>''}){
+export function createUiNavigation({renderTaxCalculator=()=>{},leaveTaxCalculator=()=>{},ui, model, supplierUi, customerUi, serviceUi, warehouseUi, notesUi, renderKupa, renderChecks, renderSummary, renderSupplier, renderCustomers, renderService, renderWarehouse, renderNotes, renderCalendar, renderSettings, refreshAlertCenter=()=>{},dataRevision=()=>''}){
 let alertTargetTimer=null;
 const setKey=value=>[...(value||[])].map(String).sort().join(',');
 function viewStateKey(view){
@@ -32,7 +32,10 @@ function render({supplierScrollMode='auto'}={}){const done=beginMeasure(`orders:
 
 function renderDashboard(){ui.currentView='supplier';syncActiveNav();renderSupplier({scrollMode:'end'})}
 
-function prepareView(view){ui.currentView=view;supplierUi.supplierBulkMode=false;supplierUi.supplierMoveTargetId=null;supplierUi.supplierBulkSelected.clear();supplierUi.supplierBulkAnchorId=null;customerUi.customerBulkMode=false;customerUi.customerBulkSelected.clear();customerUi.customerBulkAnchorId=null;serviceUi.serviceBulkMode=false;serviceUi.serviceBulkSelected.clear();serviceUi.serviceBulkAnchorId=null;warehouseUi.warehouseBulkMode=false;warehouseUi.warehouseBulkSelected.clear();warehouseUi.warehouseBulkAnchorId=null;notesUi.notesBulkMode=false;notesUi.notesBulkSelected.clear();notesUi.notesBulkAnchorId=null;if(ui.currentView==='customers')customerUi.customerTab='debts';else if(ui.currentView==='customer-orders')customerUi.customerTab='orders';if(ui.currentView==='supplier'){if(!supplierUi.currentSupplierId)supplierUi.currentSupplierId=model.state.suppliers[0]?.id;supplierUi.supplierYearView='current'}supplierUi.searchText=''}
+function prepareView(view){
+  if(ui.currentView==='tax-calculator'&&view!=='tax-calculator')leaveTaxCalculator();
+  ui.currentView=view;supplierUi.supplierBulkMode=false;supplierUi.supplierMoveTargetId=null;supplierUi.supplierBulkSelected.clear();supplierUi.supplierBulkAnchorId=null;customerUi.customerBulkMode=false;customerUi.customerBulkSelected.clear();customerUi.customerBulkAnchorId=null;serviceUi.serviceBulkMode=false;serviceUi.serviceBulkSelected.clear();serviceUi.serviceBulkAnchorId=null;warehouseUi.warehouseBulkMode=false;warehouseUi.warehouseBulkSelected.clear();warehouseUi.warehouseBulkAnchorId=null;notesUi.notesBulkMode=false;notesUi.notesBulkSelected.clear();notesUi.notesBulkAnchorId=null;if(ui.currentView==='customers')customerUi.customerTab='debts';else if(ui.currentView==='customer-orders')customerUi.customerTab='orders';if(ui.currentView==='supplier'){if(!supplierUi.currentSupplierId)supplierUi.currentSupplierId=model.state.suppliers[0]?.id;supplierUi.supplierYearView='current'}supplierUi.searchText=''
+}
 
 function setCustomerRoute(tab){ui.currentView=tab==='orders'?'customer-orders':'customers';syncActiveNav()}
 

@@ -313,9 +313,10 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
       </span>
       <span aria-hidden="true">${expanded ? '⌃' : '⌄'}</span>
       </button>
-      <a class="btn small" href="${OFFICIAL}" target="_blank" rel="noopener noreferrer">הדוחות הרשמיים במורנינג ↗</a>
       </div>
-      <div id="morningReportBody" ${expanded ? '' : 'hidden'}>${controls()}<div class="morning-report-note">ההכנסות והתקבולים מוצגים לפי תאריך המסמך. ההוצאות לפי תאריך הדיווח במורנינג (היום הראשון בחודש), גם בטווח מותאם. בטווח שמתחיל באמצע חודש, הוצאות שדווחו בתחילת אותו חודש אינן נכללות.</div>
+      <div id="morningReportBody" ${expanded ? '' : 'hidden'}>
+      <div class="morning-report-links"><a class="btn small" href="${OFFICIAL}" target="_blank" rel="noopener noreferrer">הדוחות הרשמיים במורנינג ↗</a></div>
+      ${controls()}<div class="morning-report-note">ההכנסות והתקבולים מוצגים לפי תאריך המסמך. ההוצאות לפי תאריך הדיווח במורנינג (היום הראשון בחודש), גם בטווח מותאם. בטווח שמתחיל באמצע חודש, הוצאות שדווחו בתחילת אותו חודש אינן נכללות.</div>
       <div class="morning-report-status" role="status" aria-live="polite">${esc(busy ? progressText ||
             'טוען את כל עמודי הדוח…' : reading ? 'ממתין לסיום הבקשה הקודמת…' : error)}</div>
       <div data-morning-report-output>${r ? results(r) : busy ? '' : '<div class="morning-report-empty">בחרו תקופה ולחצו על „הצגת הדוח” לקבלת נתוני העסק ממורנינג.</div>'}</div>
@@ -530,7 +531,12 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
         return true;
     }
     const actions = {
-        'morning-report-toggle': () => { expanded = !expanded; render(); },
+        'morning-report-toggle': element => {
+            const focused = element === document.activeElement;
+            expanded = !expanded;
+            render();
+            if (focused) document.querySelector('.morning-report-trigger')?.focus({preventScroll:true});
+        },
         'morning-report-period': element => setPeriod(element.dataset.clickArg0),
         'morning-report-option': element => change(element.dataset.reportOption, element.type === 'checkbox' ? element.checked : element.value),
         'morning-report-load': () => load({refresh:!!loaded}),

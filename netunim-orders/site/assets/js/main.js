@@ -213,6 +213,7 @@ const uiNavigation=createUiNavigation({
   renderNotes:(...args)=>domainsNotesController.renderNotes(...args),
   renderCalendar:(...args)=>domainsCalendarController.renderCalendar(...args),
   renderTaxCalculator:()=>taxCalculator.render(),
+  leaveTaxCalculator:()=>taxCalculator.leave(),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
   refreshAlertCenter:(...args)=>uiAlertCenter.refreshIndicator(...args),
   dataRevision:view=>orderViewRevision(domainRevisions,view)+':'+new Date().toLocaleDateString('en-CA'),
@@ -463,7 +464,7 @@ const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{
 })};
 
 const calendarPorts=calendarRuntime.actionPorts();
-const taxCalculator=createOrdersTaxCalculator({cloudAuth,tab,ui,navigation:uiNavigation,modal:uiModal});
+const taxCalculator=createOrdersTaxCalculator({cloudAuth,tab,ui,navigation:uiNavigation,modal:uiModal,morningOperationScope});
 
 const uiActions=composeActionRegistry([
   {name:'tax-calculator',actions:createTaxCalculatorActions({tax:taxCalculator})},

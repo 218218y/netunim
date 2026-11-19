@@ -26,6 +26,7 @@ import {
   normalizeDate,
   arnonaResultsMarkup,
   insuranceSettlementMarkup,
+  morningBusinessMarkup,
 } from './view.js';
 
 const statusLabels = {
@@ -72,6 +73,7 @@ export function createTaxWorkspace({
   container,
   back,
   confirmDialog,
+  loadMorningBusiness,
   subscribeAccountScope = () => () => {},
 }) {
   let year = currentTaxYear(),
@@ -95,6 +97,7 @@ export function createTaxWorkspace({
     reviewName = null;
   const sync = createTaxSync({ accountScope, request, writable, onChange: refreshStatus });
   const pendingInputs = new Map();
+  let morningSelection = null, morningReport = null, morningRead = null, morningMessage = '';
   let editRevision = 0;
   const name = () => `year/${year}`;
   function capture(edit = false) {
@@ -156,7 +159,86 @@ export function createTaxWorkspace({
     return container()?.contains(focused) && focused?.matches('input[data-field],select[data-field],textarea[data-field]');
   }
   function result() {
-    return draft?.rules ? calculateTax(draft) : null;
+    return draft?.rules ? calculateTax(draft, draft.rules, {morning:morningSelection ? morningReport : undefined}) : null;
+  }
+  function clearMorningRead() {
+    morningRead?.abort();
+    morningRead = null;
+    morningReport = null;
+    morningMessage = '';
+  }
+  function resetMorning() {
+    clearMorningRead();
+    morningSelection = null;
+  }
+  function selectBusinessSource(element) {
+    if (!loadMorningBusiness || !isCurrent()) return false;
+    const useMorning = element.dataset.clickArg0 === 'morning';
+    if (useMorning === !!morningSelection) return true;
+    if (pendingInputs.size) return fail(new Error('יש להשלים את השדות שבעריכה לפני שינוי מקור הנתונים'));
+    resetMorning();
+    if (useMorning) {
+      const today = israelDate(), current = Number(today.slice(0, 4));
+      const sourceYear = Math.min(year, current);
+      morningSelection = {year:sourceYear, mode:sourceYear < current ? 'annual' : 'monthly', months:[]};
+    }
+    render();
+    container()?.querySelector(`[data-action="tax-business-source"][data-click-arg0="${useMorning ? 'morning' : 'manual'}"]`)?.focus({preventScroll:true});
+    return true;
+  }
+  function changeMorningSelection(element) {
+    if (!morningSelection || !isCurrent()) return false;
+    const today = israelDate(), current = Number(today.slice(0, 4));
+    const next = {...morningSelection};
+    if (element.dataset.morningKey === 'year') {
+      const selectedYear = Number(element.value);
+      if (!Number.isInteger(selectedYear) || selectedYear < 2000 || selectedYear > current) {
+        element.value = morningSelection.year;
+        return fail(new Error('יש לבחור שנת Morning שכבר התחילה'));
+      }
+      next.year = selectedYear;
+      next.months = [];
+      if (next.year === current) next.mode = 'monthly';
+    } else if (element.dataset.morningKey === 'mode') {
+      next.mode = next.year === current || element.value !== 'annual' ? 'monthly' : 'annual';
+    } else {
+      const month = Number(element.value);
+      next.months = element.checked ? [...new Set([...next.months, month])] : next.months.filter(value => value !== month);
+    }
+    clearMorningRead();
+    morningSelection = next;
+    message = '';
+    render();
+    document.getElementById(element.id)?.focus({preventScroll:true});
+    return true;
+  }
+  async function readMorning() {
+    if (!loadMorningBusiness || !morningSelection || !isCurrent() || morningRead) return false;
+    const guard = capture(), controller = new AbortController();
+    const selection = clone(morningSelection), today = israelDate();
+    const assertCurrent = () => {
+      guard();
+      controller.signal.throwIfAborted();
+      if (!active() || disposed || morningRead !== controller) throw new Error('קריאת Morning בוטלה');
+    };
+    clearMorningRead();
+    morningRead = controller;
+    render();
+    try {
+      const report = await loadMorningBusiness({selection, today, signal:controller.signal, assertCurrent});
+      assertCurrent();
+      calculateTax(draft, draft.rules, {morning:report});
+      morningReport = report;
+      return true;
+    } catch (error) {
+      if (morningRead === controller && !controller.signal.aborted) morningMessage = error.message;
+      return false;
+    } finally {
+      if (morningRead === controller) {
+        morningRead = null;
+        render();
+      }
+    }
   }
   function refreshResult() {
     if (!active() || !isCurrent()) return;
@@ -395,6 +477,7 @@ data-action="tax-cancel-preview">
     const root = container();
     if (!root) return;
     if (draft && !isCurrent()) {
+      resetMorning();
       draft = null;
       profile = null;
       rulesDraft = null;
@@ -403,6 +486,10 @@ data-action="tax-cancel-preview">
     }
     const output = draft ? result() : null,
       ruleAlerts = draft?.rules ? ruleWarnings(draft.rules, year) : [];
+    const businessSourceMarkup = tab === 'business' && loadMorningBusiness
+      ? morningBusinessMarkup({selection:morningSelection, report:morningReport, busy:!!morningRead,
+        message:morningMessage, today:israelDate(), result:output})
+      : '';
     root.innerHTML = `<section
 class="tax-page"
 dir="rtl">
@@ -542,10 +629,11 @@ ${label}</button>
 ).join('')}</nav>
 <div
 class="tax-panel">
+${tab !== 'business' && morningReport ? `<p class="tax-morning-context">מקור נתוני העסק: Morning · ${morningSelection.year} · ${morningReport.monthCount === null ? 'שנה מלאה' : `ממוצע של ${morningReport.monthCount} חודשים`}${morningReport.environment === 'sandbox' ? ' · Sandbox' : ''}</p>` : ''}
 <fieldset
 class="tax-edit"
 ${!writable() ? 'disabled' : ''}>
-${tab === 'summary' ? summaryMarkup(output) : tab === 'rules' ? rulesMarkup(rulesDraft) : tab === 'audit' ? auditMarkup(output) : tab === 'recovery' ? recoveryMarkup() : inputMarkup(tab, draft, output)}</fieldset>
+${tab === 'summary' ? summaryMarkup(output) : tab === 'rules' ? rulesMarkup(rulesDraft) : tab === 'audit' ? auditMarkup(output) : tab === 'recovery' ? recoveryMarkup() : inputMarkup(tab, draft, output, {businessSourceMarkup, morning:!!morningSelection})}</fieldset>
 </div>
 ${!['summary', 'audit', 'rules', 'recovery'].includes(tab) ? '<div class="tax-toolbar"><button class="btn primary" data-action="tax-save">שמור נתוני שנה</button><span>ערכים תקינים נשמרים מקומית במהלך ההקלדה.</span></div>' : ''}<footer>
 נתוני המחשבון נפרדים מהמאזן התזרימי. חישובי המס וההנחה הם אומדן; אישור הרשות והנתונים מהשומה קובעים.</footer>
@@ -596,6 +684,10 @@ data-action="tax-retry">
     render();
   }
   const commands = {
+    'tax-business-source': selectBusinessSource,
+    'tax-morning-selection': changeMorningSelection,
+    'tax-morning-load': readMorning,
+    'tax-morning-cancel': () => { clearMorningRead(); render(); },
     'tax-input': (element) => {
       if (!isCurrent() || !writable()) throw new Error('יש לטעון את המחשבון בלשונית הראשית');
       editRevision++;
@@ -687,6 +779,7 @@ data-action="tax-retry">
       )
         return;
       guard();
+      resetMorning();
       year = next;
       opening = null;
       draft = null;
@@ -986,6 +1079,7 @@ ${esc(r.document_name.split('/')[2])}</button>
     }
   };
   const unsubscribe = subscribeAccountScope(() => {
+    resetMorning();
     clearTimeout(cloudTimer);
     cloudTimer = null;
     pendingInputs.clear();
@@ -1015,6 +1109,7 @@ ${esc(r.document_name.split('/')[2])}</button>
   }, 20000);
   return {
     render,
+    deactivate: resetMorning,
     activate: () => {
       if (!active() || disposed) return Promise.resolve(false);
       render();
@@ -1039,6 +1134,7 @@ ${esc(r.document_name.split('/')[2])}</button>
     },
     async dispose() {
       disposed = true;
+      resetMorning();
       clearInterval(pollTimer);
       clearTimeout(cloudTimer);
       unsubscribe();

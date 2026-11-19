@@ -26,8 +26,9 @@ FLOW = r"""(async()=>{
  };
  ui.currentView='kupa';ui.kupaSubView='summary';finance.presentation.renderKupa();
  check(document.querySelector('[data-action="set-kupa-section"][data-click-arg0="summary"]').textContent==='מאזן ודוחות','tab label');
- const intake=document.querySelector('.kupa-subcontent-summary > [data-action="tax-open"]')?.nextElementSibling;
- check(intake?.matches('[data-morning-expense-launcher]')&&intake.nextElementSibling?.matches('[data-morning-reports]'),'summary order must be calculator, expense intake, reports');
+ const shortcuts=document.querySelector('.finance-summary-actions');
+ const actions=[...shortcuts.querySelectorAll('button')].map(button=>button.dataset.action);
+ check(actions.join()===['morning-expense-toggle','morning-report-toggle','tax-open'].join(),'summary shortcut order');
  check(document.querySelector('.forecast-note').textContent.includes('ולא רווח חשבונאי'),'cashflow forecast lost');
  const initial=document.querySelector('.morning-report-trigger');
  const heading=()=>({subtitle:document.querySelector('.morning-report-trigger small')?.textContent,arrow:document.querySelector('.morning-report-trigger>span:last-child')?.textContent});
@@ -161,7 +162,13 @@ if __name__ == '__main__':
         for width in (1440, 1280, 1024, 768, 390, 320):
             browser.call('Emulation.setDeviceMetricsOverride', {'width':width,'height':1000,'deviceScaleFactor':1,'mobile':width<500})
             layouts.append(browser.evaluate(r"""(()=>{
-              const overflow=[];
+              const overflow=[], bar=document.querySelector('.finance-summary-actions');
+              const actions=['morning-expense-toggle','morning-report-toggle','tax-open'].map(action=>bar.querySelector('[data-action="'+action+'"]').getBoundingClientRect());
+              const [expense,reports,tax]=actions;
+              if (actions.some(rect=>Math.abs(rect.top-expense.top)>1||rect.width<=0) ||
+                  expense.left<reports.right-1 || reports.left<tax.right-1 ||
+                  tax.left<bar.getBoundingClientRect().left-1 || expense.right>bar.getBoundingClientRect().right+1)
+                overflow.push({shortcutRow:actions.map(rect=>rect.toJSON())});
               for(const group of ['month','bimonth','quarter']){
                const select=document.querySelector('[data-report-option="group"]');select.value=group;select.dispatchEvent(new Event('change',{bubbles:true}));
                for(const type of ['receipts','profit','vat']){

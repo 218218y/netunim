@@ -43,7 +43,7 @@ function createLazyMorningPanel(kind, ports, notify) {
     if (feature) return feature.markup();
     if (!reports && page) return `<section class="morning-expense-intake" data-morning-expense-intake><header class="morning-expense-heading"><h1>קליטת הוצאות ב־Morning</h1><button type="button" class="btn" data-action="morning-expense-back">חזרה למאזן ודוחות</button></header><p class="morning-expense-content" role="status">טוען את מסך ההוצאות…</p></section>`;
     const panel = stem + (reports ? 's' : '-intake');
-    return `<section class="${panel}" data-${panel}><div class="${stem}-heading"><button type="button" class="${stem}-trigger" data-action="${prefix}toggle" aria-expanded="false"><span><b>${reports ? 'דוחות מורנינג' : 'קליטת הוצאות ב־Morning'}</b>${reports ? '<small>תקבולים לפי אמצעי תשלום · רווח והפסד · מע״מ</small>' : ''}</span><span aria-hidden="true">⌄</span></button></div></section>`;
+    return `<section class="${panel}" data-${panel}><div class="${stem}-heading"><button type="button" class="${stem}-trigger" data-action="${prefix}toggle" aria-expanded="false">${reports ? '<span class="morning-report-logo" aria-hidden="true">m</span>' : ''}<span><b>${reports ? 'דוחות מורנינג' : 'קליטת הוצאות ב־Morning'}</b>${reports ? '<small>תקבולים לפי אמצעי תשלום · רווח והפסד · מע״מ</small>' : ''}</span><span aria-hidden="true">⌄</span></button></div></section>`;
   }
   async function ensure() {
     if (!active || feature) return active ? feature : null;
