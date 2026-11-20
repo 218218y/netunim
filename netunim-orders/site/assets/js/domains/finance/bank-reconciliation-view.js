@@ -19,4 +19,14 @@ export function bankMissingSummary(rows){
   return `<div class="bank-missing-summary"><span class="bank-missing-summary-icon" aria-hidden="true">!</span><div><b>${esc(bankMissingSummaryText(active))}</b><small>התנועות מוצגות בראש הרשימה. סימון „נבדק” מסתיר אותן מההיסטוריה החכמה ומשאיר תיעוד בארכיון.</small></div></div>`;
 }
 
-export function bankMissingDetail(row){if(!bankMissingActive(row))return '';const needsReview=bankChequeTransitionNeedsReview(row);const title=needsReview?'נמצאה הפקדה סופית אפשרית. ההתאמה דורשת בדיקה':row.cheque?'הפקדת צ׳ק לא מופיעה בסריקת הבנק האחרונה':'התנועה לא מופיעה בסריקת הבנק האחרונה';return `<div class="bank-missing-detail"><div><b>${esc(title)}</b><small>נראתה לאחרונה: ${esc(presenceTime(row.lastSeenAt))} · ${needsReview?'ממתינה לבדיקת התאמה מאז':'חסרה מאז'}: ${esc(presenceTime(row.missingSince))}</small></div>${row.archiveId?`<button type="button" class="btn bank-missing-ack" data-action="ack-orders-bank-missing" data-click-arg0="${esc(row.archiveId)}">נבדק — הסר התראה</button>`:''}</div>`}
+export function bankMissingDetail(row){
+  if(!bankMissingActive(row))return '';
+  const needsReview=bankChequeTransitionNeedsReview(row);
+  const title=needsReview?'נמצאה הפקדה סופית אפשרית. ההתאמה דורשת בדיקה':
+    row.cheque?'הפקדת צ׳ק לא מופיעה בסריקת הבנק האחרונה':'התנועה לא מופיעה בסריקת הבנק האחרונה';
+  const sinceLabel=needsReview?'ממתינה לבדיקת התאמה מאז':'חסרה מאז';
+  const dismiss=row.archiveId?`<button type="button" class="btn bank-missing-ack" data-action="ack-orders-bank-missing" data-click-arg0="${esc(row.archiveId)}">נבדק — הסר התראה</button>`:'';
+  return `<div class="bank-missing-detail"><div><b>${esc(title)}</b>
+    <small>נראתה לאחרונה: ${esc(presenceTime(row.lastSeenAt))} · ${sinceLabel}: ${esc(presenceTime(row.missingSince))}</small>
+    </div>${dismiss}</div>`;
+}

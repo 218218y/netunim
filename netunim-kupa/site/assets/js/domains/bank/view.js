@@ -57,7 +57,17 @@ function bankMissingSummary(rows){
   if(!active.length)return '';
   return `<div class="bank-missing-summary"><span class="bank-missing-summary-icon" aria-hidden="true">!</span><div><b>${esc(bankMissingSummaryText(active))}</b><small>התנועות מוצגות בראש הרשימה. סימון „נבדק” מסתיר אותן מההיסטוריה החכמה ומשאיר תיעוד בארכיון.</small></div></div>`;
 }
-function bankMissingDetailMarkup(row){if(!bankMissingActive(row))return '';const needsReview=bankChequeTransitionNeedsReview(row);const title=needsReview?'נמצאה הפקדה סופית אפשרית. ההתאמה דורשת בדיקה':row.cheque?'הפקדת צ׳ק לא מופיעה בסריקת הבנק האחרונה':'התנועה לא מופיעה בסריקת הבנק האחרונה';return `<div class="bank-missing-detail"><div><b>${esc(title)}</b><small>נראתה לאחרונה: ${esc(bankPresenceTime(row.lastSeenAt))} · ${needsReview?'ממתינה לבדיקת התאמה מאז':'חסרה מאז'}: ${esc(bankPresenceTime(row.missingSince))}</small></div>${row.archiveId?`<button type="button" class="btn bank-missing-ack" data-action="ack-bank-missing" data-click-arg0="${esc(row.archiveId)}">נבדק — הסר התראה</button>`:''}</div>`}
+function bankMissingDetailMarkup(row){
+  if(!bankMissingActive(row))return '';
+  const needsReview=bankChequeTransitionNeedsReview(row);
+  const title=needsReview?'נמצאה הפקדה סופית אפשרית. ההתאמה דורשת בדיקה':
+    row.cheque?'הפקדת צ׳ק לא מופיעה בסריקת הבנק האחרונה':'התנועה לא מופיעה בסריקת הבנק האחרונה';
+  const sinceLabel=needsReview?'ממתינה לבדיקת התאמה מאז':'חסרה מאז';
+  const dismiss=row.archiveId?`<button type="button" class="btn bank-missing-ack" data-action="ack-bank-missing" data-click-arg0="${esc(row.archiveId)}">נבדק — הסר התראה</button>`:'';
+  return `<div class="bank-missing-detail"><div><b>${esc(title)}</b>
+    <small>נראתה לאחרונה: ${esc(bankPresenceTime(row.lastSeenAt))} · ${sinceLabel}: ${esc(bankPresenceTime(row.missingSince))}</small>
+    </div>${dismiss}</div>`;
+}
 function bankDateFilterActive(){return ui.bankDateMode==='range'}
 function bankRowMatchesDateRange(row){return !bankDateFilterActive()||dateInRange(row?.date||row?.processedDate,ui.bankDateFrom||'',ui.bankDateTo||'')}
 function dateInput(value,key){return dateEditorMarkup('',value,{data:{[key]:''},compact:true})}
