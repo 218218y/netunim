@@ -12,6 +12,7 @@ VIEWPORTS = [
     (412, 915),
     (480, 800),
     (600, 900),
+    (650, 900),
     (768, 1024),
     (820, 1180),
     (1024, 768),
@@ -95,7 +96,7 @@ const layoutSnapshot=()=>{
 def check_orders(browser: BrowserSession) -> list[dict]:
     browser.evaluate(
         r"""(()=>{
-          state.customerDebts=[{id:'RESP-DEBT',customerName:'לקוח בדיקה',amount:1250,orderNumber:'42',phone:'0500000000',customerId:'123456789',paid:false,supplied:false,invoiceIssued:false,note:'הערה'}];
+          state.customerDebts=[{id:'RESP-DEBT',customerName:'לקוח בדיקה',amount:24000.5,orderNumber:'42',phone:'0500000000',customerId:'123456789',paid:false,supplied:false,invoiceIssued:false,note:'הערה',urgency:{note:'לחזור ללקוח'}}];
           state.customerOrders=[{id:'RESP-ORDER',orderNumber:'42',customerName:'לקוח בדיקה',mark1:'א',mark2:'ב',mark3:'ג',mattresses:'מזרן',note:'הערה'}];
           state.checks=[{id:'RESP-CHECK',name:'לקוח בדיקה',amount:900,dueDate:'2026-09-15',status:'בקופה',checkNumber:'123',note:'הערה'}];
           state.inventoryItems=[{id:'RESP-INV',name:'מזרן בדיקה',category:'מזרונים',defaultLocation:'מחסן גדול'}];
@@ -123,6 +124,21 @@ def check_orders(browser: BrowserSession) -> list[dict]:
                   }
                 }
                 if(route==='settings')assertCloudMfaLink('.settings-card');
+                if(route==='customers'){
+                  const cell=document.querySelector('.customer-debt-amount.is-urgent');
+                  const value=cell.querySelector('b').getBoundingClientRect();
+                  const warning=cell.querySelector('.customer-debt-urgent-indicator').getBoundingClientRect();
+                  if(warning.left<=value.right||warning.right>cell.getBoundingClientRect().right){
+                    throw Error(`Urgency warning does not fit beside the debt amount at ${innerWidth}px`);
+                  }
+                  const actions=cell.closest('tr').querySelector('.customer-col-actions');
+                  const actionBox=actions.getBoundingClientRect();
+                  const rowButtons=actions.querySelectorAll('.customer-row-actions button');
+                  if(rowButtons.length!==3||[...rowButtons].some(button=>{
+                    const box=button.getBoundingClientRect();
+                    return box.left<actionBox.left||box.right>actionBox.right;
+                  }))throw Error(`Debt actions do not fit within their column at ${innerWidth}px`);
+                }
                 if(route==='warehouse'){
                   const table=document.querySelector('.inventory-table'),scroll=document.querySelector('.warehouse-view-shell .view-scroll');
                   if(table&&table.getBoundingClientRect().width>scroll.clientWidth+2)throw new Error('Inventory table overflows the warehouse viewport');

@@ -72,6 +72,33 @@ function openDebtModal(id=null){
   }
 }
 
+function openDebtUrgency(id){
+  const debt=model.state.customerDebts.find(row=>row.id===id);
+  if(!debt)return toast('חוב הלקוח לא נמצא');
+  const urgency=debt.urgency;
+  modal('דחוף לטיפול',
+    `<div class="field customer-debt-urgency-dialog"><b>${esc(debt.customerName)}</b><label for="debtUrgencyNote">הערת דחיפות</label><textarea id="debtUrgencyNote" rows="3">${esc(urgency?.note||'')}</textarea></div>`,
+    `<button type="button" class="btn primary" data-action="save-debt-urgency" data-click-arg0="${esc(id)}">${urgency?'שמור':'אישור'}</button>${urgency?`<button type="button" class="btn danger" data-action="remove-debt-urgency" data-click-arg0="${esc(id)}">הסר סימון</button>`:''}<button type="button" class="btn" data-action="close-modal">ביטול</button>`);
+  $('#debtUrgencyNote')?.focus();
+}
+
+function saveDebtUrgency(id,urgent){
+  const debt=model.state.customerDebts.find(row=>row.id===id);
+  if(!debt)return toast('חוב הלקוח לא נמצא');
+  const note=urgent?$('#debtUrgencyNote')?.value.trim():null;
+  if(note===undefined)return;
+  closeModal();
+  if(note===(debt.urgency?.note??null))return;
+  if(urgent)debt.urgency={note};
+  else delete debt.urgency;
+  debt.updatedAt=new Date().toISOString();
+  scheduleSave(urgent?'סימון הדחיפות נשמר':'סימון הדחיפות הוסר',{
+    domains:['customerDebts'],
+    operations:[{type:'put',collection:'customerDebts',id,mode:'replace',record:debt}],
+  });
+  renderCustomers({resultsOnly:true});
+}
+
 function parseAddedAmount(selector,label){
   const raw=$(selector)?.value?.trim()||'';if(!raw)return 0;const value=Number(raw);
   if(!Number.isFinite(value)||value<=0){toast(`יש להזין ${label} חיובי ותקין`);return null}return Math.round(value*100)/100;
@@ -161,5 +188,5 @@ function applyVerifiedMorningDocument({debtId,operationId,documentId,documentNum
 
 async function deleteDebt(id){const d=model.state.customerDebts.find(x=>x.id===id);if(!d||rejectDebtRecoveryMutation(id))return;if(!await confirmDialog('מחיקת חוב',`למחוק את החוב של ${d.customerName}?`,{confirmText:'מחק חוב'}))return;if(rejectDebtRecoveryMutation(id))return;model.state.customerDebts=model.state.customerDebts.filter(x=>x.id!==id);closeModal();scheduleSave('חוב הלקוח נמחק',{deleteIntents:{customerDebts:[id]},mutationType:'delete',surface:'orders.delete.customerDebts',domains:['customerDebts'],operations:[{type:'delete',collection:'customerDebts',id}]});renderCustomers({resultsOnly:true})}
 
-return { addCustomerOrder, saveCustomerOrderField, deleteCustomerOrder, openDebtModal, saveDebt, openDebtProgressDetails, applyVerifiedMorningDocument, deleteDebt };
+return { addCustomerOrder, saveCustomerOrderField, deleteCustomerOrder, openDebtModal, saveDebt, openDebtUrgency, saveDebtUrgency, openDebtProgressDetails, applyVerifiedMorningDocument, deleteDebt };
 }

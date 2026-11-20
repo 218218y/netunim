@@ -22,6 +22,12 @@ export function customerDebtMatchesFilter(progress,filter){
   return true;
 }
 
+export function customerDebtPriorityClass(debt,progress){
+  if(debt.urgency)return 'is-urgent';
+  if(debt.supplied===true&&!progress.paymentComplete&&!progress.paymentPartial)return 'is-supplied';
+  return '';
+}
+
 export function customerDebtRenderModelData(state){
   const stats={openTotal:0,openSuppliedTotal:0,openUnsuppliedTotal:0,allTotal:0,open:0,openSupplied:0,openUnsupplied:0,missingInvoice:0,closed:0,trackedOrders:(state.customerOrders||[]).length};
   const rows=(state.customerDebts||[]).map(record=>{
@@ -34,8 +40,9 @@ export function customerDebtRenderModelData(state){
     }
     if(customerDebtMatchesFilter(progress,'invoice'))stats.missingInvoice++;
     if(customerDebtMatchesFilter(progress,'closed'))stats.closed++;
-    return {record,progress,status,search:`${record.customerName||''} ${record.phone||''} ${record.note||''} ${record.clearingApproval||''} ${record.customerId||''}`.toLocaleLowerCase()};
-  }).sort((a,b)=>Number(b.record.amount||0)-Number(a.record.amount||0));
+    const priorityClass=customerDebtPriorityClass(record,progress);
+    return {record,progress,status,priorityClass,search:`${record.customerName||''} ${record.phone||''} ${record.note||''} ${record.clearingApproval||''} ${record.customerId||''}`.toLocaleLowerCase()};
+  }).sort((a,b)=>Number(Boolean(b.priorityClass))-Number(Boolean(a.priorityClass))||Number(b.record.amount||0)-Number(a.record.amount||0));
   return {rows,stats};
 }
 export function createCustomerRenderSelector({state,revision}){return createRevisionSelector({revision,name:'customer-debts',select:()=>customerDebtRenderModelData(state())})}

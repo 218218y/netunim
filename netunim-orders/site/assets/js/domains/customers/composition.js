@@ -104,6 +104,8 @@ export function createDomainsCustomers({morningOperationScope,morningRequest,doc
     setCustomerFlag:(...args)=>view.setCustomerFlag(...args),
     saveDebtField:(...args)=>view.saveDebtField(...args),
     openDebtModal:(...args)=>editor.openDebtModal(...args),
+    openDebtUrgency:(...args)=>editor.openDebtUrgency(...args),
+    saveDebtUrgency:(...args)=>editor.saveDebtUrgency(...args),
     openDebtProgressDetails:(...args)=>editor.openDebtProgressDetails(...args),
     saveDebt:(...args)=>editor.saveDebt(...args),
     deleteDebt:(...args)=>editor.deleteDebt(...args),

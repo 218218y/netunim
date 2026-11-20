@@ -92,6 +92,43 @@ flows={
  openDebtModal(state.customerDebts[0].id);fill({dAmount:'-35'});saveModal();await saved();assert(state.customerDebts[0].amount===-35,'negative reverse debt edit');
  openDebtModal(state.customerDebts[0].id);fill({dPaid:'true',dInvoice:'true'});saveModal();await saved();assert(!!state.customerDebts[0].closedAt,'debt closed state');
  click('customer-filter-4');debtAmountCell=element('[data-customer-bulk-id="'+state.customerDebts[0].id+'"] .customer-debt-amount');assert(debtAmountCell.classList.contains('is-paid')&&!debtAmountCell.classList.contains('is-supplied'),'paid debt amount overrides supplied state in closed debts view');
+
+ click('customer-filter');
+ const addDebt=(name,amount,supplied=false)=>{
+   click('open-debt-modal');fill({dName:name,dAmount:String(amount),dSupplied:String(supplied)});saveModal();
+   return state.customerDebts.find(debt=>debt.customerName===name).id;
+ };
+ const regularDebt=addDebt('Regular debt',9000);
+ const suppliedDebt=addDebt('Supplied debt',2000,true);
+ const urgentDebt=addDebt('Urgent debt',1500);
+ const largerUrgentDebt=addDebt('Larger urgent debt',3000);
+ const debtRow=id=>element('.customer-table tbody [data-customer-bulk-id="'+id+'"]');
+ const urgencyButton=id=>debtRow(id).querySelector('.customer-row-actions [data-action="open-debt-urgency"]');
+ const debtOrder=()=>[...document.querySelectorAll('.customer-table tbody [data-customer-bulk-id]')].map(row=>row.dataset.customerBulkId);
+ for(const [id,note]of [[urgentDebt,'Call <customer> & confirm'],[largerUrgentDebt,'Call today']]){
+   assert(urgencyButton(id).getAttribute('aria-pressed')==='false','Unmarked debt shows an inactive urgency button');
+   urgencyButton(id).click();
+   assert(!document.querySelector('#modal [data-action="remove-debt-urgency"]'),'New urgency dialog offers confirmation');
+   fill({debtUrgencyNote:note});saveModal();
+ }
+ assert(debtOrder().join(',')===[largerUrgentDebt,suppliedDebt,urgentDebt,regularDebt].join(','),'Urgent and supplied unpaid debts share one descending priority group');
+ const urgentAmount=debtRow(urgentDebt).querySelector('.customer-debt-amount');
+ const suppliedAmount=debtRow(suppliedDebt).querySelector('.customer-debt-amount');
+ assert(urgentAmount.classList.contains('is-urgent')&&getComputedStyle(urgentAmount).backgroundColor===getComputedStyle(suppliedAmount).backgroundColor,'Urgent amount has the supplied unpaid red background');
+ assert(urgencyButton(urgentDebt).getAttribute('aria-pressed')==='true','Urgency button stays pressed');
+ element('.customer-debt-amount [data-action="open-debt-urgency"][data-click-arg0="'+urgentDebt+'"]').click();
+ assert(element('#debtUrgencyNote').value==='Call <customer> & confirm','Amount warning opens the original urgency note');
+ fill({debtUrgencyNote:'Follow up tomorrow'});saveModal();
+ await mainStorageV2.commitPromise;
+ assert((await mainStorageV2.recover()).state.customerDebts.find(debt=>debt.id===urgentDebt).urgency.note==='Follow up tomorrow','Edited urgency note survives journal recovery');
+ urgencyButton(urgentDebt).click();
+ assert(element('#debtUrgencyNote').value==='Follow up tomorrow','Action warning opens the same edited note');
+ click('remove-debt-urgency');
+ assert(debtOrder().join(',')===[largerUrgentDebt,suppliedDebt,regularDebt,urgentDebt].join(','),'Removing urgency restores the regular amount order');
+ assert(urgencyButton(urgentDebt).getAttribute('aria-pressed')==='false'&&!debtRow(urgentDebt).querySelector('.customer-debt-urgent-indicator'),'Removing urgency clears both row indicators');
+ await mainStorageV2.commitPromise;
+ assert(!(await mainStorageV2.recover()).state.customerDebts.find(debt=>debt.id===urgentDebt).urgency,'Removed urgency stays removed after journal recovery');
+
  switchView('service');click('open-service-modal');fill({svcName:'Service customer',svcDesc:'Repair',svcOpened:'2026-08-27'});saveModal();await saved();assert(state.serviceCalls.length===1,'service create');
  const flag=element('[data-action="toggle-service-flag"][data-click-arg1="closed"]');flag.click();await saved();assert(state.serviceCalls[0].closed&&state.serviceCalls[0].closedAt,'service close');
  assert(!document.querySelector('[data-service-bulk-id]'),'closed service leaves active queue');

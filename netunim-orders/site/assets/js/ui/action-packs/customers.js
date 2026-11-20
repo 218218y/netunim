@@ -39,10 +39,13 @@ export function createCustomersActions({ customerUi, domainsCustomers }) {
     'set-customer-flag-2': (element, event) => { return setCustomerFlag(element.dataset.clickArg0, element.dataset.clickArg1, false); },
     'save-debt-field': (element, event) => { return saveDebtField(element.dataset.blurArg0, element.dataset.blurArg1, element); },
     'open-debt-modal-2': (element, event) => { return openDebtModal(element.dataset.clickArg0); },
+    'open-debt-urgency': element => domainsCustomers.openDebtUrgency(element.dataset.clickArg0),
+    'save-debt-urgency': element => domainsCustomers.saveDebtUrgency(element.dataset.clickArg0, true),
+    'remove-debt-urgency': element => domainsCustomers.saveDebtUrgency(element.dataset.clickArg0, false),
     'open-debt-progress-details': (element, event) => { return openDebtProgressDetails(element.dataset.clickArg0); },
     'save-debt': (element, event) => { return saveDebt(element.dataset.clickArg0); },
     'delete-debt': (element, event) => { return deleteDebt(element.dataset.clickArg0); },
     'customer-results-page': el => pageCustomerResults(el.dataset.clickArg0, el.dataset.clickArg1),
   };
-  return markMutationActions(actions, { orders: ['open-debt-modal', 'add-customer-order', 'save-customer-order-field', 'toggle-customer-order-urgent', 'delete-customer-order', 'set-customer-flag', 'set-customer-flag-2', 'save-debt-field', 'open-debt-modal-2', 'save-debt', 'delete-debt', 'delete-selected-customer-rows'] });
+  return markMutationActions(actions, { orders: ['open-debt-modal', 'add-customer-order', 'save-customer-order-field', 'toggle-customer-order-urgent', 'delete-customer-order', 'set-customer-flag', 'set-customer-flag-2', 'save-debt-field', 'open-debt-modal-2', 'save-debt-urgency', 'remove-debt-urgency', 'save-debt', 'delete-debt', 'delete-selected-customer-rows'] });
 }
