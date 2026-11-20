@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import unittest
+from uuid import uuid4
 import zipfile
 from run_all import run_suites
 
@@ -303,8 +304,18 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
             files = (bridge / 'runtime-files.txt').read_text().splitlines()
             for file in [*files, 'runtime-files.txt', 'setup-bank-bridge.mjs', 'setup_bank_bridge.ps1',
                          'install_node_runtime.ps1', 'install_bank_bridge.bat', 'rollback_bank_bridge.bat',
-                         'launch_hidden.vbs']:
+                         'bank_bridge_autostart.ps1', 'bank_bridge_startup.cs']:
                 shutil.copyfile(bridge / file, source / file)
+            # Exercise real task registration under a unique name and keep the
+            # fixture's legacy file outside the user's actual Startup folder.
+            autostart = source / 'bank_bridge_autostart.ps1'
+            launcher = autostart.read_text(encoding='ascii')
+            task_name = 'NetunimBankBridge-Fixture-' + uuid4().hex
+            self.assertIn('"NetunimKupaBankBridge-$sid"', launcher)
+            self.assertIn("[Environment]::GetFolderPath('Startup')", launcher)
+            autostart.write_text(launcher.replace('"NetunimKupaBankBridge-$sid"', f"'{task_name}'").replace(
+                "[Environment]::GetFolderPath('Startup')",
+                "Join-Path $env:APPDATA 'Microsoft/Windows/Start Menu/Programs/Startup'"), encoding='ascii')
             shutil.copyfile(archive, source / archive.name)
             # Provider downloads and live browser checks are outside this fixture.
             # Exercise the real Node provisioning, npm ci, setup, HTTP and drain.
@@ -392,7 +403,7 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
                             raise
                         time.sleep(.1)
                 # Missing source helpers must abort before shutting down v81.
-                for name in ('launch_hidden.vbs', 'rollback_bank_bridge.bat'):
+                for name in ('bank_bridge_startup.cs', 'rollback_bank_bridge.bat'):
                     target = source / name
                     original = target.read_bytes()
                     target.unlink()
@@ -401,11 +412,11 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
                     health(81)
                     self.assertIsNone(old.poll())
 
-                # These are actual Windows rename failures after graceful stop.
+                # These Windows file locks prevent migration or runtime replacement.
                 for target, flags in [(startup, 0), (helper, 0), (active, 0x02000000)]:
                     with deny_delete(target, flags):
                         result = run_bat(install, 1)
-                        self.assertIn('restored and verified', result)
+                        self.assertIn('restored and verified', result, (root / 'bridge.log').read_text(encoding='utf8'))
                     health(81)
                     self.assertEqual(startup.read_text(), 'old launcher')
                     self.assertEqual(helper.read_text(), 'old helper')
@@ -430,7 +441,8 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
                     self.assertEqual((active / 'installation-id.txt').read_text(), '7' * 32)
                     self.assertEqual(startup.read_text(), 'old launcher')
 
-                run_bat(install, 0)
+                self.assertIn('Registered the Bank Bridge sign-in task: ' + task_name, run_bat(install, 0))
+                self.assertFalse(startup.exists())
                 installed = health(91)
                 origins = ['https://kupa.bargig-furniture.com', 'https://orders.bargig-furniture.com']
                 admin = (root / 'pairing-v1/admin-token.txt').read_text().strip()
@@ -453,6 +465,9 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
                         self.assertEqual(request('/status', key, origin=origin)[0], 200)
                 self.assertEqual(health(91)['installationId'], installed['installationId'])
             finally:
+                powershell = system / 'System32/WindowsPowerShell/v1.0/powershell.exe'
+                subprocess.run([str(powershell), '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+                                '-File', str(autostart), '-Mode', 'Remove'], env=env, capture_output=True, timeout=25)
                 subprocess.run([node, 'server.mjs', '--stop-existing'], cwd=active, env=env,
                                capture_output=True, timeout=10)
                 if old.poll() is None:

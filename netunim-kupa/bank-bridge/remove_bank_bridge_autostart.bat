@@ -1,6 +1,6 @@
 @echo off
-setlocal
-set "AUTOSTART=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\NetunimKupaBankBridge.vbs"
-if exist "%AUTOSTART%" del /q "%AUTOSTART%"
-echo Bank Bridge autostart entry removed. Encrypted credentials were left untouched.
+setlocal EnableExtensions DisableDelayedExpansion
+powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%~dp0bank_bridge_autostart.ps1" -Mode Remove
+set "RESULT=%ERRORLEVEL%"
 pause
+exit /b %RESULT%

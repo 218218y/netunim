@@ -3,7 +3,6 @@ param([Parameter(Mandatory=$true)][ValidateSet('Install','Rollback')][string]$Mo
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 $appRoot = Join-Path $env:LOCALAPPDATA 'NetunimKupaBankBridge'
-$startup = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup'
 [IO.Directory]::CreateDirectory($appRoot) | Out-Null
 
 # One setup at a time, including preparation of the private runtime and browser.
@@ -16,7 +15,7 @@ try {
   } else {
     $node = & $nodeInstaller -AppRoot $appRoot -VerifyOnly
   }
-  & $node (Join-Path $PSScriptRoot 'setup-bank-bridge.mjs') $Mode $appRoot $startup
+  & $node (Join-Path $PSScriptRoot 'setup-bank-bridge.mjs') $Mode $appRoot (Join-Path $PSHOME 'powershell.exe')
   exit $LASTEXITCODE
 } finally {
   $lock.Dispose()

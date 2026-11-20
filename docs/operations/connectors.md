@@ -12,6 +12,16 @@ listener and verify its version and installation identity. Check `/health`
 or the native `--check-running` command and retain existing app data.
 The connectors and their private state stay on Windows.
 
+The Bank installer migrates the legacy Startup-folder launcher to the
+`NetunimKupaBankBridge-<user SID>` task in Windows Task Scheduler. The task
+starts at that user's sign-in without opening a console window, runs with
+their regular privileges on AC or battery, and retries a failed launch after
+waits of 2, 5, and 10 seconds. After installing, sign in to Windows and verify
+the listener with the command in the [local console](#local-console). For startup failures, review the task's
+last result and `%LOCALAPPDATA%\NetunimKupaBankBridge\autostart.log` and
+`bridge.log`. To disable automatic startup, use `remove_bank_bridge_autostart.bat`
+from the installer folder.
+
 For Document Bridge, select the exact local or mapped folders needed for
 search, open and preview. Broad roots also expand which individual documents
 can be sent to the Recycle Bin by an authorized user. Run

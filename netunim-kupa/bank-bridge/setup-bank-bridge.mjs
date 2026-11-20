@@ -5,7 +5,7 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
-const [mode, root, startup] = process.argv.slice(2);
+const [mode, root, powershell] = process.argv.slice(2);
 const installing = mode === 'Install';
 const source = path.dirname(fileURLToPath(import.meta.url));
 const active = path.join(root, 'app');
@@ -13,11 +13,9 @@ const backup = path.join(root, 'app-rollback');
 const work = fs.mkdtempSync(path.join(root, 'setup-work-'));
 const staged = path.join(work, 'app');
 const log = path.join(root, 'bridge.log');
-const launcher = 'NetunimKupaBankBridge.vbs';
-const stagedLauncher = path.join(startup, launcher + '.' + randomUUID());
-const savedLauncher = stagedLauncher + '.previous';
 const rollback = 'rollback_bank_bridge.bat';
-const setupFiles = ['setup-bank-bridge.mjs', 'setup_bank_bridge.ps1', 'install_node_runtime.ps1'];
+const autostart = 'bank_bridge_autostart.ps1';
+const setupFiles = ['setup-bank-bridge.mjs', 'setup_bank_bridge.ps1', 'install_node_runtime.ps1', autostart, 'bank_bridge_startup.cs'];
 const moves = [];
 let listener, stopped = false, preserveWork = false;
 
@@ -44,17 +42,24 @@ function stage() {
     fs.copyFileSync(path.join(source, file), path.join(staged, file), fs.constants.COPYFILE_EXCL);
   }
   fs.writeFileSync(path.join(staged, 'installation-id.txt'), randomUUID().replaceAll('-', ''), { flag: 'wx' });
-  fs.mkdirSync(path.join(work, 'setup'));
-  for (const file of setupFiles) fs.copyFileSync(path.join(source, file), path.join(work, 'setup', file));
+  const stagedSetup = path.join(work, 'setup');
+  fs.mkdirSync(stagedSetup);
+  for (const file of setupFiles) fs.copyFileSync(path.join(source, file), path.join(stagedSetup, file));
   fs.copyFileSync(path.join(source, rollback), path.join(work, rollback));
-  fs.mkdirSync(startup, { recursive: true });
-  fs.copyFileSync(path.join(source, 'launch_hidden.vbs'), stagedLauncher, fs.constants.COPYFILE_EXCL);
+  configureAutostart(stagedSetup, 'Prepare');
 
   console.log('Installing locked dependencies and checking browsers in the staged Bank Bridge...');
   run(staged, path.join(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js'),
     ['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund']);
   run(staged, 'provision-camoufox.mjs', []);
   run(staged, 'server.mjs', ['--doctor']);
+}
+
+function configureAutostart(directory, command) {
+  const result = spawnSync(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+    '-File', path.join(directory, autostart), '-Mode', command], { windowsHide: true, stdio: 'inherit' });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`Bank Bridge sign-in setup failed (${command}). See the Windows error above.`);
 }
 
 function move(from, to) {
@@ -145,7 +150,6 @@ try {
       move(active, backup);
     }
     move(staged, active);
-    replace(stagedLauncher, path.join(startup, launcher), savedLauncher);
     replace(path.join(work, rollback), path.join(root, rollback), path.join(work, 'previous-rollback.bat'));
     replace(path.join(work, 'setup'), path.join(root, 'setup'), path.join(work, 'previous-setup'));
   } else {
@@ -155,6 +159,7 @@ try {
     move(displaced, backup);
   }
   await start(!installing);
+  if (installing) configureAutostart(path.join(root, 'setup'), 'Register');
   console.log(installing
     ? 'Bank Bridge installation verified. See README.txt beside the installer for pairing and recovery.'
     : 'Bank Bridge rollback verified. Run the helper again to return to the other preserved runtime.');
@@ -177,12 +182,10 @@ try {
   } catch (recoveryError) {
     preserveWork = true;
     console.error(`Automatic recovery could not be verified: ${recoveryError.message}`);
-    console.error(`Recovery files were preserved at ${work}. Startup backup, if present: ${savedLauncher}`);
+    console.error(`Recovery files were preserved at ${work}.`);
   }
 } finally {
   if (!preserveWork) {
     cleanup(work, true);
-    cleanup(stagedLauncher);
-    cleanup(savedLauncher);
   }
 }

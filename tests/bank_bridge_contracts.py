@@ -177,8 +177,8 @@ sync_merge=(SITE/'assets/js/sync/merge.js').read_text(encoding='utf-8')
 installer=(BRIDGE/'setup-bank-bridge.mjs').read_text(encoding='utf-8')
 install_files=(BRIDGE/'runtime-files.txt').read_text(encoding='utf-8').splitlines()
 start_script=(BRIDGE/'start_bank_bridge.bat').read_text(encoding='utf-8')
-launcher_path=BRIDGE/'launch_hidden.vbs'
-launcher=launcher_path.read_text(encoding='ascii') if launcher_path.exists() else ''
+launcher=(BRIDGE/'bank_bridge_autostart.ps1').read_text(encoding='ascii')
+startup_program=(BRIDGE/'bank_bridge_startup.cs').read_text(encoding='ascii')
 package=json.loads((BRIDGE/'package.json').read_text(encoding='utf-8'))
 finance_archive_sql=(ROOT/'netunim-kupa/supabase/financial_sync_archive_upgrade.sql').read_text(encoding='utf-8')
 finance_integrity_sql=(ROOT/'netunim-kupa/supabase/financial_sync_integrity_v2_upgrade.sql').read_text(encoding='utf-8')
@@ -259,8 +259,10 @@ ok(has_bridge_model_policy('hapoalimCreditSettlementProvider') and has_bridge_mo
 ok('CARD_NUMBER_KEY_RE' in bank_diagnostics and 'maskPotentialPanText' in bank_diagnostics and 'schemaVersion:5' in bank_diagnostics and 'creditSettlementDetailResponses:true' in bank_diagnostics, 'bank credit settlement diagnostics: full PAN-shaped values are masked locally while normalized last-4 evidence remains diagnosable')
 ok('credit_settlement_details' in kupa_cloud_transport and 'creditSettlementDetails' in feed and all('../../shared/bank-feed.js' in source for source in bank_feed_adapters) and 'bankCreditSettlementDetails' in (ROOT/'netunim-orders/site/assets/js/domains/finance/bank-transaction-detail-view.js').read_text(encoding='utf-8') and 'creditSettlementDetails' in shared_kupa_domain, 'credit settlement identity survives canonical normalization, both app adapters, durable bank archive read-back, UI detail rendering and shared cash-flow reconciliation')
 
-ok(launcher_path.exists() and all(b < 128 for b in launcher_path.read_bytes()), 'bank bridge startup: launcher is ASCII-only and cannot corrupt Hebrew Windows paths')
-ok('ExpandEnvironmentStrings("%LOCALAPPDATA%")' in launcher and '%~dp0' not in launcher and 'shell.Run command, 0, False' in launcher, 'bank bridge startup: launcher resolves stable LOCALAPPDATA at runtime and starts hidden')
+ok('-AtLogOn -User $sid' in launcher and '-LogonType Interactive -RunLevel Limited' in launcher and 'NetunimKupaBankBridge-$sid' in launcher, 'bank bridge startup: sign-in task runs with the current Windows user and regular privileges')
+ok('new[] { 0, 2, 5, 10 }' in startup_program and 'if (result == 0) break;' in startup_program and '-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries' in launcher and '-MultipleInstances IgnoreNew' in launcher, 'bank bridge startup: the launcher retries failures on AC or battery power and respects graceful shutdown')
+ok('-OutputType WindowsApplication' in launcher and 'New-ScheduledTaskAction -Execute $runner' in launcher and 'CreateNoWindow = true' in startup_program and 'UseShellExecute = false' in startup_program, 'bank bridge startup: neither the scheduled action nor its Node child creates a console window')
+ok("const autostart = 'bank_bridge_autostart.ps1'" in installer and installer.index('await start(!installing)') < installer.index("configureAutostart(path.join(root, 'setup'), 'Register')") and launcher.index('Register-ScheduledTask -TaskPath', launcher.index('$registered = $false')) < launcher.rindex('[IO.File]::Delete($legacy)'), 'bank bridge startup: verify the installed listener and register the sign-in task before removing the legacy launcher')
 ok('setup-work-' in installer and 'npm-cli.js' in installer and '--doctor' in installer, 'bank bridge install: runtime is staged and validated before activation')
 ok('--stop-existing' in installer and 'POST /shutdown' in http_routes and 'afterResponse:()=>{void shutdown.request()}' in server and 'await replacement.stop()' in server and 'Stop-Process' not in server, 'bank bridge upgrade: verified replacement requests owned drainage without force-killing accepted work')
 ok('const BRIDGE_VERSION=91' in server and 'version:BRIDGE_VERSION' in server
