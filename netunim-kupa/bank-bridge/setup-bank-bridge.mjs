@@ -47,6 +47,7 @@ function stage() {
   for (const file of setupFiles) fs.copyFileSync(path.join(source, file), path.join(stagedSetup, file));
   fs.copyFileSync(path.join(source, rollback), path.join(work, rollback));
   configureAutostart(stagedSetup, 'Prepare');
+  runSetupScript(path.join(source, 'build_bank_bridge_dpapi.ps1'), ['-OutputDirectory', staged]);
 
   console.log('Installing locked dependencies and checking browsers in the staged Bank Bridge...');
   run(staged, path.join(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js'),
@@ -56,10 +57,14 @@ function stage() {
 }
 
 function configureAutostart(directory, command) {
+  runSetupScript(path.join(directory, autostart), ['-Mode', command]);
+}
+
+function runSetupScript(script, args) {
   const result = spawnSync(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-    '-File', path.join(directory, autostart), '-Mode', command], { windowsHide: true, stdio: 'inherit' });
+    '-File', script, ...args], { windowsHide: true, stdio: 'inherit' });
   if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`Bank Bridge sign-in setup failed (${command}). See the Windows error above.`);
+  if (result.status !== 0) throw new Error(`Bank Bridge setup failed (${path.basename(script)}). See the Windows error above.`);
 }
 
 function move(from, to) {

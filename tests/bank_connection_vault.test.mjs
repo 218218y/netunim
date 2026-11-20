@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createConnectionVault} from '../netunim-kupa/bank-bridge/connection-vault.mjs';
 import {normalizeConnectionImportDocument,normalizeStoredCredentials} from '../netunim-kupa/bank-bridge/connection-settings.mjs';
 import {createBridgeOperationOwner} from '../netunim-kupa/bank-bridge/operation-owner.mjs';
 import {createConnectionCommands} from '../netunim-kupa/bank-bridge/connection-commands.mjs';
-import {protectText,unprotectText} from '../netunim-kupa/bank-bridge/windows-platform.mjs';
+import {runPowerShell} from '../netunim-kupa/bank-bridge/windows-platform.mjs';
+import {buildBankDpapi} from './bank_dpapi_fixture.mjs';
 
 export function importDocument(){return {schema:'netunim-finance-connections',version:1,mode:'replace',bank:{provider:'hapoalim',userCode:'0012',password:' padded bank secret ',accounts:{business:{branchNumber:'001',accountNumber:'000123'},home:{branchNumber:'002',accountNumber:'000456'}}},credit:{profiles:[{connectionKey:'portable',provider:'max',label:'fixture',credentials:{username:'fixture',password:' padded credit secret '}}]}}}
 
@@ -95,9 +97,27 @@ test('import ownership includes cleanup, and the next edit sees the replaced per
 });
 
 test('Windows CurrentUser DPAPI round-trips the actual vault without plaintext secrets on disk',{skip:process.platform!=='win32'},async t=>{
+  const {directory}=await fixture(t);
+  await buildBankDpapi(directory);
+  const platform=path.join(directory,'windows-platform.mjs');
+  await fs.copyFile(fileURLToPath(new URL('../netunim-kupa/bank-bridge/windows-platform.mjs',import.meta.url)),platform);
+  const {protectText,unprotectText}=await import(pathToFileURL(platform).href);
   const f=await fixture(t,{protectText,unprotectText});
   const normalized=normalizeConnectionImportDocument(importDocument());await f.vault.replaceConnections(normalized);
   assert.equal((await f.vault.readCredentials()).password,normalized.credentials.password);
   assert.deepEqual(await f.vault.readCreditProfiles(),normalized.profiles);
   for(const file of [f.bank,f.credit]){const bytes=await fs.readFile(file,'utf8');assert.ok(!bytes.includes('padded'));assert.ok(!bytes.includes('userCode'))}
+  // Both directions exercise the previously deployed PowerShell implementation.
+  const sample='  synthetic מזוהה 🔐  ';
+  const plain64=Buffer.from(sample,'utf8').toString('base64');
+  const encrypted=await protectText(sample);
+  const oldImplementation=String.raw`$ErrorActionPreference='Stop';Add-Type -AssemblyName System.Security
+$inputData=[Console]::In.ReadToEnd() | ConvertFrom-Json
+$scope=[System.Security.Cryptography.DataProtectionScope]::CurrentUser
+$plain=[System.Security.Cryptography.ProtectedData]::Unprotect([Convert]::FromBase64String($inputData.cipher),$null,$scope)
+if([Convert]::ToBase64String($plain) -cne $inputData.plain){throw 'Older DPAPI decoder could not read the new vault format.'}
+$cipher=[System.Security.Cryptography.ProtectedData]::Protect($plain,$null,$scope)
+[Console]::Out.Write([Convert]::ToBase64String($cipher))`;
+  assert.equal(await unprotectText(await runPowerShell(oldImplementation,JSON.stringify({plain:plain64,cipher:encrypted}))),sample);
+  await assert.rejects(unprotectText('aW52YWxpZA=='),/Windows credential vault/);
 });

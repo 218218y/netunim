@@ -3,7 +3,7 @@
 Install the connectors independently from the verified checkout on each Windows
 computer that needs them. The current source versions and installers are:
 
-1. Bank Bridge **92** via [install_bank_bridge.bat](../../netunim-kupa/bank-bridge/install_bank_bridge.bat).
+1. Bank Bridge **93** via [install_bank_bridge.bat](../../netunim-kupa/bank-bridge/install_bank_bridge.bat).
 2. Document Bridge **48** via [install_document_bridge.bat](../../netunim-orders/document-bridge/install_document_bridge.bat).
 
 Bank Bridge listens on loopback port 8765 and Document Bridge on 8766.
@@ -11,6 +11,8 @@ The installers use private checksum-verified Node runtimes, start the
 listener and verify its version and installation identity. Check `/health`
 or the native `--check-running` command and retain existing app data.
 The connectors and their private state stay on Windows.
+Bank Bridge builds and verifies the executable that opens the existing Windows
+CurrentUser credential vault before activating the new runtime.
 
 The Bank installer migrates the legacy Startup-folder launcher to the
 `NetunimKupaBankBridge-<user SID>` task in Windows Task Scheduler. The task

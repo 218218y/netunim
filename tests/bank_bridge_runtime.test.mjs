@@ -8,11 +8,12 @@ import {once} from 'node:events';
 import {promisify} from 'node:util';
 import {bankStage} from './bank_stage_fixture.mjs';
 import {readPairingAdminToken} from '../netunim-kupa/bank-bridge/scoped-pairing.mjs';
+import {createBankBridgeClient} from '../shared/bank-bridge-client.js';
 
 test('staged Bank runtime starts its real HTTP capabilities with isolated files and no provider login',{timeout:process.platform==='win32'?120000:30000},async t=>{
   const key='a'.repeat(64),image=Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]);
   const installationId='a'.repeat(32);
-  const f=await bankStage(t,{prepare:async({app,runtime})=>{
+  const f=await bankStage(t,{dpapi:true,prepare:async({app,runtime})=>{
     await fs.writeFile(path.join(runtime,'installation-id.txt'),installationId);
     const cache=path.join(app,'cheque-image-cache'),now=new Date(),eventDate=String(now.getFullYear())+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0');
     await fs.mkdir(cache);await fs.writeFile(path.join(cache,key+'.bin'),image);await fs.writeFile(path.join(cache,key+'.json'),JSON.stringify({key,contentType:'image/png',size:image.length,eventDate}));
@@ -32,7 +33,7 @@ test('staged Bank runtime starts its real HTTP capabilities with isolated files 
   assert.equal(await fs.readFile(cliToken,'utf8'),initialKey);
   const explicitPrint=await runCli('--print-token');
   assert.ok(explicitPrint.stdout.split(/\r?\n/).includes(initialKey.trim()));
-  assert.deepEqual(await (await request('/health?probe=1',{token:'wrong'})).json(),{ok:true,service:'netunim-kupa-bank-bridge',version:92,creditContractVersion:2,pairingProtocol:1,installationId});
+  assert.deepEqual(await (await request('/health?probe=1',{token:'wrong'})).json(),{ok:true,service:'netunim-kupa-bank-bridge',version:93,creditContractVersion:2,pairingProtocol:1,installationId});
   await assert.rejects(runCli(),error=>error.code===1&&error.stderr.includes('is already in use'));
   await runCli('--check-running');
   const marker=path.join(f.runtime,'installation-id.txt');
@@ -53,6 +54,11 @@ test('staged Bank runtime starts its real HTTP capabilities with isolated files 
     const bank=await (await request('/status')).json();assert.equal(bank.businessAccountNumber,'000123');assert.ok(!JSON.stringify(bank).includes('secret'));
     const profiles=await Promise.all(['first','second'].map(profileId=>request('/credit/profiles',{method:'POST',body:{profileId,provider:'max',username:profileId,password:' synthetic credit secret '}})));
     assert.deepEqual(profiles.map(response=>response.status),[200,200]);assert.equal((await (await request('/v2/credit/status')).json()).profiles.length,2);
+    const client=createBankBridgeClient({tokenStore:{get:()=> 'native-fixture-token',set(){}},
+      fetchRequest:(url,options)=>fetch(f.base+new URL(url).pathname,options),
+      timers:globalThis,createAbortController:()=>new AbortController()});
+    const [first,second,credit]=await Promise.all([client.status(),client.status(),client.creditStatus()]);
+    assert.equal(first.configured,true);assert.equal(second.configured,true);assert.equal(credit.profiles.length,2);
     for(const file of ['hapoalim-credentials.dpapi','credit-card-profiles.dpapi'])assert.ok(!(await fs.readFile(path.join(app,file),'utf8')).includes('synthetic'));
   }
   assert.deepEqual(await (await request('/shutdown',{method:'POST'})).json(),{ok:true});

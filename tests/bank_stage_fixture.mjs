@@ -7,8 +7,9 @@ import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {fileURLToPath} from 'node:url';
+import {buildBankDpapi} from './bank_dpapi_fixture.mjs';
 
-export async function bankStage(t,{prepare=async()=>{}}={}){
+export async function bankStage(t,{prepare=async()=>{},dpapi=false}={}){
   const probe=net.createServer();
   const port=await new Promise((resolve,reject)=>{probe.once('error',reject);probe.listen(0,'127.0.0.1',()=>{const address=probe.address();assert.ok(address&&typeof address==='object');probe.close(()=>resolve(address.port))})});
   const directory=await fs.mkdtemp(path.join(os.tmpdir(),'netunim bank runtime '));
@@ -21,6 +22,7 @@ export async function bankStage(t,{prepare=async()=>{}}={}){
   await fs.mkdir(runtime);await fs.mkdir(app);
   const installer=await fs.readFile(path.join(root,'runtime-files.txt'),'utf8'),staged=installer.trim();assert.ok(staged);
   for(const file of staged.split(/\s+/).filter(file=>file.endsWith('.mjs')))await fs.copyFile(path.join(root,file),path.join(runtime,file));
+  if(dpapi&&process.platform==='win32')await buildBankDpapi(runtime);
   const entry=path.join(runtime,'server.mjs'),original=await fs.readFile(entry,'utf8');assert.ok(original.includes('const PORT=8765;'));
   await fs.writeFile(entry,original.replace('const PORT=8765;',`const PORT=${port};`));
   await fs.writeFile(path.join(app,'bridge-token.txt'),'native-fixture-token\n');
@@ -46,8 +48,7 @@ export async function bankStage(t,{prepare=async()=>{}}={}){
         const bytes=Buffer.concat(chunks);resolve({status:res.statusCode,headers:{get:key=>res.headers[key.toLowerCase()]},json:async()=>JSON.parse(bytes),arrayBuffer:async()=>bytes});
       });
     });
-    // Functional native-vault coverage includes cold PowerShell/DPAPI startup.
-    // A Windows CI DPAPI roundtrip alone took 12.4s; this is not a latency gate.
+    // Synthetic provider and shutdown tests can intentionally hold operations.
     const deadline=process.platform==='win32'?30000:10000;
     req.on('error',reject);req.setTimeout(deadline,()=>req.destroy(new Error(`staged HTTP deadline: ${method} ${new URL(base+target).pathname}`)));req.end(body===undefined?'':JSON.stringify(body));
   });

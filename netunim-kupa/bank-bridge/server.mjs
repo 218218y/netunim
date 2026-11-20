@@ -41,7 +41,7 @@ import {createBankDiagnosticRun,finishBankDiagnosticRun,recordBankAccountDiagnos
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=92;
+const BRIDGE_VERSION=93;
 // Capture the installer's marker once. Reading it on each request would let
 // an old process at the same path report the newly staged installation.
 const marker=(await fs.readFile(new URL('./installation-id.txt',import.meta.url),'utf8').catch(()=> '')).trim();
@@ -181,6 +181,8 @@ if(args.has('--check-running')){
 }
 if(args.has('--doctor')){
   try{
+    const vaultProbe='Bank Bridge DPAPI verification';
+    if(await unprotectText(await protectText(vaultProbe))!==vaultProbe)throw new Error('Bank Bridge credential vault verification failed.');
     const browserPath=await browserLocator.find();
     const digitalV3BrowserVersion=await doctorModernPuppeteer(browserPath);
     const pkg=await import('israeli-bank-scrapers');
