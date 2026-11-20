@@ -263,6 +263,10 @@
     {
       "version": "20261120100000",
       "name": "bank_cheque_deposit_lifecycle"
+    },
+    {
+      "version": "20261120140000",
+      "name": "bank_transfer_sender_account"
     }
   ]
 }

@@ -275,7 +275,7 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     for(let offset=0;offset<cap;offset+=pageSize){
       assertCurrent?.();
       const q=(`/rest/v1/bank_transactions?account_key=eq.${encodeURIComponent(String(accountKey))}&account_role=eq.${accountRole==='home'?'home':'business'}${dateClause}&select=id,account_key,account_role,merge_key,transaction_date,processed_date,amount,currency,description,memo,party_name,party_headline,message_headline,message_detail,status,` +
-        `balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details,credit_settlement_details,first_seen_at,presence_state,last_seen_at,missing_since,` +
+        `balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details,credit_settlement_details,sender_account,first_seen_at,presence_state,last_seen_at,missing_since,` +
         `missing_acknowledged_at,${includeMissingReason?'missing_reason,':''}alert_acknowledgements&order=transaction_date.desc,id.desc&limit=${pageSize}&offset=${offset}`);
       const options={method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})};
       let r=await supaRest(q,options),j=await r.json().catch(()=>null);
@@ -310,6 +310,7 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
         cheque:!!x.cheque,
         checkDetails:x.check_details,
         creditSettlementDetails:x.credit_settlement_details,
+        ...(x.sender_account ? {senderAccount:x.sender_account} : {}),
         firstSeenAt:x.first_seen_at,
         presenceState:x.presence_state||'unknown',
         lastSeenAt:x.last_seen_at,

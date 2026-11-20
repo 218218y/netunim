@@ -12,8 +12,8 @@ const SENSITIVE_QUERY_RE=/(?:accountid|token|session|auth|authorization|xsrf|csr
 const CARD_NUMBER_KEY_RE=/(?:credit.?card|card).*(?:number|no|num|pan)|(?:number|no|num|pan).*(?:credit.?card|card)|(?:מספר|מס)(?:[ _.-]*)(?:כרטיס)|(?:כרטיס)(?:[ _.-]*)(?:מספר|מס)/i;
 // JSON dictionaries can put account identifiers or names in property names.
 // Retain only reviewed schema labels; unknown keys still contribute shape/counts.
-const STRUCTURAL_FIELDS=new Set(`accountNumber accountId branchNumber bankNumber balance availableBalance creditLimit creditLimitUsed creditLimitUsedPercent transactionCoverage transactionWarning normalizedTransactionCount eventActivityTypeCode activityTypeCode textCode activityDescription englishActionDesc transactionType referenceNumber referenceCatenatedNumber contraBankNumber contraBranchNumber contraAccountNumber beneficiaryDetailsData beneficiary beneficiaryName name partyName messageDetail pfmDetails details description amount bankReference bankSerial memo date processedDate currency status cheque checkDetails creditSettlementDetails kind checkNumbers checkItems bank branch account number checkNumber hasDocumentReference imageId documentId scanId imageFrontLink imageBackLink documentLink cardNumber rows list label value hasDetails hasPfmDetails complete from to days httpStatus code stage message result data transactions items`.split(' '));
-const SOURCE_LABELS=new Set(['פרטי אסמכתת חיוב אשראי','פירוט הרשאת חיוב אשראי','פרטי אסמכתה','פירוט שיקים']);
+const STRUCTURAL_FIELDS=new Set(`accountNumber accountId branchNumber bankNumber balance availableBalance creditLimit creditLimitUsed creditLimitUsedPercent transactionCoverage transactionWarning normalizedTransactionCount eventActivityTypeCode activityTypeCode textCode activityDescription englishActionDesc transactionType referenceNumber referenceCatenatedNumber contraBankNumber contraBranchNumber contraAccountNumber internalLinkCode displayCreditAccountDetails senderAccount transferSenderDetails sourceBankNumber sourceBranchNumber sourceAccountNumber beneficiaryDetailsData beneficiary beneficiaryName name partyName messageDetail pfmDetails details description amount bankReference bankSerial memo date processedDate currency status cheque checkDetails creditSettlementDetails kind checkNumbers checkItems bank branch account number checkNumber hasDocumentReference imageId documentId scanId imageFrontLink imageBackLink documentLink cardNumber rows list label value hasDetails hasPfmDetails complete from to days httpStatus code stage message result data transactions items`.split(' '));
+const SOURCE_LABELS=new Set(['פרטי אסמכתת חיוב אשראי','פירוט הרשאת חיוב אשראי','פרטי אסמכתה','פירוט שיקים','פרטי חשבון מעביר']);
 const CHEQUE_KINDS=new Set(['','deposit','returned','returned_credit']);
 
 function text(value,max=MAX_STRING_LENGTH){return String(value??'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'').trim().slice(0,max)}
@@ -81,7 +81,7 @@ export function sanitizeBankDiagnosticValue(value,{key='',depth=0}={}){
     const clean=maskPotentialPanText(String(value));
     return /^•••• \d{4}$/.test(clean)?clean:'[REDACTED_TEXT]';
   }
-  if(typeof value==='number')return /^(?:eventActivityTypeCode|activityTypeCode|textCode|normalizedTransactionCount|httpStatus)$/.test(keyText)&&Number.isSafeInteger(value)&&Math.abs(value)<100000?value:'[REDACTED_NUMBER]';
+  if(typeof value==='number')return /^(?:eventActivityTypeCode|activityTypeCode|textCode|internalLinkCode|displayCreditAccountDetails|normalizedTransactionCount|httpStatus)$/.test(keyText)&&Number.isSafeInteger(value)&&Math.abs(value)<100000?value:'[REDACTED_NUMBER]';
   if(typeof value==='boolean')return value;
   if(typeof value==='bigint')return '[REDACTED_NUMBER]';
   if(ArrayBuffer.isView(value))return marker('BINARY',value);
@@ -105,7 +105,7 @@ export function sanitizeBankDiagnosticValue(value,{key='',depth=0}={}){
 export function createBankDiagnosticRun({bridgeVersion=0}={}){
   return {
     schemaVersion:5,bridgeVersion:Number(bridgeVersion)||0,startedAt:new Date().toISOString(),finishedAt:null,
-    scope:{source:'latest-bank-sync',maxTransactionsPerRole:MAX_TRANSACTIONS_PER_ROLE,includesAllTransactionTypes:true,chequeDetailResponses:true,creditSettlementDetailResponses:true},
+    scope:{source:'latest-bank-sync',maxTransactionsPerRole:MAX_TRANSACTIONS_PER_ROLE,includesAllTransactionTypes:true,chequeDetailResponses:true,creditSettlementDetailResponses:true,transferSenderDetailResponses:true},
     security:{structuralOnly:true,localOnly:true,synchronizedToSupabase:false,credentialsRedacted:true,sessionSecretsRedacted:true,binaryPayloadsRedacted:true,documentLinksRedacted:true},
     accounts:{business:emptyAccount(),home:emptyAccount()},failure:null,
   };

@@ -20,7 +20,7 @@ test('Bank HTTP/capability boundaries have explicit dependency and collaborator 
   const contracts=[
     ['json-artifact-owner',['./file-task-owner.mjs'],'createJsonArtifactOwner',1],
     ['hapoalim-accounts',["./bank-money-value.mjs","node:crypto","./hapoalim-policy.mjs","./hapoalim-transaction-model.mjs","./hapoalim-account-model.mjs","./hapoalim-date-codec.mjs","./hapoalim-wire.mjs","./provider-errors.mjs","./wire-errors.mjs"],'createHapoalimAccountReader',5],
-    ['hapoalim-enrichment',["./hapoalim-additional-details-model.mjs","./hapoalim-cheque-model.mjs","./hapoalim-credit-settlement-model.mjs","./hapoalim-transaction-model.mjs","./hapoalim-wire.mjs"],'createHapoalimEnrichment',3],
+    ['hapoalim-enrichment',["./hapoalim-additional-details-model.mjs","./hapoalim-cheque-model.mjs","./hapoalim-credit-settlement-model.mjs","./hapoalim-transaction-model.mjs","./hapoalim-transfer-model.mjs","./hapoalim-wire.mjs"],'createHapoalimEnrichment',3],
     ['browser-locator',[],'createInstalledBrowserLocator',2],
     ['hapoalim-provider',['./provider-errors.mjs'],'createHapoalimProvider',7],
     ['credit-session',['./credit-value-codec.mjs','./observation-time.mjs'],'createCreditProfileSession',4],

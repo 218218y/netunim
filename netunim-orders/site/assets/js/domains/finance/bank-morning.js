@@ -1,7 +1,8 @@
 import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
 import {localCalendarDate as dateOnly} from '../../shared/observation-time.js';
 import {readBankMoney} from '../../shared/bank-money-value.js';
-import {inferMorningBankFromText,morningBankCode,morningBankName,resolveMorningBank} from '../../core/morning-banks.js';
+import {normalizeBankSenderAccount} from '../../shared/bank-sender-account.js';
+import {morningBankCode,morningBankName,resolveMorningBank} from '../../core/morning-banks.js';
 
 function clean(value,max=250){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
 function amountCents(value){const number=readBankMoney(value);return number===null?NaN:Math.round(number*100)}
@@ -28,8 +29,9 @@ function bankCheckSourceKey(item){
   return bank&&branch&&account&&check&&Number.isSafeInteger(cents)&&cents>0?`check:${bank}:${branch}:${account}:${check}:${cents}`:'';
 }
 function transferBankDetails(row){
-  const text=[row?.messageDetail,row?.memo,row?.description].map(value=>clean(value,300)).filter(Boolean).join(' · '),bank=inferMorningBankFromText(text),branchMatch=text.match(/סניף\s*[:\-]?\s*(\d{1,6})/i),accountMatch=text.match(/(?:חשבון|מח[\-־ ]?ן)\s*[:\-]?\s*(\d{3,20})/i);
-  return {bankCode:bank?.code||'',bankName:bank?.name||'',bankBranch:branchMatch?.[1]||'',bankAccount:accountMatch?.[1]||''};
+  const sender=normalizeBankSenderAccount(row?.senderAccount);
+  if(!sender)return {bankCode:'',bankName:'',bankBranch:'',bankAccount:''};
+  return {bankCode:sender.bankNumber,bankName:morningBankName(sender.bankNumber),bankBranch:sender.branchNumber,bankAccount:sender.accountNumber};
 }
 function checkPayment(item,date,{removable=false}={}){
   const bankCode=morningBankCode(item?.bankNumber),resolved=resolveMorningBank(bankCode||item?.bankNumber),key=bankCheckSourceKey(item);
@@ -90,7 +92,7 @@ export function bankMorningDebtCandidates(row,debts=[]){
 
 export function attachBankArchiveMetadata(directRows=[],archiveRows=[]){
   const byKey=new Map();for(const row of Array.isArray(archiveRows)?archiveRows:[]){const key=String(row?.id||row?.mergeKey||'').trim();if(key)byKey.set(key,row)}
-  return (Array.isArray(directRows)?directRows:[]).map(row=>{const key=String(row?.mergeKey||row?.id||'').trim(),archive=byKey.get(key);if(!archive)return row;return {...row,archiveId:archive.archiveId,handledAt:archive.handledAt||null,documentLinks:Array.isArray(archive.documentLinks)?archive.documentLinks:[]}})
+  return (Array.isArray(directRows)?directRows:[]).map(row=>{const key=String(row?.mergeKey||row?.id||'').trim(),archive=byKey.get(key);if(!archive)return row;const sender=archive.senderAccount;return {...row,...(row.senderAccount==null&&sender?{senderAccount:sender}:{}),archiveId:archive.archiveId,handledAt:archive.handledAt||null,documentLinks:Array.isArray(archive.documentLinks)?archive.documentLinks:[]}})
 }
 
 export const normalizeBankMorningParty=normalizeParty;

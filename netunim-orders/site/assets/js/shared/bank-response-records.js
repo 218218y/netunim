@@ -78,7 +78,8 @@ export function readBankArchiveRows(response,accountKey,role,seen=new Set()){
         balanceAfter:row.balance_after,partyName:row.party_name,partyHeadline:row.party_headline,
         messageHeadline:row.message_headline,messageDetail:row.message_detail,activityTypeCode:row.activity_type_code,
         bankReference:row.bank_reference,bankSerial:row.bank_serial,
-        checkDetails:row.check_details,creditSettlementDetails:row.credit_settlement_details});
+        checkDetails:row.check_details,creditSettlementDetails:row.credit_settlement_details,
+        senderAccount:row.sender_account});
     }catch{throw invalid()}
     seen.add(row.id);
   }

@@ -29,6 +29,7 @@ BRIDGE_SHARED_SOURCES = {
     'netunim-orders/document-bridge/install_node_runtime.ps1': 'netunim-kupa/bank-bridge/install_node_runtime.ps1',
     'shared/document-text-search.js': 'netunim-orders/document-bridge/document-text-search.mjs',
     'shared/bank-money-value.js': 'netunim-kupa/bank-bridge/bank-money-value.mjs',
+    'shared/bank-sender-account.js': 'netunim-kupa/bank-bridge/bank-sender-account.mjs',
     'shared/credit-transaction-identity.js': 'netunim-kupa/bank-bridge/credit-transaction-identity.mjs',
     'shared/credit-transaction-evidence.js': 'netunim-kupa/bank-bridge/credit-transaction-evidence.mjs',
     'shared/observation-time.js': 'netunim-kupa/bank-bridge/observation-time.mjs',

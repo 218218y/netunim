@@ -1,6 +1,7 @@
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {bankChequeImageWithinRetention} from '../../shared/bank-cheque-images.js';
+import {normalizeBankSenderAccount} from '../../shared/bank-sender-account.js';
 
 export function bankChequeDetails(row){
   const details=row?.checkDetails&&typeof row.checkDetails==='object'?row.checkDetails:null;if(!details)return '';
@@ -20,8 +21,11 @@ export function bankChequeDetails(row){
 
 export function bankTransferReferenceDetails(row){
   const reference=String(row?.bankReference||'').trim(),details=row?.checkDetails&&typeof row.checkDetails==='object'?row.checkDetails:null,kind=String(details?.kind||'').trim(),isCheque=!!row?.cheque||['deposit','returned','returned_credit'].includes(kind);
-  if(!reference||reference==='0'||isCheque||row?.creditSettlementDetails)return '';
-  return `<div class="bank-cheque-info bank-transfer-reference"><div class="bank-cheque-facts"><span><b>אסמכתא:</b> ${esc(reference)}</span></div></div>`;
+  if(isCheque||row?.creditSettlementDetails)return '';
+  const sender=normalizeBankSenderAccount(row?.senderAccount),facts=[];
+  if(reference&&reference!=='0')facts.push(`<span><b>אסמכתא:</b> ${esc(reference)}</span>`);
+  if(sender)facts.push(`<span><b>פרטי חשבון מעביר</b> <bdi dir="ltr">${sender.bankNumber}-${sender.branchNumber}-${sender.accountNumber}</bdi></span>`);
+  return facts.length?`<div class="bank-cheque-info bank-transfer-reference"><div class="bank-cheque-facts">${facts.join('')}</div></div>`:'';
 }
 
 export function bankCreditSettlementDetails(row,identity={}){

@@ -11,6 +11,43 @@ import {mergeHapoalimAdditionalDetails, normalizeHapoalimAdditionalDetails} from
 const raw = {eventDate: '20261013', valueDate: '20261013', eventAmount: 100,
   eventActivityTypeCode: 2, referenceNumber: 123456, serialNumber: 11, activityDescription: 'transfer'};
 
+test('incoming Hapoalim transfers use the account source shown by the bank for each wire format', async () => {
+  const incoming = {...raw,eventActivityTypeCode:1};
+  const sameBank = {...incoming,displayCreditAccountDetails:1,contraBankNumber:912,contraBranchNumber:655,contraAccountNumber:'000987654'};
+  const external = {...incoming,internalLinkCode:16,eventId:123456789,referenceNumber:987,beneficiaryDetailsData:{messageDetail:'מח-ן:555556'}};
+  const fixture = readerFixture({respond(url,request){
+    assert.equal(url.pathname,'/bnhp-api/current-account-channels/transactions-exp/v1/transactions/details');
+    assert.equal(request.method,'POST');
+    assert.equal(request.headers['X-API-Version'],'2');
+    assert.equal(request.headers['X-XSRF-TOKEN'],'fixture-xsrf');
+    assert.deepEqual(JSON.parse(request.body),{amount:100,startDate:'20261013',eventReferenceNumber:external.eventId});
+    return {data:{transferSenderDetails:[{sourceBankNumber:9,sourceBranchNumber:1,sourceAccountNumber:555557}]}};
+  }});
+  const candidates = [sameBank,external,{...external,serialNumber:0},{...external,eventActivityTypeCode:2},{...sameBank,displayCreditAccountDetails:0}];
+  const {transactions} = await fixture.api.enrich(fixture.page,candidates,'fixture',{initialReady:fixture.ready,diagnosticRun:fixture.run});
+  assert.deepEqual(transactions.map(tx=>normalizeHapoalimTransaction(tx).senderAccount),[
+    {bankNumber:'12',branchNumber:'655',accountNumber:'000987654'},
+    {bankNumber:'9',branchNumber:'1',accountNumber:'555557'},
+    undefined,undefined,undefined,
+  ]);
+  assert.equal(fixture.calls.filter(([kind])=>kind==='request').length,1);
+  const diagnostics=JSON.stringify(fixture.run);
+  assert.match(diagnostics,/פרטי חשבון מעביר/);
+  assert.doesNotMatch(diagnostics,/000987654|555557|123456789|fixture-xsrf/);
+});
+
+test('unavailable or ambiguous external-transfer details leave the bank movement intact', async () => {
+  const row={...raw,eventActivityTypeCode:1,internalLinkCode:16,eventId:123456789};
+  const sender={sourceBankNumber:9,sourceBranchNumber:1,sourceAccountNumber:555557};
+  for(const response of [{httpFailure:404},{data:{transferSenderDetails:[]}},{data:{transferSenderDetails:[sender,sender]}},{data:{transferSenderDetails:[{...sender,sourceBranchNumber:0}]}}]){
+    const fixture=readerFixture({respond:()=>response});
+    const {transactions}=await fixture.api.enrich(fixture.page,[row],'fixture',{initialReady:fixture.ready});
+    const [movement]=normalizeRecentTransactions(transactions);
+    assert.equal(movement.amount,100);
+    assert.equal(movement.senderAccount,undefined);
+  }
+});
+
 test('the raw Bank date decoder rejects impossible days before Date can roll them forward', () => {
   for (const value of ['20260230', '20261301', '20260431', '20260229', '19000229', '20260010', '20261000']) {
     assert.equal(isoFromBankDate(value), null, value);

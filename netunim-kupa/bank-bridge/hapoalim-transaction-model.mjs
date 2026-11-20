@@ -5,6 +5,7 @@ import { normalizedCreditSettlementDetails } from './hapoalim-credit-settlement-
 import { hapoalimChequeTransactionKind } from './hapoalim-cheque-model.mjs';
 import { isoFromBankDate } from './hapoalim-date-codec.mjs';
 import { readBankMoney } from './bank-money-value.mjs';
+import { hapoalimIncomingTransfer, hapoalimSenderAccount } from './hapoalim-transfer-model.mjs';
 
 /** @param {unknown} value @returns {value is Record<string,unknown>} */
 function record(value) {
@@ -140,6 +141,8 @@ export function normalizeHapoalimTransaction(value) {
         checkDetails.checkNumbers.push(item.checkNumber);
     }
   }
+  const senderAccount = !chequeKind && !creditSettlementDetails && hapoalimIncomingTransfer(txn)
+    ? hapoalimSenderAccount(txn) : null;
   return {
     id: identifier,
     date,
@@ -160,6 +163,7 @@ export function normalizeHapoalimTransaction(value) {
     cheque,
     checkDetails,
     creditSettlementDetails,
+    ...(senderAccount ? {senderAccount} : {}),
   };
 }
 

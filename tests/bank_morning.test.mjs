@@ -24,11 +24,15 @@ assert.equal(bankTransferReferenceDetails({...row,cheque:true,checkDetails:{kind
 
 const detailedPrefill=bankMorningPrefill({...row,description:'זיכוי מהמזרחי',memo:'המבצע: · לקוח בדיקה · עבור: · הזמנה מח-ן:000123456',partyName:'לקוח בדיקה',partyHeadline:'המבצע:',messageHeadline:'עבור:',messageDetail:'הזמנה מח-ן:000123456'});
 assert.equal(detailedPrefill.description,'זיכוי מהמזרחי · המבצע: · לקוח בדיקה · עבור: · הזמנה מח-ן:000123456','bank Morning prefill carries the full bank narrative into the document description without duplicating structured detail');
-assert.equal(detailedPrefill.payment.bankCode,'20','Mizrahi is inferred from an explicit incoming-transfer description');
-assert.equal(detailedPrefill.payment.bankName,'בנק מזרחי טפחות בע״מ');
-assert.equal(detailedPrefill.payment.bankAccount,'000123456','leading zeroes in a bank account are preserved');
-const explicitBankPrefill=bankMorningPrefill({...row,description:'זיכוי מהמזרחי',messageDetail:'מבנק 020,סניף 570 ,חשבון 000654321'});
-assert.equal(explicitBankPrefill.payment.bankCode,'20');assert.equal(explicitBankPrefill.payment.bankBranch,'570');assert.equal(explicitBankPrefill.payment.bankAccount,'000654321');
+assert.equal(detailedPrefill.payment.bankName,'');
+assert.equal(detailedPrefill.payment.bankAccount,'','free-text transfer notes cannot identify the sender account');
+const senderAccount={bankNumber:'9',branchNumber:'1',accountNumber:'000654321'};
+const explicitBankPrefill=bankMorningPrefill({...row,senderAccount,description:'זיכוי מהמזרחי',messageDetail:'מבנק 020,סניף 570 ,חשבון 888888'});
+assert.equal(explicitBankPrefill.payment.bankCode,'9');
+assert.equal(explicitBankPrefill.payment.bankName,'ד.י. דואר פיננסים בע״מ');
+assert.equal(explicitBankPrefill.payment.bankBranch,'1');
+assert.equal(explicitBankPrefill.payment.bankAccount,'000654321');
+assert.match(bankTransferReferenceDetails({...row,bankReference:'',senderAccount}),/פרטי חשבון מעביר.*9-1-000654321/);
 assert.equal(resolveMorningBank('12')?.name,'בנק הפועלים בע״מ');assert.equal(resolveMorningBank('הפועלים')?.code,'12');assert.equal(resolveMorningBank('09')?.code,'9');assert.equal(resolveMorningBank('בנק הדואר')?.code,'9');assert.equal(findMorningBanks('12')[0]?.code,'12');assert.equal(findMorningBanks('פועל')[0]?.code,'12');assert.equal(findMorningBanks('דואר')[0]?.code,'9');
 const bankOptions=morningBankDatalistMarkup();assert.match(bankOptions,/value="12 · בנק הפועלים בע״מ"/);assert.match(bankOptions,/value="9 · ד.י. דואר פיננסים בע״מ"/);assert.match(bankOptions,/value="12 · בנק הפועלים בע״מ" label="הפועלים · פועלים"/,'autocomplete keeps aliases searchable as compact secondary text on the single canonical bank option');assert.equal((bankOptions.match(/<option /g)||[]).length,MORNING_BANKS.length,'bank menu renders exactly one visible option per bank');assert.doesNotMatch(bankOptions,/value="פועלים"/,'bank aliases must not create duplicate visible menu rows');
 
@@ -84,11 +88,18 @@ const direct=attachBankArchiveMetadata([{id:'k1',amount:1250}],[{archiveId:42,id
 
 const response=body=>({ok:true,async json(){return body},async text(){return JSON.stringify(body)}});
 const transport=createCloudTransport({supaFetch:async(path)=>{
-  if(path.includes('/bank_transactions?'))return response([{id:42,account_key:'12-345-1',account_role:'business',merge_key:'k1',transaction_date:row.date,processed_date:row.processedDate,amount:'1250',currency:'ILS',description:'העברה',memo:'',party_name:'משה כהן',party_headline:'',message_headline:'',message_detail:'',status:'completed',balance_after:null,bank_reference:'REF-7',bank_serial:'',activity_type_code:null,cheque:false,check_details:null,credit_settlement_details:null,first_seen_at:row.date,presence_state:'present',last_seen_at:row.date,missing_since:null,missing_acknowledged_at:null,alert_acknowledgements:{},handled_at:'2026-09-21T00:00:00Z'}]);
+  if(path.includes('/bank_transactions?'))return response([{id:42,account_key:'12-345-1',account_role:'business',merge_key:'k1',transaction_date:row.date,processed_date:row.processedDate,amount:'1250',currency:'ILS',description:'העברה',memo:'',party_name:'משה כהן',party_headline:'',message_headline:'',message_detail:'',status:'completed',balance_after:null,bank_reference:'REF-7',bank_serial:'',activity_type_code:null,cheque:false,check_details:null,credit_settlement_details:null,sender_account:senderAccount,first_seen_at:row.date,presence_state:'present',last_seen_at:row.date,missing_since:null,missing_acknowledged_at:null,alert_acknowledgements:{},handled_at:'2026-09-21T00:00:00Z'}]);
   if(path.includes('/rpc/list_bank_morning_document_links'))return response([{transaction_id:42,link_id:9,operation_id:'123e4567-e89b-42d3-a456-426614174000',document_id:'123e4567-e89b-42d3-a456-426614174001',document_number:'1007',document_type:320,document_amount:'1250',verified_at:'2026-09-21T01:00:00Z'}]);
   throw new Error('unexpected '+path);
 }});
 const archived=(await transport.readBankTransactions('12-345-1','business',{days:null,maxRows:1000}))[0];assert.ok(archived.handledAt);assert.equal(archived.documentLinks[0].documentNumber,'1007');
+assert.deepEqual(archived.senderAccount,senderAccount);
+const directWithArchive=attachBankArchiveMetadata([{...row,archiveId:null}],[archived])[0];
+const archivedTransfer=bankMorningPrefill(normalizeBankFeedTransaction(directWithArchive));
+const archivedPaymentMarkup=paymentRenderer.paymentFields(archivedTransfer,archivedTransfer.source);
+assert.match(archivedPaymentMarkup,/data-payment-field="bankName"[^>]*value="9 · ד.י. דואר פיננסים בע״מ"/);
+assert.match(archivedPaymentMarkup,/data-payment-field="bankBranch"[^>]*value="1"/);
+assert.match(archivedPaymentMarkup,/data-payment-field="bankAccount"[^>]*value="000654321"/);
 
 const normalized=normalizeBankFeedTransaction({...row,handledAt:'2026-09-21T00:00:00Z',documentLinks:[{linkId:9,operationId:'123e4567-e89b-42d3-a456-426614174000',documentId:'123e4567-e89b-42d3-a456-426614174001',documentNumber:'1007',documentType:320,documentAmount:1250,verifiedAt:'2026-09-21T01:00:00Z'}]});
 assert.ok(normalized.handledAt,'bank normalization must preserve the durable handled marker');

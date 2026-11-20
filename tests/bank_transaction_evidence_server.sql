@@ -40,4 +40,42 @@ begin
   end if;
 end
 $test$;
+
+do $sender$
+declare
+  lease record;
+  receipt record;
+  account jsonb := '{"bankNumber":"9","branchNumber":"1","accountNumber":"000975318"}';
+  tx jsonb := '{"mergeKey":"incoming-transfer","date":"2026-10-16T10:00:00Z","amount":50,"currency":"ILS","status":"completed"}';
+  original_id bigint;
+begin
+  select * into lease from public.claim_finance_sync_lease('bank','bank-evidence-test',60);
+  perform public.merge_bank_transactions_v6('sender-evidence','business',jsonb_build_array(tx),
+    'bank','bank-evidence-test',lease.fence_epoch);
+  select id into strict original_id from public.bank_transactions where owner_id=auth.uid() and account_key='sender-evidence';
+  select * into receipt from public.sync_bank_transactions_snapshot_v6(
+    'sender-evidence','business',jsonb_build_array(tx || jsonb_build_object('senderAccount',account)),
+    now(),'2026-10-01','2026-10-16',true,'bank','bank-evidence-test',lease.fence_epoch);
+  if receipt.updated_count<>1 or receipt.inserted_count<>0 or not receipt.snapshot_stored then
+    raise exception 'sender_account_did_not_update_existing_transaction';
+  end if;
+  perform public.merge_bank_transactions_v6('sender-evidence','business',jsonb_build_array(tx || '{"senderAccount":null}'),
+    'bank','bank-evidence-test',lease.fence_epoch);
+  if (select sender_account from public.bank_transactions where id=original_id) is distinct from account then
+    raise exception 'sender_account_not_retained';
+  end if;
+  if (select transactions->0->'senderAccount' from public.bank_transaction_snapshots
+      where owner_id=auth.uid() and account_key='sender-evidence') is distinct from account then
+    raise exception 'sender_account_not_in_direct_snapshot';
+  end if;
+  begin
+    perform public.merge_bank_transactions_v6('sender-evidence','business',
+      jsonb_build_array(tx || '{"senderAccount":{"bankNumber":"9","branchNumber":"0","accountNumber":"000975318"}}'),
+      'bank','bank-evidence-test',lease.fence_epoch);
+    raise exception 'invalid_sender_account_was_accepted';
+  exception when check_violation then
+    null;
+  end;
+end
+$sender$;
 rollback;

@@ -96,6 +96,7 @@ pending_date_rollover_pending = any(row['name'] == 'bank_pending_direct_deposit_
 pending_batch_completion_pending = any(row['name'] == 'bank_pending_cheque_batch_completion' for row in receipt_pending)
 pending_insert_identity_pending = any(row['name'] == 'bank_merge_inserted_identity' for row in receipt_pending)
 name_prefix_pending = any(row['name'] == 'bank_instant_credit_name_prefix' for row in receipt_pending)
+sender_account_pending = any(row['name'] == 'bank_transfer_sender_account' for row in receipt_pending)
 candidate_definition = normalized_sql_text(bank_merge['definition'])
 reviewed_definition = normalized_sql_text(reviewed_bank_merge['definition'])
 name_prefix_clause = """              or (
@@ -116,6 +117,11 @@ if bank_migration_pending:
         'instant-credit migration did not replace the reviewed merge function body'
 else:
     def without_pending_upgrade_fragments(definition, *, expect_batch_completion=False, expect_insert_identity=False):
+        if sender_account_pending:
+            definition=definition.replace(',credit_settlement_details,sender_account)',',credit_settlement_details)')
+            definition=definition.replace(",nullif(r->'senderAccount','null'::jsonb))",")")
+            definition=definition.replace("        sender_account=coalesce(nullif(r->'senderAccount','null'::jsonb),b.sender_account),\n",'')
+            definition=definition.replace("        or b.sender_account is distinct from coalesce(nullif(r->'senderAccount','null'::jsonb),b.sender_account)\n",'')
         for fragment in (
             '      perform netunim_internal.move_check_bank_claim(v_pending_id,v_id);\n',
             '        and netunim_internal.check_bank_pending_compatible(b,r)\n',

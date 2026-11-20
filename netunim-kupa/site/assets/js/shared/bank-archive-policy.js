@@ -108,6 +108,7 @@ function assertBankArchiveCoverage(mergeResult, archive, { role, requireExactCou
       canonicalJson(tx.checkDetails ?? null) === canonicalJson(row.checkDetails ?? null) &&
       canonicalJson(tx.creditSettlementDetails ?? null) ===
         canonicalJson(row.creditSettlementDetails ?? null) &&
+      (tx.senderAccount == null || canonicalJson(tx.senderAccount) === canonicalJson(row.senderAccount)) &&
       Boolean(tx.cheque) === Boolean(row.cheque);
     if (!coreOk || !detailsOk)
       throw new Error(

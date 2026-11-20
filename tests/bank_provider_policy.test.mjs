@@ -20,6 +20,9 @@ for(const [name,file] of [['Bank and credit provider policies','bank-provider-po
     assert.equal(fixture.policies.fetchHapoalimAccountSnapshot,'7adfc1e5b8f5082e640270ed1c7756b5ec3de163eec3acba76cf8a154058d263');
     // Partial coverage warnings now use the same safe public error message.
     fixture.policies.fetchHapoalimAccountSnapshot='7718afe311cb2a81e9acab2089bf8923b5d1465873f40a971f72b1b8e94ee684';
+    // External incoming transfers use the bank's dedicated sender-details read.
+    assert.equal(fixture.policies.enrichHapoalimTransactions,'e5dfaa6937e9901071d73ceeb85051673cfc60b4f4adb018f5adc75946ccb321');
+    fixture.policies.enrichHapoalimTransactions='5ba2771db7c7dfc83ef24b721d7370081349b16e5b047f8369410f6e6d6ac01f';
   }
   assert.deepEqual(Object.keys(forecast),['scrapeAllCreditProfiles']);
   for(const [key,{before,after}]of Object.entries(forecast))if(key in fixture.policies){assert.equal(fixture.policies[key],before);fixture.policies[key]=after;}

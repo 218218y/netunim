@@ -1,6 +1,7 @@
 // @ts-check
 import { normalizedCalendarTimestamp as cleanIso } from './observation-time.js';
 import { readBankMoney } from './bank-money-value.js';
+import { normalizeBankSenderAccount } from './bank-sender-account.js';
 import { evidenceDate } from './observation-time.js';
 export const BANK_FEED_VERSION = 5;
 // Retained public transport/page budget; historical reads never truncate data.
@@ -65,6 +66,7 @@ export function normalizeBankFeedTransaction(value) {
     // disconnects direct-snapshot rows from their persisted Morning metadata.
     const mergeKey = typeof row.mergeKey === 'string' ? row.mergeKey : '';
     const id = mergeKey || (archiveId !== null && typeof row.id === 'string' ? row.id : cleanText(row.id, 100));
+    const senderAccount = normalizeBankSenderAccount(row.senderAccount);
     return {
         id,
         mergeKey,
@@ -83,6 +85,7 @@ export function normalizeBankFeedTransaction(value) {
         cheque: !!row.cheque,
         checkDetails: normalizeCheckDetails(row.checkDetails, row.cheque ? 'deposit' : ''),
         creditSettlementDetails: normalizeCreditSettlementDetails(row.creditSettlementDetails),
+        ...(senderAccount ? {senderAccount} : {}),
         archiveId,
         presenceState: typeof row.presenceState === 'string' && ['unknown', 'present', 'missing'].includes(row.presenceState) ? row.presenceState : 'unknown',
         firstSeenAt: cleanIso(row.firstSeenAt),

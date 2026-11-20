@@ -10,6 +10,8 @@ const read = (name) => fs.readFileSync(path.join(root, name + '.mjs'), 'utf8');
 const budgets = {
   'observation-time': [],
   'bank-money-value': [],
+  'bank-sender-account': [],
+  'hapoalim-wire': [],
   'hapoalim-policy': [],
   'hapoalim-navigation-policy': ['./hapoalim-policy.mjs'],
   'hapoalim-login-runtime': ['./hapoalim-policy.mjs'],
@@ -36,7 +38,9 @@ const budgets = {
     './hapoalim-cheque-model.mjs',
     './hapoalim-date-codec.mjs',
     './bank-money-value.mjs',
+    './hapoalim-transfer-model.mjs',
   ],
+  'hapoalim-transfer-model': ['./bank-sender-account.mjs','./bank-money-value.mjs','./hapoalim-date-codec.mjs','./hapoalim-wire.mjs'],
   'hapoalim-failure-policy': [],
 };
 const effects = new Set([

@@ -6,6 +6,7 @@ import {kupaAccountCashflowData,kupaBankCreditSettlementIdentitiesData} from '..
 import {esc} from '../../core/values.js';
 import {money, moneyWithCents} from '../../core/money.js';
 import {readBankMoney} from '../../shared/bank-money-value.js';
+import {normalizeBankSenderAccount} from '../../shared/bank-sender-account.js';
 import {dateFmt} from '../../core/dates.js';
 import {financeSyncProgressMeta,financeSyncProgressMarkup,updateFinanceSyncProgress,syncEventCurrent} from '../../shared/sync-status.js';
 import {dateInRange,searchMatch} from '../../core/search.js';
@@ -141,6 +142,10 @@ async function openBankChequeImage(eventDate,imageKey,label='תמונת שיק')
   return true;
 }
 
+function bankSenderAccountMarkup(row){
+  const sender=normalizeBankSenderAccount(row?.senderAccount);
+  return sender?`<small><b>פרטי חשבון מעביר</b> <bdi dir="ltr">${sender.bankNumber}-${sender.branchNumber}-${sender.accountNumber}</bdi></small>`:'';
+}
 function bankCreditSettlementDetailsMarkup(row,identity={}){
   const details=row?.creditSettlementDetails&&typeof row.creditSettlementDetails==='object'?row.creditSettlementDetails:null;if(!details)return '';
   const facts=[],cards=identity.last4s||[];
@@ -199,7 +204,7 @@ function bankTransactionsTableMarkup(feed,role){
   const body=rows.map((row,index)=>{
     const searchId=bankTransactionIdentity(row,role,searchIndexes.get(row)??index);
     const amount=readBankMoney(row.amount),balanceAfter=readBankMoney(row.balanceAfter),when=row.date||row.processedDate,valueDate=row.processedDate&&row.processedDate!==row.date?bankDateLabel(row.processedDate):'',activeMissing=mode==='history'&&bankMissingActive(row);
-    return `<tr class="${row.status==='pending'?'pending ':''}${activeMissing?'bank-transaction-missing active':''}" data-bank-search-id="${esc(searchId)}"><td class="bank-transaction-date"><b>${esc(bankDateLabel(when))}</b>${valueDate?`<small>ערך ${esc(valueDate)}</small>`:''}</td><td class="bank-transaction-description"><div><b>${esc(row.description||'תנועת בנק')}</b>${row.status==='pending'?'<span class="bank-transaction-pending">ממתינה</span>':''}${activeMissing?'<span class="bank-transaction-missing-badge">דורש בדיקה</span>':''}</div>${row.memo?`<small>${esc(row.memo)}</small>`:''}${activeMissing?bankMissingDetailMarkup(row):''}${bankCreditSettlementDetailsMarkup(row,creditIdentities.get(row))}${bankChequeDetailsMarkup(row)}</td>${amount===null?'<td colspan="2" class="bank-transaction-money unknown">סכום לא ידוע</td>':`<td class="bank-transaction-money debit">${amount<0?money(Math.abs(amount)):''}</td><td class="bank-transaction-money credit">${amount>=0?money(amount):''}</td>`}<td class="bank-transaction-money balance-after">${balanceAfter===null?'—':money(balanceAfter)}</td></tr>`;
+    return `<tr class="${row.status==='pending'?'pending ':''}${activeMissing?'bank-transaction-missing active':''}" data-bank-search-id="${esc(searchId)}"><td class="bank-transaction-date"><b>${esc(bankDateLabel(when))}</b>${valueDate?`<small>ערך ${esc(valueDate)}</small>`:''}</td><td class="bank-transaction-description"><div><b>${esc(row.description||'תנועת בנק')}</b>${row.status==='pending'?'<span class="bank-transaction-pending">ממתינה</span>':''}${activeMissing?'<span class="bank-transaction-missing-badge">דורש בדיקה</span>':''}</div>${row.memo?`<small>${esc(row.memo)}</small>`:''}${activeMissing?bankMissingDetailMarkup(row):''}${bankSenderAccountMarkup(row)}${bankCreditSettlementDetailsMarkup(row,creditIdentities.get(row))}${bankChequeDetailsMarkup(row)}</td>${amount===null?'<td colspan="2" class="bank-transaction-money unknown">סכום לא ידוע</td>':`<td class="bank-transaction-money debit">${amount<0?money(Math.abs(amount)):''}</td><td class="bank-transaction-money credit">${amount>=0?money(amount):''}</td>`}<td class="bank-transaction-money balance-after">${balanceAfter===null?'—':money(balanceAfter)}</td></tr>`;
   }).join('');
   return `${caption}${context}<div class="bank-transactions-table-wrap"><table class="bank-transactions-table"><thead><tr><th>תאריך</th><th>פעולה</th><th>חובה</th><th>זכות</th><th>יתרה לאחר תנועה</th></tr></thead><tbody>${body}</tbody></table></div>${feed.transactionWarning?`<div class="bank-feed-warning">${esc(feed.transactionWarning)}</div>`:''}`;
 }

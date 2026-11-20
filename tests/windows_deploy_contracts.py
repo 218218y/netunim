@@ -331,7 +331,7 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
             active.mkdir(parents=True)
             for name in files:
                 shutil.copyfile(source / name, active / name)
-            (active / 'server.mjs').write_text(server.replace('BRIDGE_VERSION=91;', 'BRIDGE_VERSION=81;'), encoding='utf8')
+            (active / 'server.mjs').write_text(server.replace('BRIDGE_VERSION=92;', 'BRIDGE_VERSION=81;'), encoding='utf8')
             (active / 'installation-id.txt').write_text('7' * 32)
             backup.mkdir()
             (backup / 'prior.txt').write_text('previous backup')
@@ -443,7 +443,7 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
 
                 self.assertIn('Registered the Bank Bridge sign-in task: ' + task_name, run_bat(install, 0))
                 self.assertFalse(startup.exists())
-                installed = health(91)
+                installed = health(92)
                 origins = ['https://kupa.bargig-furniture.com', 'https://orders.bargig-furniture.com']
                 admin = (root / 'pairing-v1/admin-token.txt').read_text().strip()
                 keys = []
@@ -457,13 +457,13 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
                     keys.append(grant['token'])
                 self.assertEqual(request('/pairing/admin', admin, {'action': 'finish'})[0], 200)
                 registry = (root / 'pairing-v1/registry.json').read_bytes()
-                for version in (81, 91):
+                for version in (81, 92):
                     run_bat(helper, 0)
                     health(version)
                     self.assertEqual((root / 'pairing-v1/registry.json').read_bytes(), registry)
                     for origin, key in zip(origins, keys):
                         self.assertEqual(request('/status', key, origin=origin)[0], 200)
-                self.assertEqual(health(91)['installationId'], installed['installationId'])
+                self.assertEqual(health(92)['installationId'], installed['installationId'])
             finally:
                 powershell = system / 'System32/WindowsPowerShell/v1.0/powershell.exe'
                 subprocess.run([str(powershell), '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',

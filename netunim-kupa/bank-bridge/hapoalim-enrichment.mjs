@@ -12,6 +12,7 @@ import {
   mergeHapoalimCreditPermissionDetails,
 } from './hapoalim-credit-settlement-model.mjs';
 import { normalizeHapoalimTransaction } from './hapoalim-transaction-model.mjs';
+import { hapoalimTransferorRequest, normalizeHapoalimTransferorDetails } from './hapoalim-transfer-model.mjs';
 import { HAPOALIM_BASE_URL } from './hapoalim-wire.mjs';
 export function createHapoalimEnrichment({ json, cheques, diagnostics }) {
   if (
@@ -120,15 +121,35 @@ export function createHapoalimEnrichment({ json, cheques, diagnostics }) {
         continue;
       }
       if (!chequeKind) {
+        const request = hapoalimTransferorRequest(transaction);
+        const detailSources = [];
+        let enrichedTransaction = transaction;
+        if (request) {
+          const source = 'פרטי חשבון מעביר';
+          try {
+            const result = await pageFetchJson(page, async () => {
+              const cookies = await page.cookies();
+              const xsrf = cookies.find(cookie => cookie.name === 'XSRF-TOKEN')?.value;
+              return xsrf ? {...request, headers: {...request.headers, 'X-XSRF-TOKEN': xsrf}} : request;
+            }, {initialReady: reusableReady});
+            reusableReady = result.ready;
+            const senderAccount = normalizeHapoalimTransferorDetails(result.data);
+            if (senderAccount) enrichedTransaction = {...transaction, netunimSenderAccount: senderAccount};
+            detailSources.push({source, request: request.url, response: result.data, normalized: senderAccount});
+          } catch (error) {
+            reusableReady = null;
+            detailSources.push({source, request: request.url, error: {code: error?.code, httpStatus: error?.httpStatus}});
+          }
+        }
         recordBankTransactionDiagnostic(diagnosticRun, {
           role,
           chequeKind: '',
           transaction,
-          normalizedTransaction: normalizeHapoalimTransaction(transaction),
-          detailSources: [],
+          normalizedTransaction: normalizeHapoalimTransaction(enrichedTransaction),
+          detailSources,
           mergedAdditionalDetails: null,
         });
-        enriched.push(transaction);
+        enriched.push(enrichedTransaction);
         continue;
       }
       const detailSources = [],

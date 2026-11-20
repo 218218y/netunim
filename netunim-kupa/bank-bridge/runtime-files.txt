@@ -1,5 +1,6 @@
 server.mjs
 bank-money-value.mjs
+bank-sender-account.mjs
 scoped-pairing.mjs
 pairing-console.mjs
 bank-browser-identity.mjs
@@ -65,6 +66,7 @@ hapoalim-credit-settlement-model.mjs
 hapoalim-additional-details-model.mjs
 hapoalim-date-codec.mjs
 hapoalim-transaction-model.mjs
+hapoalim-transfer-model.mjs
 hapoalim-failure-policy.mjs
 bank-diagnostics.mjs
 credit-core-values.mjs

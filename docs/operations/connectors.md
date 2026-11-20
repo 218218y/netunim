@@ -3,7 +3,7 @@
 Install the connectors independently from the verified checkout on each Windows
 computer that needs them. The current source versions and installers are:
 
-1. Bank Bridge **91** via [install_bank_bridge.bat](../../netunim-kupa/bank-bridge/install_bank_bridge.bat).
+1. Bank Bridge **92** via [install_bank_bridge.bat](../../netunim-kupa/bank-bridge/install_bank_bridge.bat).
 2. Document Bridge **48** via [install_document_bridge.bat](../../netunim-orders/document-bridge/install_document_bridge.bat).
 
 Bank Bridge listens on loopback port 8765 and Document Bridge on 8766.

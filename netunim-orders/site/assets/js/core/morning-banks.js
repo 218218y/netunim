@@ -64,14 +64,6 @@ export function formatMorningBank(value){const bank=typeof value==='object'&&val
 export function morningBankName(value){return resolveMorningBank(value)?.name||clean(value,80)}
 export function morningBankCode(value){return resolveMorningBank(value)?.code||normalizedCode(value)}
 
-export function inferMorningBankFromText(value){
-  const text=clean(value,500);if(!text)return null;
-  const explicit=text.match(/(?:מבנק|בנק)\s*0*(\d{1,3})(?=\D|$)/);if(explicit){const bank=resolveMorningBank(explicit[1]);if(bank)return bank}
-  const normalized=normalize(text),candidates=[];
-  for(const bank of BANKS){for(const alias of aliases(bank)){if(alias.length>=3&&normalized.includes(alias)){candidates.push({bank,length:alias.length});break}}}
-  return candidates.sort((a,b)=>b.length-a.length)[0]?.bank||null;
-}
-
 export function morningBankDatalistMarkup(id='morningBankDirectory'){
   const options=BANKS.map(bank=>{
     const aliases=bank.aliases.filter(Boolean).join(' · ');

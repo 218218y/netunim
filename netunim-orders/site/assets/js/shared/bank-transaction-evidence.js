@@ -2,6 +2,8 @@
 import {evidenceObject as object,evidenceText as text,evidenceTimestamp as timestamp,evidenceDate as date,evidenceMoney as money} from './response-evidence.js';
 import {assertBankCheckDetails,assertBankCreditSettlementDetails} from './bank-business-evidence.js';
 import {bankTransactionMergeKey} from './bank-transaction-identity.js';
+import {normalizeBankSenderAccount} from './bank-sender-account.js';
+import {readBankMoney} from './bank-money-value.js';
 
 /** @typedef {Readonly<Record<string,unknown>&{status:'pending'|'completed',amount:number|string,currency:string}>} BankTransaction */
 export function invalidBankTransaction(){
@@ -28,6 +30,15 @@ export function readBankTransaction(value){
   if(value.activityTypeCode!=null&&(typeof value.activityTypeCode!=='number'||!Number.isSafeInteger(value.activityTypeCode)))throw invalidBankTransaction();
   assertBankCheckDetails(value.checkDetails);
   assertBankCreditSettlementDetails(value.creditSettlementDetails);
+  const senderAccount=value.senderAccount;
+  if(senderAccount!=null){
+    const sender=normalizeBankSenderAccount(senderAccount);
+    if(!sender||!object(senderAccount)||Object.keys(senderAccount).length!==3||
+      Object.entries(sender).some(([key,part])=>senderAccount[key]!==part)||
+      value.status!=='completed'||(readBankMoney(value.amount)??0)<=0||
+      value.cheque===true||value.checkDetails!=null||value.creditSettlementDetails!=null)
+      throw invalidBankTransaction();
+  }
   if(!text(value.id)&&!text(value.mergeKey)&&!timestamp(value.date)&&!timestamp(value.processedDate))throw invalidBankTransaction();
   return /** @type {BankTransaction} */ (freeze(structuredClone(value)));
 }

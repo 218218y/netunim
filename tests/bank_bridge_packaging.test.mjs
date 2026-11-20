@@ -70,7 +70,7 @@ test('Windows sign-in launcher runs without a console, retries a failure, and re
             Console.Error.WriteLine("simulated listener failure");
             return 23;
           }
-          Console.WriteLine("Netunim Kupa Bank Bridge v91 listening on http://127.0.0.1:8765");
+          Console.WriteLine("Netunim Kupa Bank Bridge v92 listening on http://127.0.0.1:8765");
           DateTime deadline=DateTime.UtcNow.AddSeconds(15);
           while(!File.Exists("finish-test") && DateTime.UtcNow < deadline) Thread.Sleep(50);
           return 0;
