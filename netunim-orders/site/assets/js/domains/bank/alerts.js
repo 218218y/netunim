@@ -1,5 +1,6 @@
 import {cashflowNotificationData} from '../../shared/cashflow-notification.js';
 import {kupaAccountCashflowData} from './readout.js';
+import {bankChequeTransitionNeedsReview} from '../../shared/bank-transaction-order.js';
 import {readBankMoney} from '../../shared/bank-money-value.js';
 
 const RETURNED_CHEQUE_ALERT_KIND='returned_cheque';
@@ -48,6 +49,7 @@ export function bankWarningItems(bank){
           lastSeenAt:row?.lastSeenAt||null,
           missingSince:row?.missingSince||null,
           cheque:!!row?.cheque,
+          chequeTransitionNeedsReview:bankChequeTransitionNeedsReview(row),
         });
       }
       if(bankReturnedCheque(row)&&!returnedChequeAcknowledged(row)){
