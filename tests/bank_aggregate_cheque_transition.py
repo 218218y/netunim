@@ -34,14 +34,14 @@ def run(db):
     )
     tick = 0
 
-    def snapshot(account, source, complete=True, at=None, role='home'):
+    def snapshot(account, source, complete=True, at=None, role='home', coverage_from='2026-11-01'):
         nonlocal tick
         tick += 1
         return json.loads(db.auth_sql(
             "select to_jsonb(x) from public.sync_bank_transactions_snapshot_v6("
             + quote(account) + ',' + quote(role) + ',' + quote(json.dumps(source, ensure_ascii=False))
-            + '::jsonb,' + quote(at or f'2026-11-17T00:{tick // 60:02}:{tick % 60:02}Z')
-            + ",'2026-11-01','2026-11-17'," + str(complete).lower()
+            + '::jsonb,' + quote(at or f'2026-11-20T00:{tick // 60:02}:{tick % 60:02}Z')
+            + ',' + quote(coverage_from) + ",'2026-11-20'," + str(complete).lower()
             + ",'bank'," + quote(token) + ',' + str(lease['fence_epoch']) + ') x'
         ))
 
@@ -50,6 +50,90 @@ def run(db):
             "select coalesce(jsonb_agg(to_jsonb(b) order by id),'[]') from public.bank_transactions b"
             + ' where owner_id=' + quote(OWNER) + ' and account_key=' + quote(account)
         ))
+
+    # Production regression with synthetic cheque identity. Date, amount,
+    # labels, references and balances are the verified bank observations.
+    single_day = '2026-11-19T10:00:00Z'
+    single_pending = dict(pending, date=single_day, processedDate=single_day, amount=570,
+                          balanceAfter=11443.98, mergeKey='single-pending')
+    single_final = dict(completed, date=single_day, processedDate=single_day, amount=570,
+                        balanceAfter=11593.98, bankReference='3570',
+                        bankSerial='1', mergeKey='serial:2026-11-19:1:570',
+                        checkDetails=dict(completed['checkDetails'], checkCount=1,
+                                          checkNumbers=[items[0]['checkNumber']], checkItems=items[:1]))
+    account = 'single-cheque-incident'
+    snapshot(account, [single_pending])
+    single_id = archive(account)[0]['id']
+    result = snapshot(account, [single_final])
+    assert result['active_missing_count'] == 0, 'A single cheque was falsely reported missing'
+    assert [(r['id'], r['status']) for r in archive(account)] == [(single_id, 'completed')]
+
+    def transition(old_id):
+        return json.loads(db.sql(
+            'select to_jsonb(t) from netunim_internal.bank_cheque_deposit_transitions t '
+            f'where pending_transaction_id={old_id}'
+        ) or 'null')
+
+    record = transition(single_id)
+    assert record['completed_transaction_id'] == single_id
+    assert record['completed_merge_key'] == single_final['mergeKey']
+    assert record['pending_observation']['merge_key'] == single_pending['mergeKey']
+    assert record['pending_observation']['balance_after'] == single_pending['balanceAfter']
+
+    # An old active warning and a preexisting final are repaired by the same
+    # normal complete-snapshot path, retaining the finalized ID and old evidence.
+    account = 'single-cheque-healing'
+    snapshot(account, [single_pending])
+    snapshot(account, [])
+    snapshot(account, [single_final], complete=False)
+    pending_row, final_row = archive(account)
+    assert pending_row['presence_state'] == 'missing'
+    result = snapshot(account, [single_final])
+    assert result['active_missing_count'] == 0
+    assert [r['id'] for r in archive(account)] == [final_row['id']]
+    assert transition(pending_row['id'])['pending_observation'] == pending_row
+
+    # The receipt is atomic with the existing merge/source validation.
+    account = 'single-cheque-invalid-source'
+    snapshot(account, [single_pending])
+    before = archive(account)
+    unrelated = dict(pending, mergeKey='duplicate-unrelated')
+    try:
+        snapshot(account, [single_final, unrelated, unrelated])
+    except RuntimeError as error:
+        assert 'bank_archive_ambiguous_source_identity' in str(error)
+    else:
+        raise AssertionError('A duplicate source key was accepted')
+    assert archive(account) == before and transition(before[0]['id']) is None
+
+    # The pending action can roll onto its established Jerusalem value day.
+    account = 'cheque-value-day-rollover'
+    value_day = '2026-11-19T22:05:00Z'
+    later = dict(single_final, date=value_day, processedDate=value_day)
+    snapshot(account, [dict(single_pending, processedDate=value_day)])
+    old_id = archive(account)[0]['id']
+    snapshot(account, [later], coverage_from='2026-11-20')
+    assert len(archive(account)) == 2, 'The original action day is outside coverage'
+    snapshot(account, [later])
+    assert transition(old_id)['completed_transaction_id'] == archive(account)[0]['id']
+    assert len(archive(account)) == 1
+
+    # Matching balances must never bypass completeness or archive ambiguity.
+    account = 'single-cheque-partial-same-balance'
+    equal_balance = dict(single_final, balanceAfter=single_pending['balanceAfter'])
+    snapshot(account, [single_pending])
+    snapshot(account, [equal_balance], complete=False)
+    assert len(archive(account)) == 2
+    assert all(r['presence_state'] == 'present' and r['missing_reason'] is None for r in archive(account))
+
+    account = 'single-cheque-final-already-known'
+    snapshot(account, [equal_balance])
+    snapshot(account, [equal_balance, single_pending])
+    snapshot(account, [equal_balance])
+    assert len(archive(account)) == 2, 'A previously known completed deposit must keep its own identity'
+    assert archive(account)[1]['missing_reason'] == 'cheque_transition_unresolved'
+    snapshot(account, [single_pending, equal_balance])
+    assert archive(account)[1]['missing_reason'] is None
 
     account = 'aggregate-incident'
     snapshot(account, [pending])
@@ -65,6 +149,7 @@ def run(db):
     # The finalized row remains subject to real disappearance/reappearance checks.
     result = snapshot(account, [])
     assert result['active_missing_count'] == 1
+    assert archive(account)[0]['missing_reason'] is None
     result = snapshot(account, [completed])
     assert result['active_missing_count'] == 0 and len(archive(account)) == 1
     snapshot(account, [completed])
@@ -91,6 +176,7 @@ def run(db):
     rows = archive(account)
     assert len(rows) == 1 and rows[0]['id'] == final_id
     assert result['missing_count'] == result['active_missing_count'] == 0
+    assert transition(before[0]['id'])['pending_observation'] == before[0]
 
     # Both source orders must retain an overlap. A later full scan can resolve it.
     for order in (False, True):
@@ -107,17 +193,19 @@ def run(db):
     snapshot(account, [pending, dict(pending, mergeKey='other-pending', balanceAfter=12241.98)])
     snapshot(account, [completed])
     assert len(archive(account)) == 3
-    assert sum(r['presence_state'] == 'missing' for r in archive(account)) == 2
+    assert sum(r['presence_state'] == 'missing' and r['missing_reason'] == 'cheque_transition_unresolved'
+               for r in archive(account)) == 2
     for order in (False, True):
         account = 'aggregate-two-final-' + str(order)
         snapshot(account, [pending])
         other = copy.deepcopy(completed)
-        other.update(mergeKey='other-final', bankSerial='3', balanceAfter=12281.98)
+        other.update(mergeKey='other-final', bankSerial='3', balanceAfter=pending['balanceAfter'])
         other['checkDetails']['checkItems'][0]['checkNumber'] = '99000201'
         other['checkDetails']['checkNumbers'][0] = '99000201'
         source = [completed, other]
         snapshot(account, list(reversed(source)) if order else source)
         assert len(archive(account)) == 3, 'Two equal deposits must not consume one placeholder'
+        assert archive(account)[0]['missing_reason'] == 'cheque_transition_unresolved'
 
     # Fail closed on contradictory, incomplete or unrelated cheque evidence.
     variants = [
@@ -125,7 +213,7 @@ def run(db):
         dict(completed, date='2026-11-15T10:00:00Z'),
         dict(completed, currency='USD'),
         dict(completed, description='הפק.שיק בסלולר'),
-        dict(completed, bankReference='123456'),
+        dict(completed, bankReference='0'),
         dict(completed, status='pending'),
     ]
     for path, value in [('checkCount', 3), ('warning', 'partial'), ('checkItems', [])]:
@@ -134,6 +222,12 @@ def run(db):
         variants.append(variant)
     variant = copy.deepcopy(completed)
     variant['checkDetails']['checkItems'][0]['amount'] = 500
+    variants.append(variant)
+    variant = copy.deepcopy(completed)
+    same_cheque = variant['checkDetails']['checkItems'][0]
+    same_cheque['amount'] = 500
+    variant['checkDetails']['checkItems'][1] = dict(same_cheque, amount=640)
+    variant['checkDetails']['checkNumbers'] = [same_cheque['checkNumber']]
     variants.append(variant)
     for index, variant in enumerate(variants):
         account = 'aggregate-unsafe-' + str(index)
@@ -184,15 +278,43 @@ def run(db):
                 assert (str(old_id) in claim['previous_transaction_ids']) == heal
             else:
                 assert claim['transaction_id'] == old_id and not claim['conflicted']
+                assert rows[0]['missing_reason'] == 'cheque_transition_unresolved'
+                assert transition(old_id) is None
+
+    for protected in ('handled-state', 'morning-link'):
+        account = 'single-cheque-' + protected
+        snapshot(account, [single_pending], role='business')
+        old_id = archive(account)[0]['id']
+        if protected == 'handled-state':
+            db.sql(f'update public.bank_transactions set handled_at=now() where id={old_id}')
+        else:
+            operation = db.sql(
+                'insert into public.morning_document_operations(operation_id,owner_id,environment,'
+                'request_fingerprint,state,document_type,amount,document_date,document_id,verified_at,issuance_started_at)'
+                f" values(gen_random_uuid(),{quote(OWNER)},'sandbox','synthetic','created',320,570,'2026-11-19',"
+                "'synthetic-cheque-link',now(),now())"
+                ' returning operation_id'
+            ).strip()
+            db.sql('insert into public.bank_transaction_document_links(owner_id,transaction_id,operation_id,'
+                   'environment,document_id,document_type,document_amount,bank_amount,verified_at)'
+                   f" values({quote(OWNER)},{old_id},{quote(operation)},'sandbox','synthetic-cheque-link',320,570,570,now())")
+        snapshot(account, [single_final], role='business')
+        rows = archive(account)
+        assert len(rows) == 2 and rows[0]['id'] == old_id and transition(old_id) is None
+        assert rows[0]['missing_reason'] == 'cheque_transition_unresolved'
 
     # Helper functions stay private; normal authenticated clients use only v6 RPCs.
     for signature in [
         'netunim_internal.bank_aggregate_cheque_transition_matches(public.bank_transactions,jsonb)',
-        'netunim_internal.reconcile_bank_aggregate_cheque_transition(text,text,jsonb,date,date)',
+        'netunim_internal.reconcile_bank_aggregate_cheque_transition(text,text,jsonb,timestamptz,date,date)',
+        'netunim_internal.bank_unitemized_cheque_placeholder(public.bank_transactions)',
     ]:
         for role in ('anon', 'authenticated'):
             assert db.sql('select has_function_privilege(' + quote(role) + ',' + quote(signature)
                           + ",'EXECUTE')").strip() == 'f'
+    for role in ('anon', 'authenticated'):
+        assert db.sql(f"select has_table_privilege('{role}',"
+                      "'netunim_internal.bank_cheque_deposit_transitions','SELECT')").strip() == 'f'
     db.auth_sql("select public.release_finance_sync_lease('bank'," + quote(token) + ')')
     print('PASS aggregate cheque transition: real RPC identity, healing, coverage, ambiguity and rollback', flush=True)
 

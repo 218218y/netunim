@@ -100,4 +100,29 @@ assert.equal(ordersReconciliationCalls.at(-1).body.p_transaction_id,77,'Orders a
 await ordersReconciliation.acknowledgeBankTransactionAlert(77,'returned_cheque');
 assert.deepEqual(ordersReconciliationCalls.at(-1).body,{p_transaction_id:77,p_alert_kind:'returned_cheque'},'Orders uses the same per-alert acknowledgement RPC contract as Kupa');
 
+for(const [create,port] of [[createKupaTransport,'supaRest'],[createOrdersTransport,'supaFetch']]){
+  const pending={
+    ...archiveRow(0),account_role:'home',status:'pending',cheque:true,
+    presence_state:'missing',missing_since:'2026-09-06T02:00:00Z',
+  };
+  const current=create({[port]:async path=>{
+    assert.match(path,/missing_reason/);
+    return jsonResponse([{...pending,missing_reason:'cheque_transition_unresolved'}]);
+  }});
+  const [classified]=await current.readBankTransactions('12-655-1','home');
+  assert.equal(classified.missingReason,'cheque_transition_unresolved');
+
+  const requests=[];
+  const previous=create({[port]:async path=>{
+    requests.push(path);
+    if(path.includes('missing_reason')){
+      return jsonResponse({code:'42703',message:'column bank_transactions.missing_reason does not exist'},{ok:false});
+    }
+    return jsonResponse([pending]);
+  }});
+  const [legacy]=await previous.readBankTransactions('12-655-1','home');
+  assert.equal(legacy.missingReason,null);
+  assert.equal(requests[1],requests[0].replace('missing_reason,',''));
+}
+
 console.log('PASS bank archive transport: collision-safe identities and >1000-row pagination are deterministic in both apps');

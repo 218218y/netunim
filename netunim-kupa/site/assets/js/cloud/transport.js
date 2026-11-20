@@ -2,7 +2,7 @@ import {responseErrorText,firstResponseValue,jsonObjectProperty} from '../shared
 import {readBankArchiveCommand} from '../shared/bank-transaction-evidence.js';
 import {readDocumentWriteResponseRow} from '../shared/document-write-ack.js';
 import {readRestoreGroupRows,readRestoreStageReceipt,readRestoreApplyReceipt} from '../shared/restore-response-records.js';
-import {readBankArchiveSyncReceipt,readBankAcknowledgementReceipt,readBankArchiveRows,readBankSnapshotRows} from '../shared/bank-response-records.js';
+import {readBankArchiveSyncReceipt,readBankAcknowledgementReceipt,readBankArchiveRows,bankArchiveMissingReasonUnavailable,readBankSnapshotRows} from '../shared/bank-response-records.js';
 import {readCloudMetaRows,readCloudDocumentRows,readFinanceDocumentRows,readCloudBackupRows,readCloudBackupPointRows} from '../shared/cloud-read-records.js';
 import {createMainDocumentWrite} from './main-document-write.js';
 import {beginMeasure} from '../shared/runtime-performance.js';
@@ -271,12 +271,20 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
       cap=Math.max(pageSize,Number(maxRows)||20000),
       rows=[],
       seen=new Set();
+    let includeMissingReason=true;
     for(let offset=0;offset<cap;offset+=pageSize){
       assertCurrent?.();
       const q=(`/rest/v1/bank_transactions?account_key=eq.${encodeURIComponent(String(accountKey))}&account_role=eq.${accountRole==='home'?'home':'business'}${dateClause}&select=id,account_key,account_role,merge_key,transaction_date,processed_date,amount,currency,description,memo,party_name,party_headline,message_headline,message_detail,status,` +
         `balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details,credit_settlement_details,first_seen_at,presence_state,last_seen_at,missing_since,` +
-        `missing_acknowledged_at,alert_acknowledgements&order=transaction_date.desc,id.desc&limit=${pageSize}&offset=${offset}`);
-      const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
+        `missing_acknowledged_at,${includeMissingReason?'missing_reason,':''}alert_acknowledgements&order=transaction_date.desc,id.desc&limit=${pageSize}&offset=${offset}`);
+      const options={method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})};
+      let r=await supaRest(q,options),j=await r.json().catch(()=>null);
+      if(!r.ok&&includeMissingReason&&bankArchiveMissingReasonUnavailable(j)){
+        assertCurrent?.();
+        includeMissingReason=false;
+        r=await supaRest(q.replace('missing_reason,',''),options);
+        j=await r.json().catch(()=>null);
+      }
       assertCurrent?.();
       if(!r.ok)throw new Error(responseErrorText(j)||'קריאת ארכיון הבנק נכשלה');
       const page=readBankArchiveRows(j,String(accountKey),accountRole==='home'?'home':'business',seen);
@@ -307,6 +315,7 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
         lastSeenAt:x.last_seen_at,
         missingSince:x.missing_since,
         missingAcknowledgedAt:x.missing_acknowledged_at,
+        missingReason:x.missing_reason??null,
         alertAcknowledgements:x.alert_acknowledgements&&typeof x.alert_acknowledgements==='object'?x.alert_acknowledgements:{}
       }));
     }

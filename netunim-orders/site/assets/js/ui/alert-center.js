@@ -21,10 +21,12 @@ function bankWhen(value){
 }
 
 function bankAlertCard(item){
-  const returned=item.kind==='bank_returned_cheque',title=returned?'החזרת שיק':(item.cheque?'הפקדת צ׳ק נגרעה מתנועות הבנק':'תנועה נגרעה מתנועות הבנק');
+  const returned=item.kind==='bank_returned_cheque';
+  const title=returned?'החזרת שיק':item.chequeTransitionNeedsReview?'התאמת הפקדת צ׳ק דורשת בדיקה':
+    item.cheque?'הפקדת צ׳ק נגרעה מתנועות הבנק':'תנועה נגרעה מתנועות הבנק';
   const facts=returned
     ?[bankWhen(item.date),item.bankReference?`אסמכתא ${item.bankReference}`:''].filter(Boolean)
-    :[item.lastSeenAt?`נראתה לאחרונה ${bankWhen(item.lastSeenAt)}`:'',item.missingSince?`חסרה מאז ${bankWhen(item.missingSince)}`:''].filter(Boolean);
+    :[item.lastSeenAt?`נראתה לאחרונה ${bankWhen(item.lastSeenAt)}`:'',item.missingSince?`${item.chequeTransitionNeedsReview?'ממתינה לבדיקת התאמה מאז':'חסרה מאז'} ${bankWhen(item.missingSince)}`:''].filter(Boolean);
   const amount=item.amount===null?'סכום לא ידוע':money(item.amount);
   const detail=returned?(item.reason?`סיבת ההחזרה: ${item.reason}`:item.description):item.description;
   return `<div class="alert-center-card bank-warning ${returned?'bank-returned-warning':'bank-missing-warning'} alert-center-bank-card"><button type="button" class="alert-center-bank-open alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">בנק · חשבון ${esc(item.account)}</div><div class="alert-center-card-title"><span>${esc(title)}</span><strong>${amount}</strong></div><p>${esc(detail)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button><div class="alert-center-bank-actions"><button type="button" class="alert-center-card-dismiss" data-action="dismiss-bank-alert" data-click-arg0="${esc(item.id)}">${returned?'אישור · הסר התראה':'בדקתי · הסר התראה'}</button></div></div>`;

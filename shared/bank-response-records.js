@@ -55,6 +55,11 @@ export function readBankHandledReceipt(response,transactionId,handled){
 function scope(row,accountKey,role){
   if(!text(accountKey)||!['business','home'].includes(role)||row.account_key!==accountKey||row.account_role!==role)throw invalid();
 }
+/** @param {unknown} response */
+export function bankArchiveMissingReasonUnavailable(response){
+  return object(response)&&response.code==='42703'&&typeof response.message==='string'&&
+    /\bbank_transactions\.missing_reason\b/.test(response.message);
+}
 /** @param {unknown} response @param {string} accountKey @param {string} role @param {Set<number>} [seen] */
 export function readBankArchiveRows(response,accountKey,role,seen=new Set()){
   const rows=evidenceRows(response,invalid);
@@ -66,6 +71,7 @@ export function readBankArchiveRows(response,accountKey,role,seen=new Set()){
       !nullableTimestamp(row.last_seen_at)||!nullableTimestamp(row.missing_since)||!nullableTimestamp(row.missing_acknowledged_at)||
       !object(row.alert_acknowledgements)||Object.values(row.alert_acknowledgements).some(at=>!timestamp(at))||
       typeof row.cheque!=='boolean'||!(row.balance_after===null||money(row.balance_after)))throw invalid();
+    if(row.missing_reason!=null&&row.missing_reason!=='cheque_transition_unresolved')throw invalid();
     if(Object.hasOwn(row,'handled_at')&&!nullableTimestamp(row.handled_at))throw invalid();
     try{
       readBankTransaction({...row,id:row.merge_key,date:row.transaction_date,processedDate:row.processed_date,

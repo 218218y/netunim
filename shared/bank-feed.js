@@ -88,6 +88,7 @@ export function normalizeBankFeedTransaction(value) {
         firstSeenAt: cleanIso(row.firstSeenAt),
         lastSeenAt: cleanIso(row.lastSeenAt),
         missingSince: cleanIso(row.missingSince),
+        missingReason: row.missingReason === 'cheque_transition_unresolved' ? row.missingReason : null,
         missingAcknowledgedAt: cleanIso(row.missingAcknowledgedAt),
         alertAcknowledgements: row.alertAcknowledgements && typeof row.alertAcknowledgements === 'object' && !Array.isArray(row.alertAcknowledgements) ? Object.fromEntries(Object.entries(row.alertAcknowledgements).map(([key, value]) => [cleanText(key, 80), cleanIso(value)]).filter(([key, value]) => key && value)) : {},
     };

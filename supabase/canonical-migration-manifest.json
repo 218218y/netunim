@@ -323,5 +323,10 @@
     "version": "20261117070000",
     "name": "bank_aggregate_cheque_transition",
     "sha256": "502270a7bbca41776879c7a89e15125dc6f8c234d650474905349a1eddf3ac29"
+  },
+  {
+    "version": "20261120100000",
+    "name": "bank_cheque_deposit_lifecycle",
+    "sha256": "0f379e8903fbb47a3307003cce253cc7f480def3a274fad2bef9e4a9cf957fe6"
   }
 ]

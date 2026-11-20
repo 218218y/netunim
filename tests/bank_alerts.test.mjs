@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {bankReturnedCheque,bankReturnedChequeReason,bankWarningItems} from '../netunim-orders/site/assets/js/domains/bank/alerts.js';
 import {createOrdersFinanceControllerFixture as createDomainsFinanceController} from './orders_finance_controller_fixture.mjs';
 import {createUiAlertCenter} from '../netunim-orders/site/assets/js/ui/alert-center.js';
+import {bankMissingDetail,bankMissingSummary} from '../netunim-orders/site/assets/js/domains/finance/bank-reconciliation-view.js';
+import {normalizeBankFeedTransaction} from '../shared/bank-feed.js';
 
 const returned={
   archiveId:21,
@@ -44,6 +46,13 @@ assert.deepEqual(warnings.map(x=>x.kind),['bank_returned_cheque','bank_missing']
 assert.equal(warnings[0].reason,'א.כ.מ - אין כיסוי מספיק');
 assert.equal(warnings[0].account,'עסקי');
 assert.equal(warnings[1].cheque,true,'a disappeared known cheque deposit keeps its cheque-specific warning context');
+
+const unresolved=normalizeBankFeedTransaction({...missing,archiveId:45,missingReason:'cheque_transition_unresolved'});
+const reviewWarnings=bankWarningItems({homeFeed:{transactions:[missing,unresolved]}});
+assert.deepEqual(reviewWarnings.map(warning=>warning.chequeTransitionNeedsReview),[false,true]);
+assert.match(bankMissingDetail(unresolved),/ההתאמה דורשת בדיקה/);
+assert.match(bankMissingSummary([missing,unresolved]),/1 תנועות אינן מופיעות.*התאמה לא ודאית \(1\)/);
+assert.doesNotMatch(bankMissingSummary([unresolved]),/אינן מופיעות/);
 
 warnings=bankWarningItems({feed:{transactions:[
   {...returned,alertAcknowledgements:{returned_cheque:'2026-09-06T12:00:00.000Z'}},

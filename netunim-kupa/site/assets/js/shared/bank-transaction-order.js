@@ -6,6 +6,22 @@ function pending(row){return row?.status==='pending'}
 function numericId(row){const n=Number(row?.archiveId);return Number.isSafeInteger(n)&&n>0?n:0}
 export function bankSmartHistoryVisible(row){return !(row?.presenceState==='missing'&&!!row?.missingAcknowledgedAt)}
 
+export function bankChequeTransitionNeedsReview(row){
+  return row?.presenceState==='missing'&&row?.missingReason==='cheque_transition_unresolved';
+}
+
+export function bankMissingSummaryText(active){
+  const missing=active.filter(row=>!bankChequeTransitionNeedsReview(row));
+  const cheques=missing.filter(row=>row.cheque).length;
+  const unresolved=active.length-missing.length;
+  const parts=[];
+  if(missing.length){
+    parts.push(`${missing.length} תנועות אינן מופיעות בסריקת הבנק המלאה האחרונה${cheques?` · מתוכן ${cheques} הפקדות צ׳קים`:''}`);
+  }
+  if(unresolved)parts.push(`הפקדות צ׳קים לבדיקה בעקבות התאמה לא ודאית (${unresolved})`);
+  return parts.join(' · ');
+}
+
 /**
  * Canonical ordering for the smart bank-history view.
  *

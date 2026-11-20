@@ -259,6 +259,10 @@
     {
       "version": "20261117070000",
       "name": "bank_aggregate_cheque_transition"
+    },
+    {
+      "version": "20261120100000",
+      "name": "bank_cheque_deposit_lifecycle"
     }
   ]
 }
