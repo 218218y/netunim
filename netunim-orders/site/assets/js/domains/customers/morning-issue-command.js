@@ -2,6 +2,10 @@ import {morningCheckRegistrationMessage} from './morning-operation-evidence.js';
 import {documentLabel} from './morning-document-view.js';
 import {money} from '../../core/money.js';
 
+function recipientConfirmation(email) {
+  return email ? `כתובת הנמען שתועבר ל־Morning היא \u2066${email}\u2069` : 'המסמך יופק ללא כתובת נמען.';
+}
+
 // Admission and captured confirmation precede the existing issuance authority.
 // Accepted work remains joined by the controller lifetime after its modal closes.
 export function createMorningIssueCommand({session,form,issuance,application,recovery,display,media,feedback,connectivity}){
@@ -11,12 +15,10 @@ async function createMorningDocument(button){
   if(rejectCurrentIssuance())return;
   let payload,assertCurrent;try{session.assertModal();assertCurrent=session.capture();payload=form.read()}catch(error){return feedback.toast(error.message)}
   const generation=session.generation(),issuanceEpoch=session.interruptionEpoch(),type=payload.document.type,amount=payload.document.amount,clientName=payload.document.client.name,policy=form.policy(type);
-  const email=payload.document.client.email;
-  const recipient=email?`כתובת הנמען שתועבר ל־Morning היא \u2066${email}\u2069`:'המסמך יופק ללא כתובת נמען.';
   let context;try{context=form.context(type,amount,policy,payload.operation_id)}catch(error){return feedback.toast(error.message)}
   session.cancelStatus();session.update({createBusy:true});display.busy(button,true,'מפיק…');
   try{
-    const confirmed=await display.confirmDialog('הפקת מסמך רשמי',`להפיק ${documentLabel(type)} על סך ${money(amount)} עבור ${clientName}?\n${recipient}\nלאחר ההפקה המסמך יקבל מספר רשמי ב-Morning.${form.confirmation(type,amount,policy)}`,{confirmText:'הפק מסמך',cancelText:'חזור לעריכה',tone:'primary',signal:session.signal()});
+    const confirmed=await display.confirmDialog('הפקת מסמך רשמי',`להפיק ${documentLabel(type)} על סך ${money(amount)} עבור ${clientName}?\n${recipientConfirmation(payload.document.client.email)}\nלאחר ההפקה המסמך יקבל מספר רשמי ב-Morning.${form.confirmation(type,amount,policy)}`,{confirmText:'הפק מסמך',cancelText:'חזור לעריכה',tone:'primary',signal:session.signal()});
     if(!confirmed)return;assertCurrent();if(!session.isActive(generation))return;
     if(rejectCurrentIssuance())return;
     const data=await issuance.issue(payload,context,assertCurrent);assertCurrent();

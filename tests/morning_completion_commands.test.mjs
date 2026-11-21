@@ -37,6 +37,17 @@ test('a held confirmation excludes a second create and cancellation never reserv
  const f=issueFixture(),held=gate();f.ports.display.confirmDialog=()=>held.promise;const command=f.command(),work=command.create();
  await command.create();assert.equal(f.state.createBusy,true);held.resolve(false);await work;assert.equal(f.calls.includes('issue'),false);assert.equal(f.state.createBusy,false);
 });
+test('confirmation explicitly shows when there is no recipient email', async () => {
+  const f=issueFixture();
+  let confirmation;
+  f.ports.display.confirmDialog=async (_title,message)=>{
+    confirmation=message;
+    return false;
+  };
+  await f.command().create();
+  assert.match(confirmation,/המסמך יופק ללא כתובת נמען/);
+  assert.equal(f.calls.includes('issue'),false);
+});
 for(const change of ['current','active','rejected'])test('confirmation rechecks '+change+' before official issuance',async()=>{
  const f=issueFixture(),held=gate();f.ports.display.confirmDialog=()=>held.promise;const work=f.command().create();f.control[change]=change==='rejected';held.resolve(true);await work;assert.equal(f.calls.includes('issue'),false);
 });
