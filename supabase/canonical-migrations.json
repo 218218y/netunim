@@ -267,6 +267,10 @@
     {
       "version": "20261120140000",
       "name": "bank_transfer_sender_account"
+    },
+    {
+      "version": "20261121100000",
+      "name": "google_contacts_oauth"
     }
   ]
 }

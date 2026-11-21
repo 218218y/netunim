@@ -3,7 +3,7 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', {fatal:true});
 const prefix = 'ngc1';
 const keyPattern = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
-const services = new Set(['calendar', 'drive']);
+const services = new Set(['calendar', 'drive', 'contacts']);
 const b64url = bytes => btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 function unbase64url(value) {
   if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new GoogleCredentialError();

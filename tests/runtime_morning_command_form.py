@@ -5,10 +5,21 @@ from runtime_morning_cloud import LOCAL_CLOUD
 
 FLOW=LOCAL_CLOUD+r"""
  await appReady;syncDocument.stopPolling();finance.runtime.stop();
- const check=(value,message)=>{if(!value)throw Error(message)},calls=[];
+ const check=(value,message)=>{if(!value)throw Error(message)},calls=[],contacts=[];
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),db=createStorageJournalDb();
  const raw=async()=>JSON.stringify({main:await db.load('local:orders'),checks:await db.load('local:shared-checks')}),before=await raw();
- cloudAuth.supaFetch=async(_path,options)=>{options.assertRequestScope();const request=JSON.parse(options.body);calls.push(request);if(request.action==='status')return new Response(JSON.stringify({ok:true,configured:true,available:true,environment:'sandbox',operation:null}));check(request.action==='preview','form reached official issuance');throw Error('synthetic preview capture complete')};
+ let delayedSearch,delayedResponse=Promise.withResolvers();
+ cloudAuth.supaFetch=async(path,options)=>{
+  const request=JSON.parse(options.body);
+  if(path.endsWith('/google-contacts-oauth')){
+   contacts.push(request.action);
+   if(request.action==='status')return Response.json({account:'operator@example.test',grant:'test-grant'});
+   if(request.action==='prepare')return Response.json({results:[],grant:'test-grant'});
+   if(request.query==='delayed'){delayedSearch=options.signal;return delayedResponse.promise;}
+   return Response.json({grant:'test-grant',results:[{name:'<img src=x>',email:'selected@example.test',sources:['other']}]});
+  }
+  options.assertRequestScope();calls.push(request);if(request.action==='status')return new Response(JSON.stringify({ok:true,configured:true,available:true,environment:'sandbox',operation:null}));check(request.action==='preview','form reached official issuance');throw Error('synthetic preview capture complete');
+ };
  const actions=domainsCustomers.morningActions,click=name=>{const button=document.querySelector('[data-action="'+name+'"]');check(button,'missing '+name);button.click()};
  actions['open-morning-standalone']();await domainsCustomers.runtime.drain();
  const fill=(id,value)=>{const field=document.getElementById(id);check(field,'missing '+id);field.value=String(value)};
@@ -21,8 +32,31 @@ FLOW=LOCAL_CLOUD+r"""
  check(preview.document.amount===30&&preview.document.client.taxId==='123456782'&&preview.document.payment[0].price===30,'validated payload drifted');
  const payment=JSON.stringify(preview.document.payment),id=preview.operation_id;
  click('morning-preview');await domainsCustomers.runtime.drain();check(calls.at(-1).operation_id===id&&JSON.stringify(calls.at(-1).document.payment)===payment,'preview changed operation or receipts');
+ const get=id=>document.getElementById(id),wait=async predicate=>{for(let i=0;i<280;i++){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,25))}throw Error('lookup condition timed out')};
+ check(contacts.length===0,'lookup contacted Google before opening');
+ const beforeLookup=calls.length;
+ click('morning-email-lookup');
+ check(get('morningEmailQuery').value==='exact client'&&document.activeElement===get('morningEmailQuery'),'lookup did not seed and focus the query');
+ await wait(()=>document.querySelector('.morning-email-result'));
+ const result=document.querySelector('.morning-email-result');
+ check(!result.querySelector('img')&&result.textContent.includes('<img src=x>')&&result.textContent.includes('אנשי קשר אחרים'),'contact details were not rendered as text with source');
+ const lookupQuery=get('morningEmailQuery');lookupQuery.value='delayed';lookupQuery.dispatchEvent(new Event('input',{bubbles:true}));
+ await wait(()=>delayedSearch);lookupQuery.value='exact client';lookupQuery.dispatchEvent(new Event('input',{bubbles:true}));
+ check(delayedSearch.aborted,'typing did not cancel the previous search');
+ await wait(()=>document.querySelector('.morning-email-result'));
+ delayedResponse.resolve(Response.json({grant:'test-grant',results:[{email:'obsolete@example.test',sources:['contacts']}]}));
+ document.querySelector('.morning-email-result').click();
+ await wait(()=>get('morningEmailLookup').hidden);
+ check(get('morningClientEmail').value==='selected@example.test'&&document.activeElement===get('morningClientEmail'),'choosing a result did not fill and focus the email');
+ check(get('morningDescription').value==='exact document'&&calls.length===beforeLookup,'choosing an email changed other fields or reached Morning');
+ click('morning-create');
+ await wait(()=>get('confirmBackdrop').classList.contains('open'));
+ check(get('confirmMessage').textContent.includes('selected@example.test'),'official confirmation lacks the captured email');
+ get('confirmCancel').click();await domainsCustomers.runtime.drain();
+ click('morning-email-lookup');uiModal.closeModal();await wait(()=>get('morningEmailLookup').hidden);
+ check(!get('morningEmailQuery').value&&get('morningClientEmail').value==='selected@example.test','closing the document retained lookup data or changed the recipient');
  check(!calls.some(row=>['reserve','create'].includes(row.action)),'readonly form issued a document');check(await raw()===before,'form validation/preview changed Main/Shared journals');
- return {rejected,stableIdentity:true,exactReceipts:true,noIssuance:true,journalsRetained:true};
+ return {rejected,stableIdentity:true,exactReceipts:true,emailLookup:true,noIssuance:true,journalsRetained:true};
 """
 with BrowserSession(ROOT/'netunim-orders/site','morning-command-form') as browser:
  result=browser.evaluate('(async()=>{'+FLOW+'})()',timeout=35);assert result['rejected']==6;assert not browser.drain_serious_errors();print('PASS Morning command form: '+json.dumps(result))

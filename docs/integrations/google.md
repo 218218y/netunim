@@ -17,3 +17,12 @@ Drive uses `files.get` with `alt=media` for direct preview of uploaded files and
 be opened, check the file's Drive access and the granted scope before reconnecting.
 
 The start, disconnect and token operations fence by captured user and grant generation. The callback uses a stored one-time intent. A late browser callback or refresh cannot replace a newer login or republish a disconnected integration. Use application Settings to reconnect after revoked consent. Keep project-wide provider revocation distinct from disconnecting a single feature.
+
+## Google Contacts in Morning
+
+1. Apply the migration chain through `20261121100000_google_contacts_oauth.sql` in staging.
+2. Enable People API and create a web OAuth client for Contacts. Register `https://<project-ref>.supabase.co/functions/v1/google-contacts-oauth/callback`. Configure the consent screen for the authenticated users and request `contacts.readonly` and `contacts.other.readonly` plus `openid email` for the connected account label.
+3. Set `GOOGLE_CONTACTS_CLIENT_ID` and `GOOGLE_CONTACTS_CLIENT_SECRET`, the shared credential vault keys, and any staging origin. Deploy `google-contacts-oauth` using the documented Edge release command.
+4. In Morning, open **חפש כתובת**, connect Google in the separate tab and use **בדוק חיבור** back on the form. Test a regular contact, an entry under Other contacts and a customer missing from both lists. Check the captured recipient in the final confirmation and cancel it during the lookup smoke test. Disconnect from the same lookup panel.
+
+The server searches on demand and returns each eligible email and its source, with the Google account visible in the picker. OAuth credentials stay on the server. Disconnect clears this service's local connection and pending consent. Google Account settings administer project-wide revocation. The Gmail link opens Gmail in a separate tab using the current search term. Contact suggestions depend on what Google saved in each list.

@@ -50,7 +50,7 @@
   {
     "rule": "py/clear-text-storage-sensitive-data",
     "path": "tests/browser_harness.py",
-    "sha256": "13dd7cdac1a3c866f6330c1878806e2c30702a7def180e85a00ab03811c90921",
+    "sha256": "eeb874c28126c0bd1cbc39078f255f9e8db75f767f71de05979db3d44082f228",
     "reason": "Windows host-state seeding persists only os_password_blank=false and the NetUserGetInfo password-age timestamp. The ctypes password pointer exists to match the native structure layout but is never read. No Windows password or account credential is retrieved or written."
   },
   {

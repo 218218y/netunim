@@ -29,6 +29,7 @@ export function createMorningActions({ domainsCustomers }) {
   const actions = {
     'open-morning-document': (element, event) => { return openMorningDocument(element.dataset.clickArg0); },
     'open-morning-standalone': (element, event) => { return openStandaloneMorningDocument(); },
+    'morning-email-lookup': element => domainsCustomers.toggleMorningEmailLookup(element),
     'morning-document-type': (element, event) => { return syncMorningDocumentType(); },
     'morning-payment-type': (element, event) => { return syncMorningPaymentType(element.dataset.changeArg0 === '' || element.dataset.changeArg0 === undefined ? null : Number(element.dataset.changeArg0)); },
     'morning-payment-bank': (element, event) => { return syncMorningPaymentBank(Number(element.dataset.changeArg0)); },

@@ -333,5 +333,10 @@
     "version": "20261120140000",
     "name": "bank_transfer_sender_account",
     "sha256": "1ff0d2f393880be0337cdb80f079c79aa01bf0a307e1db71b876f100aa1c2d0b"
+  },
+  {
+    "version": "20261121100000",
+    "name": "google_contacts_oauth",
+    "sha256": "c4c02fdb9dff8c633c00f6c8950a4265bb4ca9c7e5985755b95c1b30fdb8dbb1"
   }
 ]

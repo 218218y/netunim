@@ -5,7 +5,7 @@ import {createDomainsCustomersDocuments} from './documents.js';
 import {createDomainsCustomersDocumentsBrowser} from './documents-browser.js';
 import {createMorningMetadataPersistence} from './morning-metadata-persistence.js';
 
-export function createDomainsCustomers({morningOperationScope,morningRequest,documentMedia,customerRevision,model,customerUi,selectors,uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,refreshForMorningRecovery,subscribeAccountScope,getBusinessBankTransactions,ensureBusinessBankTransactions,onBankDocumentVerified}){
+export function createDomainsCustomers({morningOperationScope,morningRequest,contactsRequest,documentMedia,customerRevision,model,customerUi,selectors,uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,refreshForMorningRecovery,subscribeAccountScope,getBusinessBankTransactions,ensureBusinessBankTransactions,onBankDocumentVerified}){
   let view,editor,disposed=false;
   const scheduleSave=(...args)=>storagePersistence.scheduleSave(...args);
   const metadataPersistence=createMorningMetadataPersistence({model,operationScope:morningOperationScope,commitSave:(...args)=>storagePersistence.commitSave(...args),canMutate:()=>storagePersistence.canMutate?.()!==false});
@@ -45,6 +45,7 @@ export function createDomainsCustomers({morningOperationScope,morningRequest,doc
     },
     onDebtNotesChanged:()=>view.refreshDebtTable(),
     request:morningRequest,
+    contactsRequest,
     documentsBrowser,
     dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
     setDateValue:(...args)=>uiDateEditor.setDateValue(...args),
@@ -117,6 +118,7 @@ export function createDomainsCustomers({morningOperationScope,morningRequest,doc
     deleteDebt:(...args)=>editor.deleteDebt(...args),
     openMorningDocument:(...args)=>documents.openMorningDocument(...args),
     openStandaloneMorningDocument:(...args)=>documents.openStandaloneMorningDocument(...args),
+    toggleMorningEmailLookup:(...args)=>documents.toggleEmailLookup(...args),
     openBankMorningDocument:(...args)=>documents.openBankMorningDocument(...args),
     linkBankMorningDebt:(...args)=>documents.linkBankDebt(...args),
     morningDebtNote:(...args)=>documents.debtNote(...args),

@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-f9b5d1a1b07d';
+const CACHE='orders-app-shell-esm-a36b71956f39';
 const SHELL=[
   './',
   './index.html',
@@ -102,6 +102,7 @@ const SHELL=[
   './assets/js/domains/customers/morning-display-lifetime.js',
   './assets/js/domains/customers/morning-document-media.js',
   './assets/js/domains/customers/morning-document-view.js',
+  './assets/js/domains/customers/morning-email-lookup.js',
   './assets/js/domains/customers/morning-header-vat.js',
   './assets/js/domains/customers/morning-issuance.js',
   './assets/js/domains/customers/morning-issue-command.js',
@@ -251,6 +252,7 @@ const SHELL=[
   './assets/js/integrations/bank-bridge.js',
   './assets/js/integrations/document-bridge.js',
   './assets/js/integrations/document-google-drive.js',
+  './assets/js/integrations/google-contacts.js',
   './assets/js/integrations/morning-expenses.js',
   './assets/js/integrations/morning.js',
   './assets/js/lifecycle.js',

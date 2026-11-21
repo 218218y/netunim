@@ -4,8 +4,9 @@ DECLARE
   v_service text;
   first_hash text := repeat('a',64);
   second_hash text := repeat('b',64);
+  captured_grant uuid;
 BEGIN
-  FOREACH v_service IN ARRAY ARRAY['calendar','drive'] LOOP
+  FOREACH v_service IN ARRAY ARRAY['calendar','drive','contacts'] LOOP
     PERFORM public.google_oauth_start(v_service,owner,first_hash,'https://example.invalid',now()+interval '10 minutes');
     PERFORM public.google_oauth_disconnect(v_service,owner);
     IF public.google_oauth_publish(v_service,owner,first_hash,'old','old','scope') THEN
@@ -33,5 +34,20 @@ BEGIN
     END IF;
     PERFORM public.google_oauth_disconnect(v_service,owner);
   END LOOP;
+  PERFORM public.google_oauth_start('contacts',owner,first_hash,'https://example.invalid',now()+interval '10 minutes');
+  PERFORM public.google_oauth_publish('contacts',owner,first_hash,'fixture@example.test','first','scope');
+  SELECT grant_id INTO STRICT captured_grant FROM public.google_contacts_connections WHERE owner_id=owner;
+  FOR request_number IN 1..40 LOOP
+    IF NOT public.take_google_contacts_search_slot(owner, captured_grant) THEN
+      RAISE EXCEPTION 'Premature contact search throttle';
+    END IF;
+  END LOOP;
+  IF public.take_google_contacts_search_slot(owner, captured_grant) THEN RAISE EXCEPTION 'Contact search throttle failed'; END IF;
+  UPDATE public.google_contacts_connections SET search_window_start=now()-interval '2 minutes', refresh_token='rotated' WHERE owner_id=owner;
+  IF NOT public.take_google_contacts_search_slot(owner, captured_grant) THEN RAISE EXCEPTION 'Window or rotation broke contact lookup'; END IF;
+  PERFORM public.google_oauth_start('contacts',owner,second_hash,'https://example.invalid',now()+interval '10 minutes');
+  PERFORM public.google_oauth_publish('contacts',owner,second_hash,'fixture@example.test','second','scope');
+  IF public.take_google_contacts_search_slot(owner, captured_grant) THEN RAISE EXCEPTION 'Replaced contact grant remained usable'; END IF;
+  PERFORM public.google_oauth_disconnect('contacts',owner);
 END;
 $$;

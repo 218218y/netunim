@@ -1,4 +1,5 @@
 import {createMorningRequest} from '../integrations/morning.js';
+import {createGoogleContactsRequest} from '../integrations/google-contacts.js';
 import {createDomainsCustomersSelectors} from '../domains/customers/selectors.js';
 import {createDomainsCustomers} from '../domains/customers/composition.js';
 import {createCustomersActions} from '../ui/action-packs/customers.js';
@@ -38,6 +39,7 @@ export function createOrdersCustomersRuntime({model,customerUi,customerRevision}
     const documentMedia=createMorningMediaComposition({request:morningRequest,modal:(...args)=>uiModal.modal(...args),toast:(...args)=>uiStatus.toast(...args)});
     const domain=createDomainsCustomers({
       morningOperationScope,morningRequest,documentMedia,customerRevision,model,customerUi,selectors,
+      contactsRequest:createGoogleContactsRequest((...args)=>cloudAuth.supaFetch(...args)),
       uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,
       refreshForMorningRecovery,subscribeAccountScope:cloudAuth.subscribeAccountScope,
       getBusinessBankTransactions:bankTransactions.getTransactions,

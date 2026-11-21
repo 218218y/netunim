@@ -71,8 +71,31 @@ export function createMorningDocumentView({ format: { esc, money }, financial: {
         <div class="field morning-client-tax-field"><label>ת.ז / מספר עוסק <small>(רשות)</small></label><input id="morningClientTaxId" inputmode="numeric" maxlength="9" value="${esc(d.taxId || '')}"></div>
         <div class="field morning-document-date-field"><label>תאריך מסמך</label>${dates.document}</div>
         <div class="field morning-due-date-field" data-document-kind="305"><label>לתשלום עד <small>(רשות)</small></label>${dates.due}</div>
-        <div class="field morning-client-email-field"><label>אימייל <small>(רשות · שליחה אוטומטית ללקוח)</small></label><input id="morningClientEmail" type="email" maxlength="180" value="${esc(d.email || '')}"></div>
+        <div class="field morning-client-email-field">
+          <label for="morningClientEmail">אימייל <small>(רשות · שליחה אוטומטית ללקוח)</small></label>
+          <div class="morning-email-field-row">
+            <input id="morningClientEmail" type="email" dir="ltr" maxlength="180" value="${esc(d.email || '')}">
+            <button id="morningEmailLookupToggle" type="button" class="btn small" data-action="morning-email-lookup" aria-expanded="false" aria-controls="morningEmailLookup">חפש כתובת</button>
+          </div>
+        </div>
         <div class="field morning-client-phone-field"><label>טלפון <small>(רשות)</small></label><input id="morningClientPhone" inputmode="tel" maxlength="50" value="${esc(d.phone || '')}"></div>
+        <section id="morningEmailLookup" class="field morning-email-lookup" aria-labelledby="morningEmailQueryLabel" data-no-draft-guard hidden>
+          <div class="morning-email-tools">
+            <label id="morningEmailQueryLabel" for="morningEmailQuery">חיפוש כתובת אימייל</label>
+            <button type="button" class="btn small" data-email-close aria-label="סגור חיפוש כתובת">סגור</button>
+          </div>
+          <input id="morningEmailQuery" type="search" dir="auto" maxlength="180" autocomplete="off" placeholder="תחילת שם, אימייל או טלפון" data-email-query>
+          <p data-email-status role="status"></p>
+          <ul class="morning-email-results" aria-label="כתובות לבחירה" data-email-results></ul>
+          <div class="morning-email-tools">
+            <a class="btn small" target="_blank" rel="noopener noreferrer" data-email-gmail>חפש ב־Gmail <small>(לשונית חדשה)</small></a>
+            <button type="button" class="btn small" data-email-refresh>בדוק חיבור</button>
+            <button type="button" class="btn small" data-email-connect hidden>חבר את אנשי הקשר של Google</button>
+            <a class="btn small primary" target="_blank" rel="noopener noreferrer" data-email-authorize hidden>פתח את Google לחיבור</a>
+            <button type="button" class="btn small" data-email-disconnect hidden>נתק אנשי קשר</button>
+            <bdi dir="ltr" data-email-account></bdi>
+          </div>
+        </section>
         <div class="field full morning-description-field"><label>תיאור במסמך</label><input id="morningDescription" maxlength="250" value="${esc(d.description || defaultDescription(d, kind))}"></div>
         <div class="field full morning-remarks-field"><label>הערות במסמך <small>(רשות)</small></label><textarea id="morningRemarks" maxlength="500" rows="2" placeholder="הערה שתופיע במסמך ב-Morning">${esc(d.remarks || '')}</textarea></div>
       </div>

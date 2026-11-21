@@ -1,8 +1,9 @@
 import {edgeFixture} from './edge_handler_fixture.mjs';
-import {createHash} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {createGoogleCredentialVault} from '../netunim-orders/supabase/functions/_shared/google-credentials.js';
 
 export const GOOGLE_TEST_SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly';
+export const CONTACTS_TEST_SCOPES = 'https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/contacts.other.readonly';
 export const GOOGLE_TEST_ENV = {GOOGLE_OAUTH_TOKEN_KEYS:JSON.stringify({test:Buffer.alloc(32, 7).toString('base64')}),
   GOOGLE_CALENDAR_CLIENT_ID:'synthetic-calendar.apps.googleusercontent.com', GOOGLE_DRIVE_CLIENT_ID:'synthetic-drive.apps.googleusercontent.com',
   GOOGLE_OAUTH_TOKEN_ACTIVE_KEY:'test', GOOGLE_OAUTH_ALLOWED_ORIGINS:'https://app.example.test'};
@@ -18,14 +19,16 @@ export async function oauthFixture(name, options = {}) {
   const hash = value => createHash('sha256').update(value).digest('hex');
   const vault = createGoogleCredentialVault({keyringJson:GOOGLE_TEST_ENV.GOOGLE_OAUTH_TOKEN_KEYS,
     activeKeyId:'test', audience:'https://example.supabase.co'});
-  const credentialContext = {service:name.includes('drive') ? 'drive' : 'calendar', ownerId:'test-owner'};
-  const writes = [], old = {refresh_token:await vault.seal('old-refresh', credentialContext), google_account_id:'old-account', scope:GOOGLE_TEST_SCOPES};
+  const contacts = name === 'google-contacts-oauth';
+  const credentialContext = {service:contacts ? 'contacts' : name.includes('drive') ? 'drive' : 'calendar', ownerId:'test-owner'};
+  const writes = [], old = {refresh_token:await vault.seal('old-refresh', credentialContext), google_account_id:'old-account', scope:contacts ? CONTACTS_TEST_SCOPES : GOOGLE_TEST_SCOPES};
+  if (contacts) old.grant_id = randomUUID();
   const rawState = 'test.' + 'f'.repeat(64);
   const state = {value:{state_hash:hash(rawState), owner_id:'test-owner', return_url:'https://app.example.test/', expires_at:new Date(Date.now() + 60000).toISOString()}};
   const intent = {value:hash(rawState)};
   const connection = {value:old};
   function database(table) {
-    let mode = 'select', patch, expectedRefresh, expectedHash;
+    let mode = 'select', patch, expectedRefresh, expectedHash, expectedGrant;
     const query = new Proxy({}, {get(_target, key) {
       if (key === 'then') return async resolve => {
         const selectedState = table.endsWith('_states') && mode === 'select' ? state.value : undefined;
@@ -40,6 +43,7 @@ export async function oauthFixture(name, options = {}) {
           return resolve({data:previous, error:null});
         }
         if (!isState && expectedRefresh !== undefined && connection.value?.refresh_token !== expectedRefresh) return resolve({data:null, error:null});
+        if (expectedGrant !== undefined && connection.value?.grant_id !== expectedGrant) return resolve({data:null, error:null});
         const previous = connection.value;
         if (!isState && mode === 'upsert') connection.value = {...patch};
         if (!isState && mode === 'update') connection.value = {...connection.value, ...patch};
@@ -50,12 +54,14 @@ export async function oauthFixture(name, options = {}) {
         if (['insert','update','upsert','delete'].includes(key)) { mode = key; patch = args[0]; }
         if (key === 'eq' && args[0] === 'refresh_token') expectedRefresh = args[1];
         if (key === 'eq' && args[0] === 'state_hash') expectedHash = args[1];
+        if (key === 'eq' && args[0] === 'grant_id') expectedGrant = args[1];
         return query;
       };
     }});
     return query;
   }
   async function rpc(fn, args) {
+    if (fn === 'take_google_contacts_search_slot') return {data:!!connection.value && args.p_grant_id === connection.value.grant_id && options.rateLimited !== true, error:null};
     const table = name.replaceAll('-', '_').replace('_oauth', '') + '_connections';
     const mode = fn.endsWith('_publish') ? 'upsert' : fn.endsWith('_disconnect') ? 'delete' : 'insert';
     await options.beforeQuery?.(table, mode);
@@ -75,13 +81,14 @@ export async function oauthFixture(name, options = {}) {
     if (intent.value !== args.p_state_hash) return {data:false, error:null};
     intent.value = null;
     connection.value = {owner_id:args.p_owner_id, google_account_id:args.p_account_id, refresh_token:args.p_refresh_token, scope:args.p_scope};
+    if (contacts) connection.value.grant_id = randomUUID();
     writes.push({table, mode});
     return {data:true, error:null};
   }
   const clock = manualTimers();
   const f = await edgeFixture(name, {...options, env:{...GOOGLE_TEST_ENV, ...options.env}, database, rpc, httpPorts:clock});
-  const invoke = action => f.handler(new Request('https://example.supabase.co/functions/v1/test', {
-    method:'POST', headers:{Authorization:f.authorization, Origin:'https://app.example.test', 'Content-Type':'application/json'}, body:JSON.stringify({action, return_url:'https://app.example.test/'}),
+  const invoke = (action, fields = {}) => f.handler(new Request('https://example.supabase.co/functions/v1/test', {
+    method:'POST', headers:{Authorization:f.authorization, Origin:'https://app.example.test', 'Content-Type':'application/json'}, body:JSON.stringify({action, return_url:'https://app.example.test/', ...fields}),
   }));
   const callback = (value = rawState) => f.handler(new Request('https://example.supabase.co/functions/v1/test/callback?state='+value+'&code=test-code'));
   async function waitForRequests(count = 1) {
