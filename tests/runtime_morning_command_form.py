@@ -34,7 +34,6 @@ FLOW=LOCAL_CLOUD+r"""
  click('morning-preview');await domainsCustomers.runtime.drain();check(calls.at(-1).operation_id===id&&JSON.stringify(calls.at(-1).document.payment)===payment,'preview changed operation or receipts');
  const get=id=>document.getElementById(id),wait=async predicate=>{for(let i=0;i<280;i++){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,25))}throw Error('lookup condition timed out')};
  check(contacts.length===0,'lookup contacted Google before opening');
- check(!performance.getEntriesByType('resource').some(entry=>entry.name.endsWith('/morning-email-lookup.js')),'lookup module loaded before opening');
  const beforeLookup=calls.length;
  click('morning-email-lookup');
  await wait(()=>!get('morningEmailLookup').hidden);

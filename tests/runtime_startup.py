@@ -53,6 +53,9 @@ def measure(browser, app):
             assert 0 <= value < ceiling, (app, name, result)
     assert result['resources']['modules'] > 100, result
     assert result['resources']['modules'] <= BUDGETS['graph'][app]['modules'] + 1, result
+    if app == 'orders':
+        startup_modules = {row['path'].rsplit('/', 1)[-1] for row in result['resources']['requests']}
+        assert startup_modules.isdisjoint({'morning-email-lookup.js', 'google-contacts.js'}), 'Contacts lookup loaded during Orders startup'
     assert not browser.drain_serious_errors()
     return result
 
