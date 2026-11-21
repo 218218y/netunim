@@ -51,8 +51,11 @@ test('Morning Bank link bodies reject textual refresh results and fabricated sou
 
 test('Morning document presentation rejects deferred markup in its actual body',()=>{
  const source=path.join(root,'netunim-orders/site/assets/js/domains/customers/morning-document-view.js'),original=readFileSync(source,'utf8');
- const body=declaration(original,'morningFormMarkup'),mutated=original.slice(body.start,body.end).replace('return `','return Promise.resolve(`').replace(/`;\s*}$/, '`);\n}');
- const changed=original.slice(0,body.start)+mutated+original.slice(body.end);assert.notEqual(changed,original);declaration(changed,'morningFormMarkup');
+ const form=declaration(original,'morningFormMarkup');
+ const markup=form.body.body.findLast(statement=>statement.type==='ReturnStatement')?.argument;
+ assert.equal(markup?.type,'TemplateLiteral');
+ const changed=original.slice(0,markup.start)+'Promise.resolve('+original.slice(markup.start,markup.end)+')'+original.slice(markup.end);
+ declaration(changed,'morningFormMarkup');
  const diagnostics=check(new Map([[source,changed]]));assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
 });
 

@@ -48,11 +48,50 @@ cloudAuth.supaFetch=async(path,options)=>{
 // Seed a V2 journal operation before installing the simulated cloud cursor.
 // The test never creates a browser snapshot or a V1 cloud outbox.
 cloudAuth.cloudEnabled=()=>false;
-state=normalizeState({version:4,customerDebts:[{id:'prefill-only',customerName:'Verified debt',amount:100,paid:false,invoiceIssued:false,closedAt:null,phone:'123',orderNumber:'A1',customerId:'123456782',clearingApproval:'4444'}]});stageFixtureState('fixture initial debt');
+state=normalizeState({version:4,customerDebts:[{id:'prefill-only',customerName:'Verified debt',amount:100,paid:false,invoiceIssued:false,closedAt:null,phone:'123',orderNumber:'A1',customerId:'123456782',clearingApproval:'4444',note:'Internal <debt>\nnote',urgency:{note:'Internal urgency'}}]});stageFixtureState('fixture initial debt');
 if(!await mainStorageV2.flush())throw new Error('fixture V2 debt commit failed');const fixtureHead=await mainStorageV2.cloudState();await mainStorageV2.setCloudBase(1,prepareCloudState(state),{ackSeq:fixtureHead.seq});cloudRevision=1;lastCloudState=prepareCloudState(state);await refreshStorageV2CloudState();cloudAuth.cloudEnabled=()=>true;
+await domainsCustomers.openBankMorningDocument({
+  archiveId:11,amount:100,currency:'ILS',status:'completed',date:new Date().toISOString(),partyName:'Verified debt',
+});
+assert(!document.querySelector('.morning-debt-aside'),'A bank document initially has no linked debt details');
+click('morning-bank-debt-select');
+assert(document.querySelector('.morning-debt-aside')?.textContent.includes('Verified debt'),'Linking a debt from a bank transaction shows its details');
+click('morning-bank-debt-clear');
+assert(!document.querySelector('.morning-debt-aside'),'Disconnecting the debt removes the details pane');
+uiModal.closeModal();
 switchView('customers');click('open-morning-document');await waitFor(()=>!document.querySelector('[data-action="morning-create"]').disabled);
 await waitFor(()=>document.querySelector('[data-morning-vat-summary]')?.textContent.includes('13.50'));
 assert(document.getElementById('morningClientName').value==='Verified debt','Client prefilled');assert(document.getElementById('morningAmount').value==='100.00','Amount prefilled');
+const debtNote=(key)=>document.getElementById('morningDebtNote-'+key);
+const noteAction=(action,key)=>document.querySelector(`[data-action="morning-debt-note-${action}"][data-click-arg0="${key}"]`).click();
+const debtDetails=document.querySelector('.morning-debt-aside'),documentForm=document.querySelector('.morning-document-form');
+assert(debtDetails.textContent.includes('Verified debt')&&debtDetails.textContent.includes('100'),'Debt context shows source name and amount');
+assert(debtDetails.getBoundingClientRect().right<=documentForm.getBoundingClientRect().left,'Debt context appears alongside the document form on desktop');
+assert(debtNote('note').value==='Internal <debt>\nnote'&&debtNote('urgency').value==='Internal urgency','Both source notes render as plain text');
+const copied=[],nativeClipboard=Object.getOwnPropertyDescriptor(navigator,'clipboard');
+Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>copied.push(text)}});
+try{
+  noteAction('copy','note');noteAction('copy','urgency');
+  await waitFor(()=>copied.length===2);
+  assert(copied[0]==='Internal <debt>\nnote'&&copied[1]==='Internal urgency','Both notes copy without HTML escapes');
+}finally{
+  if(nativeClipboard)Object.defineProperty(navigator,'clipboard',nativeClipboard);else delete navigator.clipboard;
+}
+const sourceRemarks=document.getElementById('morningRemarks').value;
+fill('morningDescription','Document draft before editing notes');
+for(const [key,value] of [['note','Revised internal note'],['urgency','Revised urgency']]){
+  noteAction('edit',key);const input=debtNote(key);assert(!input.readOnly,'Note enters inline edit mode');
+  input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));noteAction('save',key);
+  assert(debtNote(key).readOnly&&debtNote(key).value===value,'Note is saved and displayed inline');
+}
+assert(uiModal.modalHasUnsavedDraft()&&document.getElementById('morningDescription').value==='Document draft before editing notes','Saving debt notes preserves the active document draft and its guard');
+assert(document.getElementById('morningRemarks').value===sourceRemarks,'Internal debt notes stay separate from the issued document remarks');
+await mainStorageV2.commitPromise;
+let savedDebt=(await mainStorageV2.recover()).state.customerDebts.find(debt=>debt.id==='prefill-only');
+assert(savedDebt.note==='Revised internal note'&&savedDebt.urgency.note==='Revised urgency','Both note edits are durable');
+noteAction('remove','urgency');await mainStorageV2.commitPromise;
+savedDebt=(await mainStorageV2.recover()).state.customerDebts.find(debt=>debt.id==='prefill-only');
+assert(!debtNote('urgency')&&!savedDebt.urgency,'Removing urgency clears its note and marking durably');
 const morningAmount=document.getElementById('morningAmount'),receiptAmount=document.querySelector('[data-payment-row] [data-payment-field="price"]');assert(!morningAmount.readOnly,'Payment documents keep the intended document amount independently editable');assert(receiptAmount&&receiptAmount.step==='0.01','Receipt spinner preserves cents');assert(document.getElementById('morningPaymentSummary').textContent.includes('100'),'Payment summary starts from the prefilled receipt total');receiptAmount.stepUp();receiptAmount.dispatchEvent(new Event('input',{bubbles:true}));assert(Number(receiptAmount.value)===100.01&&Number(morningAmount.value)===100,'Editing a receipt must not overwrite the intended document amount');assert(document.getElementById('morningPaymentSummary').classList.contains('is-mismatch')&&document.getElementById('morningPaymentMatch').textContent.includes('לא תואם')&&morningAmount.getAttribute('aria-invalid')==='true','Receipt/document mismatch is visible immediately');setReceiptAmount(100);assert(document.getElementById('morningPaymentSummary').classList.contains('is-match'),'Matching totals are visibly confirmed');
 const paymentType=document.querySelector('[data-payment-row] [data-payment-field="type"]'),transferFields=document.querySelector('[data-payment-row] [data-payment-kinds="4"]'),bankFields=document.querySelector('[data-payment-row] [data-payment-kinds="2,4"]'),checkFields=document.querySelector('[data-payment-row] [data-payment-kinds="2"]'),cardFields=document.querySelector('[data-payment-row] [data-payment-kinds="3"]'),bankInput=document.querySelector('[data-payment-row] [data-payment-field="bankName"]'),cardNum=document.querySelector('[data-payment-row] [data-payment-field="cardNum"]');
 const setPaymentType=type=>{paymentType.value=String(type);paymentType.dispatchEvent(new Event('change',{bubbles:true}))};
@@ -65,6 +104,8 @@ setPaymentType(4);assert(!transferFields.hidden&&!bankFields.hidden&&checkFields
 fill('morningDescription','Edited before issue');assert(uiModal.modalHasUnsavedDraft(),'Morning edits arm the generic draft guard before issue');
 setDocumentAmount(99);const callsBeforeMismatchPreview=calls.length;click('morning-preview');await new Promise(r=>setTimeout(r,60));assert(calls.length===callsBeforeMismatchPreview,'Preview is blocked locally when document and receipt totals differ');assert(document.getElementById('toast').textContent.includes('אינו תואם לסך התקבולים'),'Mismatch explains exactly why preview/issuance is blocked');setDocumentAmount(100);assert(document.getElementById('morningPaymentSummary').classList.contains('is-match'),'Fixing the document amount restores a matching summary');
 assert(!document.querySelector('.morning-history'),'Debt history removed');
+noteAction('edit','note');debtNote('note').value='Unsaved note alongside issuance';
+debtNote('note').dispatchEvent(new Event('input',{bubbles:true}));
 const fullConfirm=await issueAndWaitForConfirmation(text=>text.includes('עדכון החוב לאחר אימות')&&text.includes('Verified debt'));assert(fullConfirm.includes('עדכון החוב לאחר אימות'),'Debt-linked issuance explains automatic update');assert(fullConfirm.includes('תשלום')&&fullConfirm.includes('חשבונית'),'320 confirmation covers payment and invoice');
 document.getElementById('confirmAccept').click();await waitFor(()=>document.getElementById('morningOperationResult').textContent.includes('100'));
 await waitFor(()=>document.querySelector('[data-morning-vat-summary]')?.textContent.includes('31.50'));
@@ -72,13 +113,16 @@ await waitFor(()=>!document.getElementById('morningPreviewBox').hidden&&document
 assert(calls.filter(c=>c.action==='document_pdf').length===1,'Verified issuance automatically loads the official Morning PDF');assert(document.getElementById('morningPreviewNote').textContent.includes('מסמך רשמי'),'Issued preview is explicitly official');
 assert(document.querySelector('[data-action="morning-create"]').disabled&&document.querySelector('[data-action="morning-create"]').textContent.includes('הופק ואומת'),'Verified issuance locks the same dialog against accidental duplicate creation');
 const verifiedDebt=state.customerDebts.find(d=>d.id==='prefill-only');assert(verifiedDebt.debtProgress?.length===2,'Verified 320 records payment and invoice progress');assert(verifiedDebt.debtProgress.every(e=>e.source==='morning'&&e.amount===100),'Verified progress is sourced from Morning at exact debt amount');assert(verifiedDebt.paidAt&&verifiedDebt.invoiceIssuedAt&&verifiedDebt.closedAt,'Verified full 320 closes both debt dimensions');
-const linkedAfterVerified=JSON.stringify(verifiedDebt);assert(!uiModal.modalHasUnsavedDraft(),'Verified issuance commits the Morning modal draft baseline');
+const linkedAfterVerified=JSON.stringify(verifiedDebt);
+assert(uiModal.modalHasUnsavedDraft()&&debtNote('note').value==='Unsaved note alongside issuance','Verification preserves the independently unsaved note');
+noteAction('cancel','note');
+assert(!uiModal.modalHasUnsavedDraft(),'Verified issuance commits only the document draft baseline');
 await closeSavedMorningModal('Closing a verified Morning document');
 const linkedMovement=document.createElement('button');linkedMovement.dataset.action='morning-open-document';linkedMovement.dataset.clickArg0=docs[0].id;document.getElementById('main').append(linkedMovement);
 const linkedPdfBefore=calls.filter(c=>c.action==='document_pdf').length;linkedMovement.click();await waitFor(()=>!!document.getElementById('morningStandalonePreviewFrame')?.src.startsWith('blob:'));
 assert(calls.filter(c=>c.action==='document_pdf').length===linkedPdfBefore+1,'A linked movement opens a fresh official PDF in its own viewer');click('close-modal');linkedMovement.remove();
 
-click('open-morning-standalone');await waitFor(()=>!document.querySelector('[data-action="morning-create"]').disabled);assert(document.getElementById('morningClientName').value==='','Standalone starts empty');
+click('open-morning-standalone');await waitFor(()=>!document.querySelector('[data-action="morning-create"]').disabled);assert(document.getElementById('morningClientName').value===''&&!document.querySelector('.morning-debt-aside'),'Standalone starts empty');
 fill('morningClientName','General');setDocumentAmount(100);setReceiptAmount(100);fill('morningDescription','General document');const standaloneConfirm=await issueAndWaitForConfirmation(text=>text.includes('General')&&text.includes('100'));assert(!standaloneConfirm.includes('עדכון החוב לאחר אימות'),'Standalone issuance does not claim a debt update');document.getElementById('confirmAccept').click();await waitFor(()=>document.getElementById('morningOperationResult').textContent.includes('100'));
 assert(JSON.stringify(verifiedDebt)===linkedAfterVerified,'Standalone issuance does not mutate a debt');await closeSavedMorningModal('Closing a verified standalone Morning document');
 
@@ -132,6 +176,7 @@ return {prefill:true,clearingDefaultsToCard:true,maskedCardSuffix:true,wholeShek
 """
 
 with BrowserSession(ROOT/'netunim-orders/site','morning-workflow') as browser:
+    browser.call('Emulation.setDeviceMetricsOverride', {'width': 1280, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
     assert browser.evaluate("storageV2Coordinator.mode()==='primary'&&mainStorageV2.primaryReady")
     result=browser.evaluate('(async()=>{'+FLOW+'})()',timeout=60)
     print(json.dumps(result))

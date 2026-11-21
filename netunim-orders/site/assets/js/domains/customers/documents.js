@@ -31,7 +31,13 @@ function setBusy(button,busy,label=''){if(!button)return;button.ariaBusy=String(
 
 export function debtMorningPrefill(debt={}){const clearingApproval=String(debt?.clearingApproval||'').replace(/\D/g,'').slice(0,20),customerId=String(debt?.customerId||'').replace(/\D/g,'').slice(0,9),amount=Number(debt?.amount),payment=clearingApproval?{type:3,date:todayLocal(),price:Number.isFinite(amount)&&amount>0?amount:'',currency:'ILS',cardType:1,cardNum:'****'}:undefined;return {customerName:debt?.customerName||'',amount:debt?.amount,orderNumber:'',phone:debt?.phone||'',email:debt?.email||'',taxId:customerId,remarks:clearingApproval?`אשראי נסלק באתר ת.ב.י רהיטים. אישור סליקה באתר - ${clearingApproval}`:'',...(payment?{payment}:{})}}
 
-export function createDomainsCustomersDocuments({operationScope,subscribeAccountScope=()=>()=>{},model,modal,toast,confirmDialog,markModalDraftSaved,request,dateEditorMarkup,setDateValue=()=>{},documentsBrowser,applyVerifiedDebtDocument,rejectSecondaryIssuance,rejectSecondaryMutation,refreshForMorningRecovery,getBusinessBankTransactions=()=>[],ensureBusinessBankTransactions=async()=>false,onBankDocumentVerified=()=>{}}){
+export function createDomainsCustomersDocuments({
+  operationScope,subscribeAccountScope=()=>()=>{},model,modal,toast,confirmDialog,markModalDraftSaved,request,
+  dateEditorMarkup,setDateValue=()=>{},documentsBrowser,applyVerifiedDebtDocument,rejectSecondaryIssuance,
+  rejectSecondaryMutation,refreshForMorningRecovery,getBusinessBankTransactions=()=>[],
+  ensureBusinessBankTransactions=async()=>false,onBankDocumentVerified=()=>{},
+  debtNotes,onDebtNotesChanged=()=>{},
+}){
 if(typeof operationScope?.capture!=='function'||typeof operationScope?.captureRead!=='function')throw new TypeError('morning_operation_scope_required');
 if(typeof request?.json!=='function')throw new TypeError('morning_request_required');
 let disposed=false;
@@ -49,6 +55,21 @@ const modalSession=createMorningModalSession({
 });
 function modalAssert(){modalSession.assert()}
 function currentRoot(){return modalSession.element}
+let debtDetails=null;
+async function mountDebtDetails(generation){
+  try{
+    const {createMorningDebtDetails}=await import('./morning-debt-details.js');
+    if(!isActive(generation))return;
+    debtDetails??=createMorningDebtDetails({
+      host:()=>currentField('morningDebtDetails'),debt:currentDebt,notes:debtNotes,onChange:onDebtNotesChanged,toast,
+      canMutate:()=>!createBusy&&rejectSecondaryMutation?.()!==true,
+    });
+    debtDetails.refresh();
+  }catch{
+    if(isActive(generation))toast('טעינת פרטי החוב נכשלה. אפשר לסגור את החלון ולפתוח אותו מחדש.');
+  }
+}
+const markDocumentDraftSaved=()=>debtDetails?debtDetails.withoutNoteDraft(markModalDraftSaved):markModalDraftSaved?.();
 function currentField(id){return modalSession.element?.closest('#modal')?.querySelector('#'+id)||null}
 if(pendingRecovery){activeOperationId=pendingRecovery.operationId;activeDebtId=pendingRecovery.debtId;activeSource=sourceFromRecovery(pendingRecovery);issuanceContext=pendingRecovery;blocked=true}
 const {paymentFields,readPaymentRows,replaceMorningPayments,addMorningPayment,removeMorningPayment,syncPaymentType,syncPaymentBank,syncPaymentTotal}=createMorningPayments({dateEditorMarkup,toast,currentField,getSource:()=>activeSource,getSelectedType:()=>selectedType(),canEdit:()=>!disposed&&!createBusy&&!blocked&&!completed});
@@ -122,7 +143,7 @@ const recoveryDecision=createMorningRecoveryDecision({
   debts:{read:id=>(model.state.customerDebts||[]).find(d=>d.id===id),refresh:()=>refreshForMorningRecovery?.(),isBlocked:()=>rejectSecondaryMutation?.()===true},
   recovery:{read:loadMorningDebtRecoveryContext,save:saveMorningDebtRecoveryContext,adopt:context=>{pendingRecovery=context;issuanceContext=context},isPending:()=>lifetime.pending('recovery'),run:recoverPendingMorningOperation},
   application:debtApplication,
-  display:{isOpen:()=>$('#modalBackdrop')?.classList.contains('open')===true,open:(...args)=>modalSession.open(...args),field:currentField,status:connectionStatus,markSaved:()=>markModalDraftSaved?.(),busy:setBusy},
+  display:{isOpen:()=>$('#modalBackdrop')?.classList.contains('open')===true,open:(...args)=>modalSession.open(...args),field:currentField,status:connectionStatus,markSaved:markDocumentDraftSaved,busy:setBusy},
   feedback:{toast},
 });
 const issueCommand=createMorningIssueCommand({
@@ -131,7 +152,7 @@ const issueCommand=createMorningIssueCommand({
     interruptionEpoch:()=>issuanceInterruptionEpoch,operationId:()=>issuanceContext?.operationId||activeOperationId,isActive,scopeChanged,cancelStatus:()=>{vatStatusRevision++;statusFlow.cancelPending()}},
   form:{read:readForm,policy:debtUpdatePolicy,context:recoveryContext,confirmation:debtImpactConfirmation},issuance,application:debtApplication,
   recovery:{settle:settleVerifiedRecovery,notify:notifyBankVerified,adopt:adoptRecoveryOperationId,reset:resetOperationAfterTerminal,schedule:scheduleRecoveryCheck},
-  display:{confirmDialog:confirmDialog,busy:setBusy,operation:renderOperation,status:connectionStatus,markSaved:()=>markModalDraftSaved?.()},media:documentsBrowser,feedback:{toast},
+  display:{confirmDialog:confirmDialog,busy:setBusy,operation:renderOperation,status:connectionStatus,markSaved:markDocumentDraftSaved},media:documentsBrowser,feedback:{toast},
   connectivity:{isOnline:()=>globalThis.navigator?.onLine!==false},
 });
 
@@ -149,7 +170,11 @@ function formBody(d,type,dateEditorMarkup,{source=activeSource}={}){
   const documentDate=cleanText(d?.date,10)||todayLocal();
   return morningFormMarkup(d,type,{generation:modalSession.generation,kind:source?.kind||'standalone',
     dates:{document:dateEditorMarkup('morningDocumentDate',documentDate,{label:'תאריך מסמך'}),due:dateEditorMarkup('morningDueDate','',{label:'תאריך לתשלום'})},
-    panels:{bankTransactions:bankTransactionLinkPanel(source),bankDebts:bankDebtLinkPanel(),debtUpdate:debtUpdatePanel(),payments:paymentFields(d,source)},
+    panels:{
+      bankTransactions:bankTransactionLinkPanel(source),bankDebts:bankDebtLinkPanel(),
+      debtUpdate:debtUpdatePanel(),payments:paymentFields(d,source),
+      debtDetails:source?.kind==='standalone'?undefined:debtDetails?.markup()??'',
+    },
   });
 }
 
@@ -174,6 +199,8 @@ async function openMorningDocumentModal({prefill=null,debtId='',source=null,init
   if(!blocked){activeOperationId=newOperationId();activeDebtId=requestedDebtId;activeSource=requestedSource;bankTransactionLinker.reset(requestedSource);issuanceContext=null;completed=false}else if(issuanceContext?.operationId===activeOperationId){activeDebtId=issuanceContext.debtId;activeSource=hydrateRecoveredSource(sourceFromRecovery(issuanceContext),requestedSource);bankTransactionLinker.reset(activeSource)}
   const safeType=activeSource.kind==='bank'&&![320,400].includes(Number(initialType))?320:Number(initialType)||DEFAULT_DOCUMENT_TYPE;
   const generation=modalSession.open('בודק חיבור ל-Morning…',()=>formBody(prefill||{},safeType,dateEditorMarkup,{source:activeSource}),foot());
+  if(activeSource.kind!=='standalone'&&!debtDetails)await mountDebtDetails(generation);
+  if(!isActive(generation))return false;
   await mountMorningConnectionStatus();if(!isActive(generation))return false;
   syncDocumentType();syncPaymentType();syncPaymentTotal();syncBankDebtPickerSelection();if(currentField('morningBankTransactionRows'))void lifetime.run(()=>bankTransactionLinker.refresh());await refreshStatus();
 }
@@ -192,7 +219,17 @@ function syncDocumentType(){
   modalSession.element?.querySelectorAll('[data-document-kind]').forEach(el=>{el.hidden=Number(el.dataset.documentKind)!==type});if(needsPayment)syncPaymentTotal();
 }
 function applyLinkedDebtIdentity(debt){const prefill=debt?debtMorningPrefill(debt):{taxId:'',remarks:''};for(const [fieldId,key] of [['morningClientTaxId','taxId'],['morningRemarks','remarks']]){const field=currentField(fieldId);if(!field)continue;const previous=String(field.dataset.debtPrefill||'');if(!field.value||field.value===previous)field.value=String(prefill[key]||'');field.dataset.debtPrefill=String(prefill[key]||'')}}
-function linkBankDebt(debtId){if(activeSource.kind!=='bank'||blocked||createBusy)return;const id=String(debtId||''),debt=id?activeBankDebts().find(row=>String(row.id)===id):null,exists=!id||!!debt;if(!exists)return toast('החוב שנבחר אינו קיים או שכבר הושלם');activeDebtId=id;applyLinkedDebtIdentity(debt);const host=currentField('morningDebtUpdateHost');if(host)host.innerHTML=debtUpdatePanel();syncDocumentType();syncBankDebtPickerSelection();collapseMorningBankDebtPicker(currentRoot())}
+function linkBankDebt(debtId){
+  if(activeSource.kind!=='bank'||blocked||createBusy)return;
+  if(debtDetails?.hasDraft())return toast('יש לשמור או לבטל את עריכת ההערה לפני החלפת החוב');
+  const id=String(debtId||''),debt=id?activeBankDebts().find(row=>String(row.id)===id):null;
+  if(id&&!debt)return toast('החוב שנבחר אינו קיים או שכבר הושלם');
+  activeDebtId=id;applyLinkedDebtIdentity(debt);
+  const host=currentField('morningDebtUpdateHost');
+  if(host)host.innerHTML=debtUpdatePanel();
+  debtDetails?.refresh();
+  syncDocumentType();syncBankDebtPickerSelection();collapseMorningBankDebtPicker(currentRoot());
+}
 
 const commandForm=createMorningCommandForm({session:{context:()=>({operationId:activeOperationId,debtId:activeDebtId,source:activeSource})},fields:{read:currentField,type:selectedType},receipts:{read:readPaymentRows,totalCents:morningPaymentTotalCents},format:{money}});
 const confirmation=createMorningDebtConfirmation({format:{money},financial:{impact:morningDebtImpact}});
@@ -282,6 +319,7 @@ return {
   openStandaloneMorningDocument:(...args)=>command(openStandaloneMorningDocument,args),
   openBankMorningDocument:(...args)=>command(openBankMorningDocument,args),
   linkBankDebt:(...args)=>editCommand(linkBankDebt,args),
+  debtNote:(...args)=>debtDetails&&editCommand(debtDetails.command,args),
   filterBankDebtPicker:(...args)=>editCommand(filterBankDebtPicker,args),
   linkBankTransaction:(...args)=>editCommand(linkBankTransaction,args),
   clearBankTransactionLink:(...args)=>editCommand(clearBankTransactionLink,args),

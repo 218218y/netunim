@@ -97,6 +97,27 @@ test('Orders local secondary tab never renders a V1 snapshot while primary birth
   assert.equal(f.calls.includes('render'),false);
 });
 
+test('Orders secondary tab hydrates Finance after read-only recovery without starting writer services',async t=>{
+  const original=Object.getOwnPropertyDescriptor(globalThis,'navigator');
+  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
+  t.after(()=>Object.defineProperty(globalThis,'navigator',original));
+  const f=fixture({
+    tab:{primaryTab:false},showSecondaryTabGuard:()=>f.calls.push('read-only'),
+    storageOwnerCurrent:()=> 'account',authenticatedOwner:()=> 'account',
+    verifyStorageV2AccountMarker:async()=>true,loadSession:()=>({user:{id:'account'}}),
+    recoverReadOnlyV2State:async()=>{f.calls.push('main-read');return true},
+    recoverSharedChecksV2ReadOnly:async()=>{f.calls.push('checks-read');return true},
+    refreshKupaReadout:async options=>{assert.deepEqual(options,{force:true,renderIfChanged:true});f.calls.push('finance-read');return true},
+    openCloud:async()=>assert.fail('Read-only startup cannot adopt a cloud head'),
+    syncSharedChecksFromCloud:async()=>assert.fail('Read-only startup cannot synchronize Shared Checks'),
+    startFinanceAutoSync:()=>assert.fail('Read-only startup cannot start finance automation'),
+    startOrderPolling:()=>assert.fail('Read-only startup cannot start the Main writer poll'),
+  });
+  await f.lifecycle.boot();
+  await f.session.startupHydrationPromise;
+  assert.deepEqual(f.calls.slice(-5),['main-read','checks-read','render','read-only','finance-read']);
+});
+
 test('Orders missing Shared V2 checkpoint fails before business render',async()=>{
   const f=fixture({recoverSharedChecksV2Primary:async()=>false});f.setMarker(true);
   await assert.rejects(f.lifecycle.boot(),/startup_shared_recovery_required/);

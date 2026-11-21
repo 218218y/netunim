@@ -6,6 +6,29 @@ import {addVerifiedMorningDebtDocument,morningDebtDocuments} from './morning-deb
 import {morningDocumentLabel} from '../../core/morning-document-types.js';
 import {$} from '../../state/constants.js';
 
+function saveDebtNotes(debt,message,scheduleSave){
+  debt.updatedAt=new Date().toISOString();
+  scheduleSave(message,{
+    domains:['customerDebts'],
+    operations:[{type:'put',collection:'customerDebts',id:debt.id,mode:'replace',record:debt}],
+  });
+}
+
+export function updateDebtNote(debt,note,scheduleSave){
+  if(note===String(debt.note||''))return false;
+  debt.note=note;
+  saveDebtNotes(debt,'הערת הלקוח עודכנה',scheduleSave);
+  return true;
+}
+
+export function updateDebtUrgency(debt,note,scheduleSave){
+  if(note===(debt.urgency?.note??null))return false;
+  if(note===null)delete debt.urgency;
+  else debt.urgency={note};
+  saveDebtNotes(debt,note===null?'סימון הדחיפות הוסר':'סימון הדחיפות נשמר',scheduleSave);
+  return true;
+}
+
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsCustomersEditor({model, customerUi, modal, toast, scheduleSave, closeModal, renderCustomers, confirmDialog,hydrateMorningDebtDocuments=()=>{},isDebtRecoveryPending=()=>false,rejectDebtRecoveryMutation=()=>false,morningMetadataState=()=> ''}){
 
@@ -88,15 +111,7 @@ function saveDebtUrgency(id,urgent){
   const note=urgent?$('#debtUrgencyNote')?.value.trim():null;
   if(note===undefined)return;
   closeModal();
-  if(note===(debt.urgency?.note??null))return;
-  if(urgent)debt.urgency={note};
-  else delete debt.urgency;
-  debt.updatedAt=new Date().toISOString();
-  scheduleSave(urgent?'סימון הדחיפות נשמר':'סימון הדחיפות הוסר',{
-    domains:['customerDebts'],
-    operations:[{type:'put',collection:'customerDebts',id,mode:'replace',record:debt}],
-  });
-  renderCustomers({resultsOnly:true});
+  if(updateDebtUrgency(debt,note,scheduleSave))renderCustomers({resultsOnly:true});
 }
 
 function parseAddedAmount(selector,label){

@@ -32,7 +32,7 @@ for(const method of ['check','readMarkers','verifyLocal'])if(typeof storageProto
 for(const method of ['assertBound','primary','readOnly','activate'])if(typeof storageRecovery?.[method]!=='function')throw new TypeError(`lifecycle_storage_recovery_${method}_required`);
 storageRecovery.assertBound();
 for(const [name,port,methods] of [
-  ['cloud',cloudStartup,['prepare','hydrateMain','hydrateSecondary']],
+  ['cloud',cloudStartup,['prepare','hydrateMain','hydrateSecondary','hydrateReadOnlyFinance']],
   ['local',localServices,['start']],['background',backgroundStartup,['start']],
 ])for(const method of methods)if(typeof port?.[method]!=='function')throw new TypeError(`lifecycle_${name}_${method}_required`);
 
@@ -67,7 +67,12 @@ async function boot(){
     admission.assertOwner(state);
     if(shown){storageRecovery.activate();render({supplierScrollMode:'end'});startupMark('first-render');setCloud('ענן: קריאה בלבד','offline');setSave('מקומי: קריאה בלבד','',folderSaveTitle())}
     else{setCloud('ענן: קריאה בלבד — הנתונים טרם זמינים','offline');setSave('קריאה בלבד — רענן לאחר סיום האתחול בטאב הראשי','error')}
-    showSecondaryTabGuard();syncFolderAccessButton();return;
+    showSecondaryTabGuard();syncFolderAccessButton();
+    if(shown){
+      session.startupHydrationPromise=cloudStartup.hydrateReadOnlyFinance();
+      void session.startupHydrationPromise.catch(error=>console.error('read-only finance hydration',error));
+    }
+    return;
   }
 
   const admitted=await admission.admit(state,!!transfer);

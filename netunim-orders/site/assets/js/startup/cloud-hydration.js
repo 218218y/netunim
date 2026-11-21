@@ -31,6 +31,12 @@ export function createOrdersCloudStartup({main,checks,finance,status,access,mark
     return preparation;
   }
   function requirePlan(){if(!plan)throw new Error('orders_startup_plan_required');return plan}
+  const readFinance=()=>finance.hydrate({force:true,renderIfChanged:true});
+
+  const hydrateReadOnlyFinance=createStartupTask(async()=>{
+    if(!access.online()||!access.authenticated())return false;
+    return await readFinance();
+  });
 
   const hydrateMain=createStartupTask(async()=>{
     const current=requirePlan();
@@ -67,10 +73,10 @@ export function createOrdersCloudStartup({main,checks,finance,status,access,mark
 
     status.setStartupDomain('finance','loading');mark('finance-start');
     let financeOk=false;
-    if(access.canHydrate())try{financeOk=await finance.hydrate({force:true,renderIfChanged:true})}
+    if(access.canHydrate())try{financeOk=await readFinance()}
     catch(error){console.error('finance startup readout',error)}
     mark('finance-end');
     status.setStartupDomain('finance',financeOk?'ready':'error',financeOk?'':'טעינת נתוני הבנק והאשראי נכשלה; נשמר העותק האחרון התקין');
   });
-  return {prepare,hydrateMain,hydrateSecondary};
+  return {prepare,hydrateMain,hydrateSecondary,hydrateReadOnlyFinance};
 }

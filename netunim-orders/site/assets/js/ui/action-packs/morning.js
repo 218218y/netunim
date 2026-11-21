@@ -38,6 +38,12 @@ export function createMorningActions({ domainsCustomers }) {
     'morning-document-amount': (element, event) => { return syncMorningPaymentTotal(); },
     'morning-bank-debt-select': (element, event) => { return linkBankMorningDebt(element.dataset.clickArg0); },
     'morning-bank-debt-clear': (element, event) => { return linkBankMorningDebt(''); },
+    'morning-debt-note-copy': element => domainsCustomers.morningDebtNote('copy',element.dataset.clickArg0),
+    'morning-debt-note-edit': element => domainsCustomers.morningDebtNote('edit',element.dataset.clickArg0),
+    'morning-debt-note-save': element => domainsCustomers.morningDebtNote('save',element.dataset.clickArg0),
+    'morning-debt-note-cancel': element => domainsCustomers.morningDebtNote('cancel',element.dataset.clickArg0),
+    'morning-debt-note-remove': element => domainsCustomers.morningDebtNote('remove',element.dataset.clickArg0),
+    'morning-debt-note-draft': element => domainsCustomers.morningDebtNote('draft',element.dataset.inputArg0),
     'morning-bank-debt-search': (element, event) => { return filterBankMorningDebts(element.value); },
     'morning-bank-transaction-select': (element, event) => { return linkMorningBankTransaction(element.dataset.clickArg0); },
     'morning-bank-transaction-clear': () => { return clearMorningBankTransaction(); },
@@ -62,5 +68,8 @@ export function createMorningActions({ domainsCustomers }) {
     'morning-recovery-choice': (element, event) => { return saveMorningRecoveryChoice(); },
     'morning-recovery-confirm': (element, event) => { return confirmMorningRecoveryChoice(element); },
   };
-  return markMutationActions(actions, { orders: ['open-morning-document', 'open-morning-standalone', 'morning-create'] });
+  return markMutationActions(actions, { orders: [
+    'open-morning-document', 'open-morning-standalone', 'morning-create',
+    'morning-debt-note-save', 'morning-debt-note-remove',
+  ] });
 }

@@ -1,12 +1,13 @@
 import {createDomainsCustomersBulk} from './bulk.js';
 import {createDomainsCustomersView} from './view.js';
-import {createDomainsCustomersEditor} from './editor.js';
+import {createDomainsCustomersEditor,updateDebtNote,updateDebtUrgency} from './editor.js';
 import {createDomainsCustomersDocuments} from './documents.js';
 import {createDomainsCustomersDocumentsBrowser} from './documents-browser.js';
 import {createMorningMetadataPersistence} from './morning-metadata-persistence.js';
 
 export function createDomainsCustomers({morningOperationScope,morningRequest,documentMedia,customerRevision,model,customerUi,selectors,uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,refreshForMorningRecovery,subscribeAccountScope,getBusinessBankTransactions,ensureBusinessBankTransactions,onBankDocumentVerified}){
   let view,editor,disposed=false;
+  const scheduleSave=(...args)=>storagePersistence.scheduleSave(...args);
   const metadataPersistence=createMorningMetadataPersistence({model,operationScope:morningOperationScope,commitSave:(...args)=>storagePersistence.commitSave(...args),canMutate:()=>storagePersistence.canMutate?.()!==false});
   const persistResolvedDebtDocumentMetadata=metadataPersistence.persist;
   if(typeof selectors?.customerStats!=='function')throw new TypeError('customers_selectors_required');
@@ -15,7 +16,7 @@ export function createDomainsCustomers({morningOperationScope,morningRequest,doc
     rejectDebtRecoveryMutation:(...args)=>documents.rejectDebtRecoveryMutation(...args),
     renderCustomers:(...args)=>view.renderCustomers(...args),
     toast:(...args)=>uiStatus.toast(...args),
-    scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+    scheduleSave,
     confirmDialog:(...args)=>uiModal.confirmDialog(...args),
     onTabChange:(tab)=>uiNavigation.setCustomerRoute(tab),
   });
@@ -38,6 +39,11 @@ export function createDomainsCustomers({morningOperationScope,morningRequest,doc
     toast:(...args)=>uiStatus.toast(...args),
     confirmDialog:(...args)=>uiModal.confirmDialog(...args),
     markModalDraftSaved:(...args)=>uiModal.markModalDraftSaved(...args),
+    debtNotes:{
+      updateNote:(debt,note)=>updateDebtNote(debt,note,scheduleSave),
+      updateUrgency:(debt,note)=>updateDebtUrgency(debt,note,scheduleSave),
+    },
+    onDebtNotesChanged:()=>view.refreshDebtTable(),
     request:morningRequest,
     documentsBrowser,
     dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
@@ -62,7 +68,7 @@ export function createDomainsCustomers({morningOperationScope,morningRequest,doc
     syncCustomerBulkUi:(...args)=>bulk.syncCustomerBulkUi(...args),
     customerBottomSummary:(...args)=>bulk.customerBottomSummary(...args),
     customerBulkCell:(...args)=>bulk.customerBulkCell(...args),
-    scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+    scheduleSave,
     morningDocumentButton:(...args)=>documents.documentButton(...args),
     hydrateMorningDebtDocuments:(...args)=>documentsBrowser.hydrateDebtDocumentLinks(...args),
   });
@@ -73,7 +79,7 @@ export function createDomainsCustomers({morningOperationScope,morningRequest,doc
     rejectDebtRecoveryMutation:(...args)=>documents.rejectDebtRecoveryMutation(...args),
     modal:(...args)=>uiModal.modal(...args),
     toast:(...args)=>uiStatus.toast(...args),
-    scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+    scheduleSave,
     closeModal:(...args)=>uiModal.closeModal(...args),
     renderCustomers:(...args)=>view.renderCustomers(...args),
     confirmDialog:(...args)=>uiModal.confirmDialog(...args),
@@ -113,6 +119,7 @@ export function createDomainsCustomers({morningOperationScope,morningRequest,doc
     openStandaloneMorningDocument:(...args)=>documents.openStandaloneMorningDocument(...args),
     openBankMorningDocument:(...args)=>documents.openBankMorningDocument(...args),
     linkBankMorningDebt:(...args)=>documents.linkBankDebt(...args),
+    morningDebtNote:(...args)=>documents.debtNote(...args),
     filterBankMorningDebts:(...args)=>documents.filterBankDebtPicker(...args),
     linkMorningBankTransaction:(...args)=>documents.linkBankTransaction(...args),
     clearMorningBankTransaction:(...args)=>documents.clearBankTransactionLink(...args),

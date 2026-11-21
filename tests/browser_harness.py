@@ -760,7 +760,7 @@ class BrowserSession:
         return {'previous_pid': previous_pid, 'new_pid': self.proc.pid, 'hard_process_failure': crash}
 
     @contextlib.contextmanager
-    def second_tab(self):
+    def second_tab(self, setup_script=None):
         target = self.call('Target.createTarget', {'url':'about:blank'})['result']['targetId']
         pages = _wait_json(self.devtools_url+'/json/list')
         page = next(p for p in pages if p['id']==target)
@@ -771,6 +771,8 @@ class BrowserSession:
             self.call('Runtime.enable')
             self.call('Page.enable')
             self.call('Log.enable')
+            if setup_script:
+                self.call('Page.addScriptToEvaluateOnNewDocument', {'source': setup_script})
             self._navigate()
             self.evaluate("import('./assets/js/main.js').then(m=>m.appReady).then(()=>true)")
             yield self

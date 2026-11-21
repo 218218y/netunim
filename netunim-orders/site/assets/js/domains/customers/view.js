@@ -6,6 +6,7 @@ import {morningDebtDocuments} from './morning-debt-documents.js';
 import {morningDocumentLabel} from '../../core/morning-document-types.js';
 import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
+import {updateDebtNote} from './editor.js';
 
 export function morningDebtLinksMarkup(debt,metadataState=()=> ''){
   const links=morningDebtDocuments(debt).slice(-3).reverse();
@@ -137,7 +138,11 @@ function setCustomerFlag(id,field,value){
   scheduleSave('סטטוס חוב הלקוח עודכן',{domains:['customerDebts'],operations:[{type:'put',collection:'customerDebts',id:d.id,mode:'replace',record:d}]});renderCustomers({resultsOnly:true});
 }
 
-function saveDebtField(id,field,el){const d=model.state.customerDebts.find(x=>x.id===id),allowed=new Set(['note','clearingApproval','customerId']);if(!d||!allowed.has(field))return;let value=String(el?.value||'').trim();if(field==='clearingApproval')value=value.replace(/\D/g,'').slice(0,20);else if(field==='customerId')value=value.replace(/\D/g,'').slice(0,9);if(el&&el.value!==value)el.value=value;if(String(d[field]||'')===value)return;d[field]=value;d.updatedAt=new Date().toISOString();const labels={note:'הערת הלקוח',clearingApproval:'מספר הסליקה',customerId:'ת.ז הלקוח'};scheduleSave(`${labels[field]} עודכן`,{domains:['customerDebts'],operations:[{type:'put',collection:'customerDebts',id:d.id,mode:'replace',record:d}]})}
+function saveDebtField(id,field,el){const d=model.state.customerDebts.find(x=>x.id===id),allowed=new Set(['note','clearingApproval','customerId']);if(!d||!allowed.has(field))return;let value=String(el?.value||'').trim();if(field==='clearingApproval')value=value.replace(/\D/g,'').slice(0,20);else if(field==='customerId')value=value.replace(/\D/g,'').slice(0,9);if(el&&el.value!==value)el.value=value;if(field==='note')return updateDebtNote(d,value,scheduleSave);if(String(d[field]||'')===value)return;d[field]=value;d.updatedAt=new Date().toISOString();const labels={clearingApproval:'מספר הסליקה',customerId:'ת.ז הלקוח'};scheduleSave(`${labels[field]} עודכן`,{domains:['customerDebts'],operations:[{type:'put',collection:'customerDebts',id:d.id,mode:'replace',record:d}]})}
 
-return { pageCustomerResults, renderCustomers, customerOrderRow, debtToggle, debtRow, setCustomerFlag, saveDebtField };
+function refreshDebtTable(){
+  if(customerUi.customerTab==='debts'&&$('#customerSearchResults'))renderCustomers({resultsOnly:true});
+}
+
+return { pageCustomerResults, renderCustomers, refreshDebtTable, customerOrderRow, debtToggle, debtRow, setCustomerFlag, saveDebtField };
 }

@@ -915,6 +915,20 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 @media(max-width:760px){.morning-type-picker{grid-template-columns:1fr}.morning-type-option span{padding:9px 10px}.morning-section-title{align-items:flex-start;flex-direction:column}.morning-section-title .btn{margin-inline-start:0}.morning-preview-box iframe{height:48vh}}
 
 /* Morning live document browser */
+.morning-document-form{display:grid;gap:10px;min-width:0}
+.morning-debt-details:empty{display:none}
+.morning-debt-aside{display:grid;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.morning-debt-identity{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 10px;overflow-wrap:anywhere}
+.morning-debt-note{display:grid;gap:5px;border-top:1px solid var(--line);padding-block-start:8px}
+.morning-debt-note label{font-size:12px;font-weight:800}
+.morning-debt-note textarea{width:100%;min-height:52px;padding:7px;border:1px solid var(--line);border-radius:8px;font:inherit;resize:vertical}
+.morning-debt-note textarea[readonly]{background:#f8f5f2}
+.morning-debt-note-actions,.morning-debt-note-actions>div:not([hidden]){display:flex;flex-wrap:wrap;gap:4px}
+@media(min-width:921px){
+  .modal:has(.morning-debt-aside){width:min(1040px,100%)}
+  .morning-document-dialog:has(.morning-debt-aside){grid-template-columns:minmax(0,1fr) minmax(220px,260px);align-items:start}
+}
+@media(max-width:920px){.morning-debt-details:not(:empty){grid-row:1}}
 .modal:has(.morning-documents-browser){width:min(1180px,96vw);max-width:1180px}
 .modal:has(.morning-documents-browser) .modal-body{overflow-x:hidden}
 .morning-browser-filters{display:grid;grid-template-columns:minmax(180px,1.55fr) repeat(4,minmax(125px,1fr));gap:12px;align-items:start;margin-bottom:18px}

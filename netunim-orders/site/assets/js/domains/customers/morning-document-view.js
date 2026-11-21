@@ -2,7 +2,7 @@
 /** @typedef {import('./morning-debt-application.js').ApplicationContext} DecisionContext */
 /** @typedef {import('./morning-debt-application.js').FinancialSnapshot} FinancialSnapshot */
 /** @typedef {{customerName?:unknown,amount?:unknown,orderNumber?:unknown,taxId?:unknown,email?:unknown,phone?:unknown,description?:unknown,remarks?:unknown}} MorningPrefill */
-/** @typedef {{generation:number,kind:string,dates:{document:string,due:string},panels:{bankTransactions:string,bankDebts:string,debtUpdate:string,payments:string}}} FormPresentation */
+/** @typedef {{generation:number,kind:string,dates:{document:string,due:string},panels:{bankTransactions:string,bankDebts:string,debtUpdate:string,payments:string,debtDetails?:string}}} FormPresentation */
 /** @typedef {{state?:string|undefined,verified_at?:string|undefined,document_id?:unknown,document_number?:unknown,allocation_number?:unknown}} OperationPresentation */
 // Inputs are readonly presentation data and ready markup from sibling views.
 // This module has no model, DOM, time, persistence or provider authority.
@@ -56,7 +56,7 @@ export function createMorningDocumentView({ format: { esc, money }, financial: {
         const amountInput = Number.isFinite(amountValue) && amountValue > 0 ? amountValue.toFixed(2) : '';
         const formHint = standalone ? 'הזן את פרטי הלקוח והמסמך. המסמך אינו יוצר חוב ואינו תלוי ברשומת חוב.' : bank ? 'הפרטים מולאו מתנועת הבנק. תקבולים שמקורם בבנק נשמרים כנתוני מקור; בהפקדת כמה צ׳קים אפשר להסיר צ׳ק שאינו שייך למסמך ולהוסיף תקבולים נוספים.' : 'הפרטים נלקחים מהחוב וניתנים לעריכה לפני ההפקה';
         const allowedTypes = bank ? [320, 400] : DOCUMENT_TYPE_ORDER;
-        return `<div class="morning-document-dialog" data-morning-generation="${generation}">
+        const content = `
     <div id="morningRecoveryDecision" hidden></div>
     <div class="morning-type-picker" role="group" aria-label="סוג מסמך">
       ${allowedTypes.map(value => { const label = DOCUMENT_TYPES[value]; return `<label class="morning-type-option"><input type="radio" name="morningDocumentType" value="${value}" data-change="morning-document-type" ${Number(value) === Number(type) ? 'checked' : ''}><span><b>${esc(label)}</b><small>${Number(value) === 305 ? 'חיוב ללא תקבול' : Number(value) === 320 ? 'חשבונית ותקבול במסמך אחד' : 'תקבול כנגד חשבונית/חיוב'}</small></span></label>`; }).join('')}
@@ -81,7 +81,12 @@ export function createMorningDocumentView({ format: { esc, money }, financial: {
     ${panels.payments}
     <div id="morningLinkedDocumentPanel" class="morning-form-card" hidden><div class="morning-section-title"><span>קישור לחשבונית מס קיימת</span><small>בקבלה ניתן לקשר לחשבונית שהופקה קודם</small></div><div class="field"><label>חשבונית לקישור <small>(רשות)</small></label><select id="morningLinkedDocument"><option value="">ללא קישור</option></select><button class="btn small" data-action="morning-invoice-picker">חפש חשבונית ב-Morning</button><div id="morningInvoicePicker" hidden></div></div></div>
     <div id="morningPreviewBox" class="morning-preview-box" hidden><div class="morning-preview-head"><b>תצוגה מקדימה</b><span id="morningPreviewNote">הקובץ עדיין לא הופק רשמית</span></div><iframe id="morningPreviewFrame" title="תצוגה מקדימה של מסמך Morning"></iframe></div>
-    <div id="morningOperationResult" aria-live="polite"></div><button class="btn small" data-action="morning-reconcile">בדוק מצב הפקה</button>
+    <div id="morningOperationResult" aria-live="polite"></div><button class="btn small" data-action="morning-reconcile">בדוק מצב הפקה</button>`;
+        const layout = panels.debtDetails===undefined ? content : `
+    <div class="morning-document-form">${content}
+    </div>
+    <div id="morningDebtDetails" class="morning-debt-details">${panels.debtDetails}</div>`;
+        return `<div class="morning-document-dialog" data-morning-generation="${generation}">${layout}
   </div>`;
     }
     /** @returns {string} */
