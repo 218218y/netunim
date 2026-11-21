@@ -70,8 +70,19 @@ const labelled=query.labels.length===1 && document.activeElement===query;
 query.value='customer@example.test';query.dispatchEvent(new Event('input',{bubbles:true}));
 const gmail=new URL(panel.querySelector('[data-email-gmail]').href);
 query.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+const keyboard=panel.hidden&&toggle.getAttribute('aria-expanded')==='false'&&document.activeElement===toggle;
+const modal=get('modal'), openDocument=domainsCustomers.morningActions['open-morning-standalone'];
+modal.scrollTop=modal.scrollHeight;
+const scrolledBeforeClose=modal.scrollTop>0;
+uiModal.closeModal();
+await openDocument();
+const reopenedAtTop=modal.scrollTop===0;
+modal.scrollTop=modal.scrollHeight;
+const scrolledBeforeReplacement=modal.scrollTop>0;
+await openDocument();
+const replacedAtTop=modal.scrollTop===0;
 return {fits,labelled,gmail:gmail.hostname==='mail.google.com'&&decodeURIComponent(gmail.hash)==='#search/customer@example.test',
-  keyboard:panel.hidden&&toggle.getAttribute('aria-expanded')==='false'&&document.activeElement===toggle};
+  keyboard,scrolledBeforeClose,reopenedAtTop,scrolledBeforeReplacement,replacedAtTop};
 """
 with BrowserSession(ROOT/'netunim-orders/site','morning-command-form') as browser:
  result=browser.evaluate('(async()=>{'+FLOW+'})()',timeout=35)

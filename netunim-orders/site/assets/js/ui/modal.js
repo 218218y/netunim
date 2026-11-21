@@ -37,8 +37,9 @@ function markModalDraftSaved(){
   return true;
 }
 
-function modal(title,body,foot=''){
+function modal(title,body,foot='',{startAtTop=false}={}){
   const back=$('#modalBackdrop'),panel=$('#modal');
+  const opening=!back.classList.contains('open');
   modalGeneration++;
   modalBaseline=null;
   modalDraftReady=false;
@@ -46,6 +47,8 @@ function modal(title,body,foot=''){
   panel.innerHTML=`<div class="modal-head"><h3>${esc(title)}</h3><button class="icon-btn" type="button" data-action="close-modal" aria-label="סגור">✕</button></div><div class="modal-body">${body}</div><div class="modal-foot">${foot}</div>`;
   back.classList.add('open');
   back.setAttribute('aria-hidden','false');
+  // The scroll container survives both closing and replacing its contents.
+  if(opening||startAtTop)panel.scrollTop=0;
   captureModalBaseline(modalGeneration);
 }
 

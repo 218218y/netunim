@@ -51,7 +51,7 @@ let headerVat,vatStatusRevision=0;
 const modalSession=createMorningModalSession({
   authority:{captureRead:()=>captureScope(true)},account:{subscribe:subscribeAccountScope},
   surface:{find:generation=>document.querySelector(`#modal [data-morning-generation="${generation}"]`),isOpen:()=>$('#modalBackdrop')?.classList.contains('open')===true},
-  presentation:{render:modal,clear:owned=>{headerVat?.reset();clearMorningDisplay(owned,modal)}},
+  presentation:{render:(title,body,foot)=>modal(title,body,foot,{startAtTop:true}),clear:owned=>{headerVat?.reset();clearMorningDisplay(owned,modal)}},
 });
 function modalAssert(){modalSession.assert()}
 function currentRoot(){return modalSession.element}

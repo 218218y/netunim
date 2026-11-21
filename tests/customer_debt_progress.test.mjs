@@ -54,6 +54,21 @@ test('customer summaries and open totals use remaining payment instead of origin
  assert.equal(customerDebtFilteredTotal(rows,'all'),450);assert.equal(customerDebtFilteredTotal(rows.filter(d=>!customerDebtProgressData(d).paymentComplete),'open'),450);
 });
 
+test('supplied debts stay in the priority group until full payment', () => {
+ const rows=customerDebtRenderModelData({customerDebts:[
+  {id:'regular',amount:1000},
+  {id:'urgent',amount:700,urgency:{note:'follow up'}},
+  {id:'supplied-partial',amount:500,supplied:true,debtProgress:[add('P1','payment',300)]},
+  {id:'supplied-unpaid',amount:400,supplied:true},
+  {id:'supplied-paid',amount:350,supplied:true,debtProgress:[add('P2','payment',350)]},
+ ]}).rows;
+ assert.deepEqual(rows.map(({record,prioritized})=>[record.id,prioritized]),[
+  ['urgent',true],['supplied-partial',true],['supplied-unpaid',true],['regular',false],['supplied-paid',false],
+ ]);
+ assert.equal(rows[1].progress.remainingPayment,200);
+ assert.equal(rows[1].status.key,'partial');
+});
+
 test('invoice follow-up includes unpaid and partly paid debts until the full invoice amount is recorded',()=>{
  const rows=[
   {id:'unpaid',amount:1000},

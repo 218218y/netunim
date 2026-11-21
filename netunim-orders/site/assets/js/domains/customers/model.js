@@ -22,9 +22,11 @@ export function customerDebtMatchesFilter(progress,filter){
   return true;
 }
 
+const suppliedWithBalance=(debt,progress)=>debt.supplied===true&&!progress.paymentComplete;
+
 export function customerDebtPriorityClass(debt,progress){
   if(debt.urgency)return 'is-urgent';
-  if(debt.supplied===true&&!progress.paymentComplete&&!progress.paymentPartial)return 'is-supplied';
+  if(suppliedWithBalance(debt,progress)&&!progress.paymentPartial)return 'is-supplied';
   return '';
 }
 
@@ -41,8 +43,9 @@ export function customerDebtRenderModelData(state){
     if(customerDebtMatchesFilter(progress,'invoice'))stats.missingInvoice++;
     if(customerDebtMatchesFilter(progress,'closed'))stats.closed++;
     const priorityClass=customerDebtPriorityClass(record,progress);
-    return {record,progress,status,priorityClass,search:`${record.customerName||''} ${record.phone||''} ${record.note||''} ${record.clearingApproval||''} ${record.customerId||''}`.toLocaleLowerCase()};
-  }).sort((a,b)=>Number(Boolean(b.priorityClass))-Number(Boolean(a.priorityClass))||Number(b.record.amount||0)-Number(a.record.amount||0));
+    const prioritized=!!record.urgency||suppliedWithBalance(record,progress);
+    return {record,progress,status,priorityClass,prioritized,search:`${record.customerName||''} ${record.phone||''} ${record.note||''} ${record.clearingApproval||''} ${record.customerId||''}`.toLocaleLowerCase()};
+  }).sort((a,b)=>Number(b.prioritized)-Number(a.prioritized)||Number(b.record.amount||0)-Number(a.record.amount||0));
   return {rows,stats};
 }
 export function createCustomerRenderSelector({state,revision}){return createRevisionSelector({revision,name:'customer-debts',select:()=>customerDebtRenderModelData(state())})}
