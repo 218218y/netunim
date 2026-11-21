@@ -36,7 +36,7 @@ export function createDomainsCustomersDocuments({
   dateEditorMarkup,setDateValue=()=>{},documentsBrowser,applyVerifiedDebtDocument,rejectSecondaryIssuance,
   rejectSecondaryMutation,refreshForMorningRecovery,getBusinessBankTransactions=()=>[],
   ensureBusinessBankTransactions=async()=>false,onBankDocumentVerified=()=>{},
-  debtNotes,onDebtNotesChanged=()=>{},contactsFetch,
+  debtNotes,onDebtNotesChanged=()=>{},contactsRequest,
 }){
 if(typeof operationScope?.capture!=='function'||typeof operationScope?.captureRead!=='function')throw new TypeError('morning_operation_scope_required');
 if(typeof request?.json!=='function')throw new TypeError('morning_request_required');
@@ -78,7 +78,7 @@ async function toggleEmailLookup(button){
     try{
       const {createMorningEmailLookup}=await import('./morning-email-lookup.js');
       if(!isActive(generation))return;
-      emailLookup??=createMorningEmailLookup({contactsFetch,session:modalSession,field:currentField,canEdit:()=>!disposed&&!createBusy&&!blocked&&!completed});
+      emailLookup??=createMorningEmailLookup({request:contactsRequest,session:modalSession,field:currentField,canEdit:()=>!disposed&&!createBusy&&!blocked&&!completed});
     }catch{
       if(isActive(generation))toast('חיפוש הכתובת אינו זמין כרגע. אפשר להזין כתובת ידנית.');
       return;

@@ -38,7 +38,10 @@ export function createOrdersCustomersRuntime({model,customerUi,customerRevision}
     const documentMedia=createMorningMediaComposition({request:morningRequest,modal:(...args)=>uiModal.modal(...args),toast:(...args)=>uiStatus.toast(...args)});
     const domain=createDomainsCustomers({
       morningOperationScope,morningRequest,documentMedia,customerRevision,model,customerUi,selectors,
-      contactsFetch:(...args)=>cloudAuth.supaFetch(...args),
+      contactsRequest:async(...args)=>{
+        const {requestGoogleContacts}=await import('../integrations/google-contacts.js');
+        return requestGoogleContacts(cloudAuth.supaFetch,...args);
+      },
       uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,
       refreshForMorningRecovery,subscribeAccountScope:cloudAuth.subscribeAccountScope,
       getBusinessBankTransactions:bankTransactions.getTransactions,
