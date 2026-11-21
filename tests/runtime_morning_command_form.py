@@ -58,5 +58,24 @@ FLOW=LOCAL_CLOUD+r"""
  check(!calls.some(row=>['reserve','create'].includes(row.action)),'readonly form issued a document');check(await raw()===before,'form validation/preview changed Main/Shared journals');
  return {rejected,stableIdentity:true,exactReceipts:true,emailLookup:true,noIssuance:true,journalsRetained:true};
 """
+MOBILE_LOOKUP = r"""
+await domainsCustomers.morningActions['open-morning-standalone']();
+await domainsCustomers.runtime.drain();
+const get=id=>document.getElementById(id), toggle=get('morningEmailLookupToggle'), panel=get('morningEmailLookup'), query=get('morningEmailQuery');
+toggle.click();
+const fits=panel.clientWidth>200 && panel.scrollWidth<=panel.clientWidth+1 && get('morningClientEmail').clientWidth>140;
+const labelled=query.labels.length===1 && document.activeElement===query;
+query.value='customer@example.test';query.dispatchEvent(new Event('input',{bubbles:true}));
+const gmail=new URL(panel.querySelector('[data-email-gmail]').href);
+query.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+return {fits,labelled,gmail:gmail.hostname==='mail.google.com'&&decodeURIComponent(gmail.hash)==='#search/customer@example.test',
+  keyboard:panel.hidden&&toggle.getAttribute('aria-expanded')==='false'&&document.activeElement===toggle};
+"""
 with BrowserSession(ROOT/'netunim-orders/site','morning-command-form') as browser:
- result=browser.evaluate('(async()=>{'+FLOW+'})()',timeout=35);assert result['rejected']==6;assert not browser.drain_serious_errors();print('PASS Morning command form: '+json.dumps(result))
+ result=browser.evaluate('(async()=>{'+FLOW+'})()',timeout=35)
+ assert result['rejected']==6
+ browser.call('Emulation.setDeviceMetricsOverride', {'width':390, 'height':844, 'deviceScaleFactor':1, 'mobile':True})
+ mobile=browser.evaluate('(async()=>{'+MOBILE_LOOKUP+'})()',timeout=15)
+ assert all(mobile.values()), mobile
+ assert not browser.drain_serious_errors()
+ print('PASS Morning command form: '+json.dumps({**result,'mobile':mobile}))
