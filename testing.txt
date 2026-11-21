@@ -1,0 +1,69 @@
+﻿התקנת Pdf
+npm run pdfjs:install
+npm run document-viewers:install
+npm run document-viewers:check
+
+ריענון חיפוש בeverything
+content:
+ctrl a , ctrl f5
+
+עדכון נתונים ניהול הזמנות
+npm run deps:update
+npm run wrangler:update
+
+npm run offline:download
+npm run offline:update
+
+python tools/sync-assets.py
+
+מחיקת אחסון אתר-לבדוק שהאתר או השרת לא פעיל ואז לאפס נתונים לגמרי
+chrome://settings/content/all
+
+העלאת מיגרציות פקודות חדשות
+שלב 1 - בדיקה לפני העלאה
+supabase --version
+supabase migration list --workdir . --remote=bupoidcurcxuypfrjqio
+supabase db push --dry-run --workdir . --remote=bupoidcurcxuypfrjqio
+
+.\verify.bat --no-pause
+
+שלב 2 — העלאת המיגרציות ואימות לאחר הפריסה
+supabase db push --workdir . --remote=bupoidcurcxuypfrjqio --yes
+supabase migration list --workdir . --remote=bupoidcurcxuypfrjqio
+supabase db push --dry-run --workdir . --remote=bupoidcurcxuypfrjqio
+python tools/supabase_deploy_gate.py
+
+
+פקודות ישנות
+העלאת qsl cli
+```powershell
+supabase --version
+supabase migration list --linked --workdir .
+supabase db push --linked --workdir . --dry-run
+```
+
+ב-dry-run יש לוודא שמופיעות כממתינות רק המיגרציות שנבדקו ומיועדות לפריסה,
+ושלא מופיעות במפתיע מיגרציות ישנות שכבר אמורות להיות בשרת. אם מופיעה מיגרציה
+נוספת שלא התכוונת לפרוס, יש לעצור ולבדוק את היסטוריית המיגרציות לפני `db push`.
+
+לפני החלה על השרת יש להריץ מהשורש `verify.bat --no-pause` ולוודא שכל הבדיקות עברו.
+אין להריץ `db push` כאשר אחת מקבוצות ה-verification נכשלת, גם אם ה-dry-run עצמו תקין.
+
+## 2. החלת Supabase
+
+רק לאחר dry-run תקין ו-verification ירוק:
+
+```powershell
+supabase db push --linked --workdir .
+supabase migration list --linked --workdir .
+python tools/supabase_deploy_gate.py
+```
+
+ cd ..
+netunim\deploy_all.bat --preflight-only
+
+cd..
+netunim\verify.bat --no-pause
+
+פעם אחת להריץ כדי לאפשר הרצה אוטומטית של תיקון לפני גיט
+python tools/install-git-hooks.py
