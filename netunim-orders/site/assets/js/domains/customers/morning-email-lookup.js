@@ -1,3 +1,5 @@
+import {createGoogleContactsRequest} from '../../integrations/google-contacts.js';
+
 const sourceLabels = {contacts: 'אנשי קשר', other: 'אנשי קשר אחרים'};
 const searchErrors = {
   contacts_not_configured: 'חיבור לאנשי הקשר של Google עדיין אינו זמין במערכת.',
@@ -17,7 +19,8 @@ function message(error) {
   return searchErrors[error?.code] || 'החיבור ל־Google אינו זמין כרגע. אפשר לנסות שוב או להזין כתובת ידנית.';
 }
 
-export function createMorningEmailLookup({request, session, field, canEdit}) {
+export function createMorningEmailLookup({contactsFetch, session, field, canEdit}) {
+  const request = createGoogleContactsRequest(contactsFetch);
   let closeActive;
 
   function toggle(button) {

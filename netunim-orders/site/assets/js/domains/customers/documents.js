@@ -21,7 +21,6 @@ import {createMorningDebtRecoveryContext,loadMorningDebtRecoveryContext,saveMorn
 import {createMorningPayments,morningPaymentTotalCents} from './morning-payments.js';
 import {activeMorningBankDebts,collapseMorningBankDebtPicker,filterMorningBankDebtPicker,morningBankDebtPickerMarkup,syncMorningBankDebtPickerSelection} from './morning-bank-debt-picker.js';
 import {createMorningBankLinks} from './morning-bank-links.js';
-import {createMorningEmailLookup} from './morning-email-lookup.js';
 
 const {documentButton,foot,form:morningFormMarkup,debt:morningDebtUpdateMarkup,operation:morningOperationMarkup}=createMorningDocumentView({format:{esc,money},financial:{changes:morningFinancialChanges}});
 
@@ -37,7 +36,7 @@ export function createDomainsCustomersDocuments({
   dateEditorMarkup,setDateValue=()=>{},documentsBrowser,applyVerifiedDebtDocument,rejectSecondaryIssuance,
   rejectSecondaryMutation,refreshForMorningRecovery,getBusinessBankTransactions=()=>[],
   ensureBusinessBankTransactions=async()=>false,onBankDocumentVerified=()=>{},
-  debtNotes,onDebtNotesChanged=()=>{},contactsRequest,
+  debtNotes,onDebtNotesChanged=()=>{},contactsFetch,
 }){
 if(typeof operationScope?.capture!=='function'||typeof operationScope?.captureRead!=='function')throw new TypeError('morning_operation_scope_required');
 if(typeof request?.json!=='function')throw new TypeError('morning_request_required');
@@ -72,7 +71,21 @@ async function mountDebtDetails(generation){
 }
 const markDocumentDraftSaved=()=>debtDetails?debtDetails.withoutNoteDraft(markModalDraftSaved):markModalDraftSaved?.();
 function currentField(id){return modalSession.element?.closest('#modal')?.querySelector('#'+id)||null}
-const emailLookup=createMorningEmailLookup({request:contactsRequest,session:modalSession,field:currentField,canEdit:()=>!disposed&&!createBusy&&!blocked&&!completed});
+let emailLookup;
+async function toggleEmailLookup(button){
+  const generation=modalSession.generation;
+  if(!emailLookup){
+    try{
+      const {createMorningEmailLookup}=await import('./morning-email-lookup.js');
+      if(!isActive(generation))return;
+      emailLookup??=createMorningEmailLookup({contactsFetch,session:modalSession,field:currentField,canEdit:()=>!disposed&&!createBusy&&!blocked&&!completed});
+    }catch{
+      if(isActive(generation))toast('חיפוש הכתובת אינו זמין כרגע. אפשר להזין כתובת ידנית.');
+      return;
+    }
+  }
+  return emailLookup.toggle(button);
+}
 if(pendingRecovery){activeOperationId=pendingRecovery.operationId;activeDebtId=pendingRecovery.debtId;activeSource=sourceFromRecovery(pendingRecovery);issuanceContext=pendingRecovery;blocked=true}
 const {paymentFields,readPaymentRows,replaceMorningPayments,addMorningPayment,removeMorningPayment,syncPaymentType,syncPaymentBank,syncPaymentTotal}=createMorningPayments({dateEditorMarkup,toast,currentField,getSource:()=>activeSource,getSelectedType:()=>selectedType(),canEdit:()=>!disposed&&!createBusy&&!blocked&&!completed});
 const bankTransactionLinker=createMorningBankLinks({
@@ -321,7 +334,7 @@ return {
   openStandaloneMorningDocument:(...args)=>command(openStandaloneMorningDocument,args),
   openBankMorningDocument:(...args)=>command(openBankMorningDocument,args),
   linkBankDebt:(...args)=>editCommand(linkBankDebt,args),
-  toggleEmailLookup:(...args)=>editCommand(emailLookup.toggle,args),
+  toggleEmailLookup:(...args)=>editCommand(toggleEmailLookup,args),
   debtNote:(...args)=>debtDetails&&editCommand(debtDetails.command,args),
   filterBankDebtPicker:(...args)=>editCommand(filterBankDebtPicker,args),
   linkBankTransaction:(...args)=>editCommand(linkBankTransaction,args),
