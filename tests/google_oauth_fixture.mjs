@@ -22,13 +22,13 @@ export async function oauthFixture(name, options = {}) {
   const contacts = name === 'google-contacts-oauth';
   const credentialContext = {service:contacts ? 'contacts' : name.includes('drive') ? 'drive' : 'calendar', ownerId:'test-owner'};
   const writes = [], old = {refresh_token:await vault.seal('old-refresh', credentialContext), google_account_id:'old-account', scope:contacts ? CONTACTS_TEST_SCOPES : GOOGLE_TEST_SCOPES};
-  if (contacts) old.grant_id = randomUUID();
+  if (contacts) Object.assign(old, {grant_id:randomUUID(), reconnect_required:false});
   const rawState = 'test.' + 'f'.repeat(64);
   const state = {value:{state_hash:hash(rawState), owner_id:'test-owner', return_url:'https://app.example.test/', expires_at:new Date(Date.now() + 60000).toISOString()}};
   const intent = {value:hash(rawState)};
   const connection = {value:old};
   function database(table) {
-    let mode = 'select', patch, expectedRefresh, expectedHash, expectedGrant;
+    let mode = 'select', patch, expectedRefresh, expectedHash, expectedGrant, expectedReconnect;
     const query = new Proxy({}, {get(_target, key) {
       if (key === 'then') return async resolve => {
         const selectedState = table.endsWith('_states') && mode === 'select' ? state.value : undefined;
@@ -44,6 +44,7 @@ export async function oauthFixture(name, options = {}) {
         }
         if (!isState && expectedRefresh !== undefined && connection.value?.refresh_token !== expectedRefresh) return resolve({data:null, error:null});
         if (expectedGrant !== undefined && connection.value?.grant_id !== expectedGrant) return resolve({data:null, error:null});
+        if (expectedReconnect !== undefined && connection.value?.reconnect_required !== expectedReconnect) return resolve({data:null, error:null});
         const previous = connection.value;
         if (!isState && mode === 'upsert') connection.value = {...patch};
         if (!isState && mode === 'update') connection.value = {...connection.value, ...patch};
@@ -55,6 +56,7 @@ export async function oauthFixture(name, options = {}) {
         if (key === 'eq' && args[0] === 'refresh_token') expectedRefresh = args[1];
         if (key === 'eq' && args[0] === 'state_hash') expectedHash = args[1];
         if (key === 'eq' && args[0] === 'grant_id') expectedGrant = args[1];
+        if (key === 'eq' && args[0] === 'reconnect_required') expectedReconnect = args[1];
         return query;
       };
     }});
@@ -81,7 +83,7 @@ export async function oauthFixture(name, options = {}) {
     if (intent.value !== args.p_state_hash) return {data:false, error:null};
     intent.value = null;
     connection.value = {owner_id:args.p_owner_id, google_account_id:args.p_account_id, refresh_token:args.p_refresh_token, scope:args.p_scope};
-    if (contacts) connection.value.grant_id = randomUUID();
+    if (contacts) Object.assign(connection.value, {grant_id:randomUUID(), reconnect_required:false});
     writes.push({table, mode});
     return {data:true, error:null};
   }

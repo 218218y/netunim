@@ -9,14 +9,19 @@ FLOW=LOCAL_CLOUD+r"""
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),db=createStorageJournalDb();
  const raw=async()=>JSON.stringify({main:await db.load('local:orders'),checks:await db.load('local:shared-checks')}),before=await raw();
  let delayedSearch,delayedResponse=Promise.withResolvers();
+ let contactsGrant='test-grant', statusChanged=false, otherUnavailable=false;
  cloudAuth.supaFetch=async(path,options)=>{
   const request=JSON.parse(options.body);
   if(path.endsWith('/google-contacts-oauth')){
    contacts.push(request.action);
-   if(request.action==='status')return Response.json({account:'operator@example.test',grant:'test-grant'});
-   if(request.action==='prepare')return Response.json({results:[],grant:'test-grant'});
+   if(request.action==='status'){
+    if(statusChanged){statusChanged=false;return Response.json({code:'contacts_connection_changed'},{status:409})}
+    return Response.json({account:'operator@example.test',grant:contactsGrant});
+   }
+   if(request.action==='prepare')return Response.json({results:[],missing:[],grant:contactsGrant});
    if(request.query==='delayed'){delayedSearch=options.signal;return delayedResponse.promise;}
-   return Response.json({grant:'test-grant',results:[{name:'<img src=x>',email:'selected@example.test',sources:['other']}]});
+   if(otherUnavailable)return Response.json({grant:contactsGrant,missing:['other'],results:[]});
+   return Response.json({grant:contactsGrant,results:[{name:'<img src=x>',email:'selected@example.test',sources:['other']}]});
   }
   options.assertRequestScope();calls.push(request);if(request.action==='status')return new Response(JSON.stringify({ok:true,configured:true,available:true,environment:'sandbox',operation:null}));check(request.action==='preview','form reached official issuance');throw Error('synthetic preview capture complete');
  };
@@ -41,11 +46,29 @@ FLOW=LOCAL_CLOUD+r"""
  await wait(()=>document.querySelector('.morning-email-result'));
  const result=document.querySelector('.morning-email-result');
  check(!result.querySelector('img')&&result.textContent.includes('<img src=x>')&&result.textContent.includes('אנשי קשר אחרים'),'contact details were not rendered as text with source');
+ const panel=get('morningEmailLookup'), lookupStatus=panel.querySelector('[data-email-status]'), retry=panel.querySelector('[data-email-retry]');
+ const beforeReturn=contacts.length;
+ document.dispatchEvent(new Event('visibilitychange'));
+ check(contacts.length===beforeReturn&&result.isConnected,'returning from another tab restarted the lookup');
  const lookupQuery=get('morningEmailQuery');lookupQuery.value='delayed';lookupQuery.dispatchEvent(new Event('input',{bubbles:true}));
  await wait(()=>delayedSearch);lookupQuery.value='exact client';lookupQuery.dispatchEvent(new Event('input',{bubbles:true}));
  check(delayedSearch.aborted,'typing did not cancel the previous search');
  await wait(()=>document.querySelector('.morning-email-result'));
  delayedResponse.resolve(Response.json({grant:'test-grant',results:[{email:'obsolete@example.test',sources:['contacts']}]}));
+ const beforeCloseSearches=contacts.filter(action=>action==='prepare').length;
+ click('morning-email-lookup');click('morning-email-lookup');
+ await wait(()=>document.querySelector('.morning-email-result'));
+ check(contacts.filter(action=>action==='prepare').length===beforeCloseSearches,'reopening for the same grant warmed both sources again');
+ otherUnavailable=true;lookupQuery.value='missing source';lookupQuery.dispatchEvent(new Event('input',{bubbles:true}));
+ await wait(()=>!retry.hidden);
+ check(lookupStatus.textContent.includes('לא נמצאו כתובות במקור „אנשי קשר”')&&lookupStatus.textContent.includes('„אנשי קשר אחרים” נכשל'),'partial search was presented as a full empty result');
+ otherUnavailable=false;retry.click();
+ await wait(()=>document.querySelector('.morning-email-result'));
+ const oldResult=document.querySelector('.morning-email-result'), beforeSwitch=contacts.filter(action=>action==='status').length;
+ contactsGrant='new-grant';statusChanged=true;oldResult.click();
+ await wait(()=>!oldResult.isConnected&&contacts.filter(action=>action==='status').length===beforeSwitch+2);
+ check(!panel.hidden&&get('morningClientEmail').value==='a@example.test','a result from the previous grant changed the recipient');
+ await wait(()=>document.querySelector('.morning-email-result'));
  document.querySelector('.morning-email-result').click();
  await wait(()=>get('morningEmailLookup').hidden);
  check(get('morningClientEmail').value==='selected@example.test'&&document.activeElement===get('morningClientEmail'),'choosing a result did not fill and focus the email');

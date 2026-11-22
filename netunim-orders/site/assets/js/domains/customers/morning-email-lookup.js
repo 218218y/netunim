@@ -1,4 +1,7 @@
 const sourceLabels = {contacts: 'אנשי קשר', other: 'אנשי קשר אחרים'};
+// Both Google search endpoints update their caches lazily after an empty query.
+const warmupDelayMs = 4000;
+const warmupReuseMs = 30_000;
 const searchErrors = {
   contacts_not_configured: 'חיבור לאנשי הקשר של Google עדיין אינו זמין במערכת.',
   contacts_cloud_auth_required: 'כדי לחפש באנשי הקשר יש להתחבר לענן עם אימות דו־שלבי.',
@@ -17,8 +20,24 @@ function message(error) {
   return searchErrors[error?.code] || 'החיבור ל־Google אינו זמין כרגע. אפשר לנסות שוב או להזין כתובת ידנית.';
 }
 
+function wait(ms, signal) {
+  signal.throwIfAborted();
+  if (ms <= 0) return;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', cancel);
+      resolve();
+    }, ms);
+    function cancel() {
+      clearTimeout(timer);
+      reject(signal.reason);
+    }
+    signal.addEventListener('abort', cancel, {once: true});
+  });
+}
+
 export function createMorningEmailLookup({request, session, field, canEdit}) {
-  let closeActive;
+  let closeActive, prepared;
 
   function toggle(button) {
     const panel = field('morningEmailLookup'), target = field('morningClientEmail');
@@ -35,7 +54,8 @@ export function createMorningEmailLookup({request, session, field, canEdit}) {
     const query = control('query'), gmail = control('gmail'), status = control('status'), results = control('results');
     const account = control('account'), connect = control('connect'), disconnect = control('disconnect');
     const refresh = control('refresh'), continueLink = control('authorize'), closeButton = control('close');
-    let connection = {}, preparing, searchRequest, debounce, busy = false;
+    const retry = control('retry');
+    let connection = {}, preparing, searchRequest, retryAction, busy = false, oauthPending = false;
 
     const say = text => { status.textContent = text; };
     const listen = (element, type, fn) => element.addEventListener(type, fn, {signal: lifetime.signal});
@@ -44,9 +64,14 @@ export function createMorningEmailLookup({request, session, field, canEdit}) {
     observer.observe(doc.getElementById('modalBackdrop'), {attributes: true, attributeFilter: ['class']});
 
     function clearSearch() {
-      clearTimeout(debounce);
       searchRequest?.abort();
       results.replaceChildren();
+      offerRetry();
+    }
+
+    function offerRetry(action) {
+      retryAction = action;
+      retry.hidden = !action;
     }
 
     function close(focus) {
@@ -72,19 +97,21 @@ export function createMorningEmailLookup({request, session, field, canEdit}) {
       connect.hidden = !connection.available;
       connect.textContent = connection.reconnect ? 'חבר מחדש את Google' : connection.grant ? 'החלף חשבון Google' : 'חבר את אנשי הקשר של Google';
       disconnect.hidden = !connection.grant;
-      connect.disabled = disconnect.disabled = refresh.disabled = busy;
+      connect.disabled = disconnect.disabled = refresh.disabled = retry.disabled = busy;
       gmail.href = gmailUrl(query.value.trim(), connection.account);
     }
 
-    function connectionError(error) {
-      if (error?.code === 'contacts_connection_changed') { void readConnection(); return; }
+    function connectionError(error, tryAgain) {
       if (error?.code === 'contacts_reconnect_required') {
+        prepared = undefined;
+        clearSearch();
         connection.reconnect = true;
         renderConnection();
         say('פג תוקף ההרשאה לאנשי הקשר. יש לחבר את חשבון Google מחדש.');
         return;
       }
       say(message(error));
+      offerRetry(tryAgain);
     }
 
     function renderMatches(data) {
@@ -106,13 +133,22 @@ export function createMorningEmailLookup({request, session, field, canEdit}) {
         listen(pick, 'click', () => void choose(row.email));
       }
       const count = results.children.length;
-      const partial = data.missing?.length ? ' חלק ממקורות Google לא היו זמינים.' : '';
-      say((count ? `נמצאו ${count} כתובות לבחירה.` : 'לא נמצאו כתובות. נסו תחילת שם או כתובת, או חפשו ב־Gmail.') + partial);
+      const missing = Object.keys(sourceLabels).filter(source => data.missing?.includes(source));
+      if (missing.length) {
+        const checked = Object.keys(sourceLabels).filter(source => !missing.includes(source)).map(source => `„${sourceLabels[source]}”`).join(' ו־');
+        const unavailable = missing.map(source => `„${sourceLabels[source]}”`).join(' ו־');
+        const outcome = count ? `נמצאו ${count} כתובות במקור ${checked}.` : `לא נמצאו כתובות במקור ${checked}.`;
+        say(`${outcome} החיפוש במקור ${unavailable} נכשל. נסו שוב כדי לבדוק גם אותו.`);
+        offerRetry(scheduleSearch);
+        return;
+      }
+      say(count ? `נמצאו ${count} כתובות לבחירה.` : 'לא נמצאו כתובות בשני מקורות Google. נסו תחילת שם או כתובת, או חפשו ב־Gmail.');
     }
 
     async function choose(email) {
       if (!available() || busy || !connection.grant) return;
       const oldEmail = target.value, oldQuery = query.value, grant = connection.grant;
+      let refreshNeeded = false, connectionUpdated = false;
       busy = true;
       renderConnection();
       say('מאמת את החיבור לפני בחירת הכתובת…');
@@ -120,52 +156,79 @@ export function createMorningEmailLookup({request, session, field, canEdit}) {
         const data = await request('status', {}, lifetime.signal);
         if (!available()) return;
         if (data.grant !== grant || data.reconnect) {
-          busy = false;
-          await readConnection();
+          clearSearch();
+          acceptConnection(data);
+          connectionUpdated = true;
           return;
         }
-        if (query.value !== oldQuery) { busy = false; scheduleSearch(); return; }
+        if (query.value !== oldQuery) return;
         if (target.value !== oldEmail) { say('כתובת הנמען נערכה במקביל. בחרו שוב כדי להחליף אותה.'); return; }
         target.value = email;
         target.dispatchEvent(new Event('input', {bubbles: true}));
         target.dispatchEvent(new Event('change', {bubbles: true}));
         close(target);
-      } catch (error) { if (available()) connectionError(error); }
-      finally { busy = false; if (current()) renderConnection(); }
+      } catch (error) {
+        if (!available()) return;
+        if (error?.code === 'contacts_connection_changed') {
+          clearSearch();
+          refreshNeeded = true;
+        } else connectionError(error, () => void choose(email));
+      } finally {
+        busy = false;
+        if (current()) renderConnection();
+        if (available() && refreshNeeded) void readConnection();
+        else if (available() && (connectionUpdated || query.value !== oldQuery)) void scheduleSearch();
+      }
     }
 
     function prepare(grant) {
-      // Google refreshes its search cache lazily after an empty query.
-      preparing ??= request('prepare', {grant}, lifetime.signal)
-        .then(() => new Promise(resolve => setTimeout(resolve, 4000)))
-        .catch(error => { if (connection.grant === grant) preparing = undefined; throw error; });
-      return preparing;
+      if (prepared?.grant === grant && performance.now() < prepared.expiresAt) return prepared.readyAt;
+      if (preparing?.grant === grant) return preparing.promise;
+      const flight = {grant};
+      preparing = flight;
+      flight.promise = request('prepare', {grant}, lifetime.signal).then(data => {
+        const readyAt = performance.now() + warmupDelayMs;
+        if (current() && connection.grant === grant && !connection.reconnect && !data.missing?.length) {
+          prepared = {grant, readyAt, expiresAt: readyAt + warmupReuseMs};
+        }
+        return readyAt;
+      }).finally(() => { if (preparing === flight) preparing = undefined; });
+      return flight.promise;
     }
 
-    function scheduleSearch() {
+    async function scheduleSearch() {
       clearSearch();
       renderConnection();
       if (!available() || busy || !connection.available) return;
       if (connection.reconnect) { connectionError({code: 'contacts_reconnect_required'}); return; }
       const term = query.value.trim(), grant = connection.grant;
       if (!grant) { say('חברו את Google כדי לחפש באנשי קשר ובאנשי קשר אחרים.'); return; }
-      if (term.length < 2) { say('הקלידו לפחות שני תווים.'); return; }
       const controller = searchRequest = new AbortController();
       const activeSearch = () => available() && !controller.signal.aborted;
-      say('מחפש כתובות ב־Google…');
-      debounce = setTimeout(async () => {
-        try {
-          await prepare(grant);
-          if (!activeSearch()) return;
-          const data = await request('search', {query: term, grant}, controller.signal);
-          if (activeSearch() && data.grant === grant) renderMatches(data);
-        } catch (error) { if (activeSearch()) connectionError(error); }
-      }, 350);
+      const canSearch = term.length >= 2;
+      say(canSearch ? 'מחפש כתובות ב־Google…' : 'הקלידו לפחות שני תווים.');
+      try {
+        const [readyAt] = await Promise.all([prepare(grant), canSearch && wait(350, controller.signal)]);
+        if (!canSearch || !activeSearch()) return;
+        await wait(readyAt - performance.now(), controller.signal);
+        const data = await request('search', {query: term, grant}, controller.signal);
+        if (activeSearch() && data.grant === grant) renderMatches(data);
+      } catch (error) {
+        if (!activeSearch()) return;
+        if (error?.code === 'contacts_connection_changed') void readConnection();
+        else connectionError(error, scheduleSearch);
+      }
+    }
+
+    function acceptConnection(data) {
+      if (prepared && (prepared.grant !== data.grant || data.reconnect)) prepared = undefined;
+      connection = {...data, available: true};
     }
 
     async function manage(action) {
       if (!available() || busy) return;
       busy = true;
+      oauthPending = false;
       clearSearch();
       renderConnection();
       continueLink.hidden = true;
@@ -183,12 +246,15 @@ export function createMorningEmailLookup({request, session, field, canEdit}) {
           continueLink.focus();
           return;
         }
-        if (connection.grant !== data.grant) preparing = undefined;
-        connection = {...data, available: true};
+        acceptConnection(data);
+      } catch (error) {
+        if (available()) connectionError(error, () => void manage(action));
+        return;
+      } finally {
         busy = false;
-        scheduleSearch();
-      } catch (error) { if (available()) connectionError(error); }
-      finally { busy = false; if (current()) renderConnection(); }
+        if (current()) renderConnection();
+      }
+      if (available()) void scheduleSearch();
     }
 
     function readConnection() { return manage('status'); }
@@ -205,7 +271,9 @@ export function createMorningEmailLookup({request, session, field, canEdit}) {
       }
     });
     listen(refresh, 'click', () => void readConnection());
-    listen(doc, 'visibilitychange', () => { if (!doc.hidden) void readConnection(); });
+    listen(retry, 'click', () => retryAction?.());
+    listen(continueLink, 'click', () => { oauthPending = true; });
+    listen(doc, 'visibilitychange', () => { if (!doc.hidden && oauthPending && !busy) void readConnection(); });
     listen(connect, 'click', () => void manage('start'));
     listen(disconnect, 'click', () => void manage('disconnect'));
     query.value = (field('morningClientName')?.value.trim() || target.value.trim()).slice(0, query.maxLength);

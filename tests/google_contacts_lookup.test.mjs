@@ -79,3 +79,63 @@ test('search checks grant, input and quota before calling Google', async () => {
   assert.equal((await f.invoke('search', {query:'customer', grant:f.old.grant_id})).status, 429);
   assert.equal(f.requests.length, 0);
 });
+
+test('refresh can omit scope when the saved grant was verified', async () => {
+  const f = await fixture({fetch: async url => url.endsWith('/token')
+    ? Response.json({access_token:'access', expires_in:3600})
+    : Response.json({results:[person('Contact', 'customer@example.test')]})});
+  const response = await f.invoke('search', {query:'customer', grant:f.old.grant_id});
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).results[0].email, 'customer@example.test');
+});
+
+for (const [reason, failure] of [
+  ['invalid_grant', () => Response.json({error:'invalid_grant'}, {status:400})],
+  ['explicitly reduced scope', () => Response.json({...access, scope:CONTACTS_TEST_SCOPES.split(' ')[0]})],
+]) test(`status retains ${reason} until a new OAuth grant is published`, async () => {
+  let refreshFailure = true;
+  const f = await fixture({fetch: async url => {
+    if (url.endsWith('/token')) return refreshFailure ? failure() : Response.json({...access, refresh_token:'new-refresh'});
+    return Response.json({email:'account@example.test', email_verified:true});
+  }});
+  const fields = {query:'customer', grant:f.old.grant_id};
+  assert.equal((await f.invoke('search', fields)).status, 409);
+  assert.equal((await (await f.invoke('status')).json()).reconnect, true);
+  assert.equal((await f.invoke('search', fields)).status, 409);
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.connection.value.google_account_id, f.old.google_account_id);
+  refreshFailure = false;
+  assert.equal((await f.callback()).status, 200);
+  assert.equal((await (await f.invoke('status')).json()).reconnect, false);
+});
+
+test('a late invalid_grant cannot invalidate a replaced connection', async () => {
+  const entered = Promise.withResolvers(), release = Promise.withResolvers();
+  const f = await fixture({fetch: async (url, init) => {
+    if (!url.endsWith('/token')) return Response.json({email:'new@example.test', email_verified:true});
+    if (init.body.get('grant_type') === 'authorization_code') return Response.json({...access, refresh_token:'new-refresh'});
+    entered.resolve();
+    await release.promise;
+    return Response.json({error:'invalid_grant'}, {status:400});
+  }});
+  const pending = f.invoke('search', {query:'customer', grant:f.old.grant_id});
+  await entered.promise;
+  try { assert.equal((await f.callback()).status, 200); }
+  finally { release.resolve(); }
+  assert.deepEqual(await (await pending).json(), {code:'contacts_connection_changed'});
+  const status = await (await f.invoke('status')).json();
+  assert.equal(status.account, 'new@example.test');
+  assert.equal(status.reconnect, false);
+});
+
+test('a temporary Google failure keeps the saved grant usable', async () => {
+  let offline = true;
+  const f = await fixture({fetch: async url => url.endsWith('/token')
+    ? offline ? Response.json({error:'temporarily_unavailable'}, {status:503}) : Response.json(access)
+    : Response.json({})});
+  const fields = {query:'customer', grant:f.old.grant_id};
+  assert.equal((await f.invoke('search', fields)).status, 502);
+  assert.equal((await (await f.invoke('status')).json()).reconnect, false);
+  offline = false;
+  assert.equal((await f.invoke('search', fields)).status, 200);
+});

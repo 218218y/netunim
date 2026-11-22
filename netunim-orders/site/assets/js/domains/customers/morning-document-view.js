@@ -89,6 +89,7 @@ export function createMorningDocumentView({ format: { esc, money }, financial: {
           <ul class="morning-email-results" aria-label="כתובות לבחירה" data-email-results></ul>
           <div class="morning-email-tools">
             <a class="btn small" target="_blank" rel="noopener noreferrer" data-email-gmail>חפש ב־Gmail <small>(לשונית חדשה)</small></a>
+            <button type="button" class="btn small" data-email-retry hidden>נסה שוב</button>
             <button type="button" class="btn small" data-email-refresh>בדוק חיבור</button>
             <button type="button" class="btn small" data-email-connect hidden>חבר את אנשי הקשר של Google</button>
             <a class="btn small primary" target="_blank" rel="noopener noreferrer" data-email-authorize hidden>פתח את Google לחיבור</a>

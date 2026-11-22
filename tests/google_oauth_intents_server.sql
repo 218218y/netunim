@@ -45,8 +45,15 @@ BEGIN
   IF public.take_google_contacts_search_slot(owner, captured_grant) THEN RAISE EXCEPTION 'Contact search throttle failed'; END IF;
   UPDATE public.google_contacts_connections SET search_window_start=now()-interval '2 minutes', refresh_token='rotated' WHERE owner_id=owner;
   IF NOT public.take_google_contacts_search_slot(owner, captured_grant) THEN RAISE EXCEPTION 'Window or rotation broke contact lookup'; END IF;
+  UPDATE public.google_contacts_connections SET reconnect_required=true WHERE owner_id=owner AND grant_id=captured_grant;
+  IF NOT EXISTS (SELECT 1 FROM public.google_contacts_connections WHERE owner_id=owner AND grant_id=captured_grant AND reconnect_required) THEN
+    RAISE EXCEPTION 'Revoking a grant lost its identity';
+  END IF;
   PERFORM public.google_oauth_start('contacts',owner,second_hash,'https://example.invalid',now()+interval '10 minutes');
   PERFORM public.google_oauth_publish('contacts',owner,second_hash,'fixture@example.test','second','scope');
+  IF NOT EXISTS (SELECT 1 FROM public.google_contacts_connections WHERE owner_id=owner AND grant_id<>captured_grant AND NOT reconnect_required) THEN
+    RAISE EXCEPTION 'Publishing a new grant did not clear reconnection state';
+  END IF;
   IF public.take_google_contacts_search_slot(owner, captured_grant) THEN RAISE EXCEPTION 'Replaced contact grant remained usable'; END IF;
   PERFORM public.google_oauth_disconnect('contacts',owner);
 END;

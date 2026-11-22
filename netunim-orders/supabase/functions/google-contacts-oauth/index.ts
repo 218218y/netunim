@@ -118,16 +118,24 @@ async function callback(url: URL) {
 }
 
 async function status(owner: string) {
-  const {data, error} = await admin.from(CONNECTIONS).select('google_account_id,grant_id,scope').eq('owner_id', owner).maybeSingle();
+  const {data, error} = await admin.from(CONNECTIONS).select('google_account_id,grant_id,scope,reconnect_required').eq('owner_id', owner).maybeSingle();
   if (error) return storageFailure();
-  return json({account: data?.google_account_id || '', grant: data?.grant_id || '', reconnect: !!data && !hasScopes(data.scope)});
+  return json({account: data?.google_account_id || '', grant: data?.grant_id || '', reconnect: !!data && (data.reconnect_required || !hasScopes(data.scope))});
+}
+
+async function markReconnectRequired(owner: string, grant: string, storedToken: string) {
+  // A response about a superseded grant or refresh token cannot mark the current one.
+  const {data, error} = await admin.from(CONNECTIONS).update({reconnect_required: true})
+    .eq('owner_id', owner).eq('grant_id', grant).eq('refresh_token', storedToken).select('grant_id').maybeSingle();
+  if (error) return storageFailure();
+  return data ? reconnect() : changed();
 }
 
 async function search(owner: string, grant: string, query: string) {
-  const {data: connection, error} = await admin.from(CONNECTIONS).select('grant_id,refresh_token,scope').eq('owner_id', owner).maybeSingle();
+  const {data: connection, error} = await admin.from(CONNECTIONS).select('grant_id,refresh_token,scope,reconnect_required').eq('owner_id', owner).maybeSingle();
   if (error) return storageFailure();
   if (!connection || connection.grant_id !== grant) return changed();
-  if (!hasScopes(connection.scope)) return reconnect();
+  if (connection.reconnect_required || !hasScopes(connection.scope)) return reconnect();
   const {data: admitted, error: limitError} = await admin.rpc('take_google_contacts_search_slot', {p_owner_id: owner, p_grant_id: grant});
   if (limitError) return storageFailure();
   if (admitted !== true) return json({code: 'contacts_search_limit'}, 429);
@@ -140,16 +148,14 @@ async function search(owner: string, grant: string, query: string) {
     token = await exchange({refresh_token: credential, grant_type: 'refresh_token'});
   } catch (error) {
     if (!(error instanceof GoogleHttpError) || error.code !== 'invalid_grant') throw error;
-    // Preserve account identity for reconnect/disconnect and avoid deleting a newer grant.
-    const {data, error: receiptError} = await admin.from(CONNECTIONS).select('grant_id').eq('owner_id', owner).eq('grant_id', grant).eq('refresh_token', storedToken).maybeSingle();
-    if (receiptError) return storageFailure();
-    return data ? reconnect() : changed();
+    return markReconnectRequired(owner, grant, storedToken);
   }
-  if (!hasScopes(token.scope)) return reconnect();
+  // The decoder returns an empty string only when the response omits scope.
+  if (token.scope && !hasScopes(token.scope)) return markReconnectRequired(owner, grant, storedToken);
   if ((token.refresh_token && token.refresh_token !== credential) || protection.needsRewrap(storedToken)) {
     const {data, error: rotationError} = await admin.from(CONNECTIONS).update({
       refresh_token: await protection.seal(token.refresh_token || credential, context), updated_at: new Date().toISOString(),
-    }).eq('owner_id', owner).eq('grant_id', grant).eq('refresh_token', storedToken).select('grant_id').maybeSingle();
+    }).eq('owner_id', owner).eq('grant_id', grant).eq('refresh_token', storedToken).eq('reconnect_required', false).select('grant_id').maybeSingle();
     if (rotationError) return storageFailure();
     if (!data) return changed();
   }
@@ -159,14 +165,12 @@ async function search(owner: string, grant: string, query: string) {
     const result = await googleHttp(peopleSearchUrl(source, query), {headers: {Authorization: `Bearer ${token.access_token}`}});
     return query ? searchRows(source, result) : [];
   }));
-  const {data: current, error: receiptError} = await admin.from(CONNECTIONS).select('grant_id').eq('owner_id', owner).eq('grant_id', grant).maybeSingle();
+  const {data: current, error: receiptError} = await admin.from(CONNECTIONS).select('reconnect_required').eq('owner_id', owner).eq('grant_id', grant).maybeSingle();
   if (receiptError) return storageFailure();
   if (!current) return changed();
+  if (current.reconnect_required) return reconnect();
   const missing = sources.filter((_, index) => matches[index].status === 'rejected');
-  if (missing.length === sources.length) {
-    if (matches.every(result => result.status === 'rejected' && result.reason instanceof GoogleHttpError && result.reason.status === 401)) return reconnect();
-    return json({code: 'contacts_provider_unavailable'}, 502);
-  }
+  if (missing.length === sources.length) return json({code: 'contacts_provider_unavailable'}, 502);
   return json({results: mergeSearchRows(matches.flatMap(result => result.status === 'fulfilled' ? [result.value] : []), query), missing, grant});
 }
 

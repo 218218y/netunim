@@ -338,5 +338,10 @@
     "version": "20261121100000",
     "name": "google_contacts_oauth",
     "sha256": "c4c02fdb9dff8c633c00f6c8950a4265bb4ca9c7e5985755b95c1b30fdb8dbb1"
+  },
+  {
+    "version": "20261122100000",
+    "name": "google_contacts_reconnect_state",
+    "sha256": "b6cdaa10d153c8c6209d19bd055e05ca0de6e92df6ab95053bcfd25c026be3e0"
   }
 ]
