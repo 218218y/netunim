@@ -13,7 +13,7 @@ function cloudFixture(){
     capabilities:{ensure:async()=>calls.push('capabilities')},restore:{resume:async()=>calls.push('restore')},
     cloud:{configured:()=>true,openAutomatic:async()=>{calls.push('open');return true},noDocument:()=>state.noDocument,
       showNoDocument:async()=>calls.push('no-document'),startPolling:()=>calls.push('polling')},
-    status:{setCloudHeaderStatus:(...args)=>statuses.push(args),setConnectUI:options=>statuses.push(options)},
+    status:{setCloudHeaderStatus:(...args)=>statuses.push(args),setSaveStatus:(...args)=>statuses.push(args),setConnectUI:options=>statuses.push(options)},
   };
   return {runtime:createKupaCloudStartup(ports),ports,calls,statuses,session,state};
 }
@@ -33,6 +33,7 @@ for(const outcome of ['local','offline','signed-out','blocked'])test(`Kupa ${out
   await f.runtime.prepare({localEngineActive:outcome==='local'});
   assert.equal(await f.runtime.hydrate(),outcome);assert.deepEqual(f.calls,outcome==='offline'?['polling']:[]);
   assert.equal(f.session.startupCloudHydrating,false);
+  if(outcome==='offline'||outcome==='signed-out')assert.deepEqual(f.statuses.at(-1),['מקומי: מוצג העותק האחרון','saving']);
 });
 
 for(const boundary of ['capabilities','restore'])for(const lost of ['allowed','online','authenticated'])test(`Kupa ${lost} loss after ${boundary} stops subsequent cloud startup effects`,async()=>{

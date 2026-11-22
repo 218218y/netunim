@@ -93,8 +93,35 @@ test('automatic opening uses the same candidate import and retains old data on a
 });
 
 test('remembered backup directory failure retains the current backup source',async t=>{
-  const f=fixture(t),before=f.before();f.root.getDirectoryHandle=async()=>{throw Error('backup inaccessible')};
+  const f=fixture(t);f.files.backupsDirHandle=null;
+  const before=f.before();f.root.getDirectoryHandle=async()=>{throw Error('backup inaccessible')};
   assert.equal(await f.create().restoreRememberedBackupTarget(),false);assert.deepEqual(f.before(),before);
+  assert.ok(f.events.some(([event])=>event==='error'));
+});
+
+test('slow remembered backup discovery leaves the source unlocked and cannot replace a newer choice',async t=>{
+  const f=fixture(t),entered=deferred(),slowCatalog=deferred();
+  f.files.backupsDirHandle=null;
+  f.ports.listBackups=async()=>{entered.resolve();await slowCatalog.promise;return []};
+  const folders=f.create(),restoring=folders.restoreRememberedBackupTarget();await entered.promise;
+  try{
+    assert.notEqual(f.session.localSourceSwitchPending,true);
+    const chosen={name:'preferred-backups'};
+    f.window.showDirectoryPicker=async()=>({getDirectoryHandle:async()=>chosen});
+    const selecting=folders.chooseBackupFolder();
+    slowCatalog.resolve();
+    assert.equal(await restoring,false);
+    await selecting;
+    assert.equal(f.files.backupsDirHandle,chosen);
+  }finally{slowCatalog.resolve();await restoring}
+});
+
+test('Kupa attaches a remembered backup target without draining the cloud and submits the startup snapshot',async t=>{
+  const f=fixture(t);f.files.backupsDirHandle=null;f.session.connectionMode='supabase';
+  assert.equal(await f.create().restoreRememberedBackupTarget(),true);
+  assert.equal(f.files.backupsDirHandle,f.source.backupsDirHandle);
+  assert.ok(f.events.some(([event])=>event==='backup'));
+  assert.ok(!f.events.some(([event])=>event==='drain'));
 });
 
 test('preference persistence failure reports the accepted source without rolling it back',async t=>{

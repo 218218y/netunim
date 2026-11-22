@@ -83,11 +83,12 @@ const financeDerivations=createFinanceDerivationStore({revision:()=>domainRevisi
 const storageV2Coordinator=createKupaStorageV2Coordinator({tab,session});
 const {owner:storageOwner,preparing:storagePreparationActive}=storageV2Coordinator;
 
-function captureLocalSourceScope(){
+function captureLocalSourceScope({requireUnchangedData=true}={}){
   const accepted=storageOwner.captureCommitAuthority(),account=cloudAuth.getAccountScope(),generation=session.localGeneration;
   return ()=>{
     const current=cloudAuth.getAccountScope();
-    if(!accepted()||storagePreparationActive()||current.epoch!==account.epoch||current.owner!==account.owner||session.localGeneration!==generation)
+    if(!accepted()||storagePreparationActive()||current.epoch!==account.epoch||current.owner!==account.owner||
+      requireUnchangedData&&session.localGeneration!==generation)
       throw new Error('storage_source_scope_changed');
   };
 }
@@ -576,7 +577,7 @@ const cloudStartup=createKupaCloudStartup({
   capabilities:{ensure:cloudAuth.ensureSyncCapabilities},restore:{resume:uiBackup.resumeIncompleteRestore},
   cloud:{configured:cloudAuth.supaConfigured,openAutomatic:uiCloud.tryAutoOpenSupabase,noDocument:()=>session.cloudAuthNoDocument,
     showNoDocument:uiCloud.showCloudNoDocument,startPolling:syncDocument.startCloudPolling},
-  status:{setCloudHeaderStatus:uiStatus.setCloudHeaderStatus,setConnectUI:uiConnection.setConnectUI},
+  status:{setCloudHeaderStatus:uiStatus.setCloudHeaderStatus,setSaveStatus:uiStatus.setSaveStatus,setConnectUI:uiConnection.setConnectUI},
 });
 
 const lifecycle=createLifecycle({

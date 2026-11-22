@@ -73,7 +73,7 @@ export function withKupaStartup(controls){
     capabilities:{ensure:p.ensureSyncCapabilities||(async()=>true)},restore:{resume:p.resumeIncompleteRestore||(async()=>false)},
     cloud:{configured:p.supaConfigured||(()=>false),openAutomatic:p.tryAutoOpenSupabase||(async()=>false),
       noDocument:()=>!!session.cloudAuthNoDocument,showNoDocument:p.showCloudNoDocument||(async()=>{}),startPolling:p.startCloudPolling||noop},
-    status:{setCloudHeaderStatus:p.setCloudHeaderStatus||noop,setConnectUI:p.setConnectUI||noop},
+    status:{setCloudHeaderStatus:p.setCloudHeaderStatus||noop,setSaveStatus:p.setSaveStatus||noop,setConnectUI:p.setConnectUI||noop},
   });
   const localServices=createKupaLocalServices({storage:{requestPersistentBrowserStorage:p.requestPersistentBrowserStorage||(async()=>{})},
     backup:{restoreTarget:p.restoreRememberedBackupTarget||(async()=>false)},

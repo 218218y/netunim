@@ -1,5 +1,6 @@
 import {startupMark} from './shared/startup-timing.js';
 import {createStartupTask} from './shared/startup-task.js';
+import {observeOptionalTask} from './shared/runtime-task-owner.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createLifecycle({
@@ -88,12 +89,11 @@ async function boot(){
   // offline or cloud-capability exit can show composed business data.
   storageRecovery.activate();
   if(!localEngineActive){session.backendReady=true;hideConnectScreen();render()}
-  // Optional browser/folder services no longer delay the first recovered view.
-  // They still finish before remote hydration/automatic file opening so backup
-  // target selection keeps its existing ordering and ownership.
-  await localServices.start();
   await cloudStartup.hydrate();
   if(localEngineActive)await connectionStartup.openLocal();
+  // Native permission and directory operations can wait indefinitely. Run
+  // optional setup after the data source is ready, outside the startup gate.
+  observeOptionalTask(localServices.start);
 }
 
 return { boot:createStartupTask(async()=>{try{return await boot()}catch(error){session.storageProtocolBlocked=true;throw error}}) };

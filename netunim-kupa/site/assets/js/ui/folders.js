@@ -82,26 +82,32 @@ async function chooseDataFile(){
   }catch(error){if(selection===pickerGeneration&&error.name!=='AbortError')alert('לא ניתן לפתוח את הקובץ: '+error.message)}
 }
 
-async function connectBackupTarget(handle,{automatic=false}={}){
+async function prepareBackupTarget(handle,assertCurrent){
+  assertCurrent();
+  const directory=await handle.getDirectoryHandle('backups',{create:true});assertCurrent();
+  const backups=await listBackups(directory,{strict:true});assertCurrent();
+  return {handle,directory,backups};
+}
+
+function installBackupTarget(candidate){
+  files.backupRootDirHandle=candidate.handle;files.backupsDirHandle=candidate.directory;
+  files.backupLastError='';
+  session.serverInfo.backups=candidate.backups;
+}
+
+async function connectBackupTarget(handle){
   if(!primary())return false;
   return transition.run(async assertCurrent=>{
-    if(!automatic&&!await permissionFor(handle))throw new Error('לא ניתנה הרשאת כתיבה');
-    assertCurrent();
-    const directory=await handle.getDirectoryHandle('backups',{create:true});assertCurrent();
-    const backups=await listBackups(directory,{strict:true});assertCurrent();
-    return {handle,directory,backups};
+    if(!await permissionFor(handle))throw new Error('לא ניתנה הרשאת כתיבה');
+    return prepareBackupTarget(handle,assertCurrent);
   },async(candidate,assertCurrent)=>{
     assertCurrent();
-    files.backupRootDirHandle=candidate.handle;files.backupsDirHandle=candidate.directory;
-    files.backupLastError='';
-    session.serverInfo.backups=candidate.backups;
-    if(!automatic){
-      try{if(await rememberBackupHandle(candidate.handle)===false)throw new Error('backup_handle_not_remembered')}
-      catch(error){console.error('remember backup target',error);toast('תיקיית הגיבוי חוברה, אך לא נשמרה לפתיחה הבאה.')}
-      assertCurrent();
-      try{await backupSnapshotToComputer()}
-      catch(error){console.error('connected backup target snapshot',error);toast('התיקייה חוברה, אך יצירת הגיבוי נכשלה. יש לנסות שוב.')}
-    }
+    installBackupTarget(candidate);
+    try{if(await rememberBackupHandle(candidate.handle)===false)throw new Error('backup_handle_not_remembered')}
+    catch(error){console.error('remember backup target',error);toast('תיקיית הגיבוי חוברה, אך לא נשמרה לפתיחה הבאה.')}
+    assertCurrent();
+    try{await backupSnapshotToComputer()}
+    catch(error){console.error('connected backup target snapshot',error);toast('התיקייה חוברה, אך יצירת הגיבוי נכשלה. יש לנסות שוב.')}
     return true;
   });
 }
@@ -120,13 +126,21 @@ async function chooseBackupFolder(){
 }
 
 async function restoreRememberedBackupTarget(){
+  const selection=pickerGeneration;
+  const canInstall=()=>tab.primaryTab&&selection===pickerGeneration&&!transition.isPending()&&!files.backupsDirHandle;
+  if(!canInstall())return false;
   try{
-    const assertCurrent=captureSourceScope();
+    const assertCurrent=captureSourceScope({requireUnchangedData:false});
     const handle=await getRememberedBackupHandle()||await getRememberedHandle();
     assertCurrent();
-    if(!handle||await handle.queryPermission?.({mode:'readwrite'})!=='granted')return false;
-    assertCurrent();
-    return await connectBackupTarget(handle,{automatic:true});
+    if(!handle||await handle.queryPermission?.({mode:'readwrite'})!=='granted'||!canInstall())return false;
+    // Attach an empty backup slot only after the native I/O has finished.
+    // Preparation does not take the business-source transition lock.
+    const candidate=await prepareBackupTarget(handle,assertCurrent);
+    if(!canInstall())return false;
+    installBackupTarget(candidate);
+    if(session.connectionMode==='supabase'&&session.backendReady)await backupSnapshotToComputer();
+    return true;
   }catch(error){console.error('restore backup target',error);return false}
 }
 

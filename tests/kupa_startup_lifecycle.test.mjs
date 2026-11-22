@@ -28,15 +28,21 @@ function fixture(t,overrides={}){
   return {events,session,tab,access,ports,lifecycle};
 }
 
-test('Kupa recovered Main and Shared display before optional folder preparation completes',async t=>{
-  const entered=deferred(),gate=deferred(),f=fixture(t,{restoreRememberedBackupTarget:async()=>{entered.resolve();await gate.promise}});
-  const boot=f.lifecycle.boot();await entered.promise;
-  try{assert.equal(f.ports.storageRecovery.isReady(),true);assert.deepEqual(f.events,['lock','owner','main','shared','render']);assert.equal(f.session.startupCloudHydrating,true)}
-  finally{gate.resolve();await boot}
-});
+for(const pending of ['restoreRememberedBackupTarget','requestPersistentBrowserStorage']){
+  test(`Kupa completes cloud startup while optional ${pending} is still pending`,async t=>{
+    const entered=deferred(),gate=deferred(),f=fixture(t,{[pending]:async()=>{entered.resolve();await gate.promise}});
+    const boot=f.lifecycle.boot();await entered.promise;
+    try{
+      assert.equal(f.ports.storageRecovery.isReady(),true);
+      assert.deepEqual(f.events.slice(),['lock','owner','main','shared','render','capabilities','restore','cloud']);
+      assert.equal(f.session.startupCloudHydrating,false);
+      await boot;
+    }finally{gate.resolve();await boot;await f.ports.localServices.start()}
+  });
+}
 
-for(const lost of ['leadership','auth','network','protocol'])test(`Kupa loss of ${lost} during local preparation prevents later restore and cloud reads`,async t=>{
-  let f;f=fixture(t,{restoreRememberedBackupTarget:async()=>{
+for(const lost of ['leadership','auth','network','protocol'])test(`Kupa loss of ${lost} after local recovery prevents later restore and cloud reads`,async t=>{
+  let f;f=fixture(t,{render:()=>{
     if(lost==='leadership')f.tab.primaryTab=false;
     else if(lost==='auth')f.access.authenticated=false;
     else if(lost==='network')navigator.onLine=false;
