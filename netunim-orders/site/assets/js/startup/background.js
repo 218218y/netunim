@@ -1,4 +1,5 @@
 import {startupMark} from './marks.js';
+import {observeOptionalTask} from '../shared/runtime-task-owner.js';
 
 // Optional backup/alerts have separate failure boundaries. Job startup failures
 // are retained; a catch must never replay effects in a partially started runtime.
@@ -13,7 +14,7 @@ export function createOrdersBackgroundStartup({polling,finance,alerts,localServi
     if(!access.allowed())return false;
     if(ordersOnline)await polling.start();
     if(!access.allowed())return false;
-    try{await localServices.backupAfterHydration()}catch(error){console.error('startup automatic backup',error)}
+    observeOptionalTask(localServices.backupAfterHydration);
     if(!access.allowed())return false;
     try{await alerts.prepare()}catch(error){console.error('startup bank alerts preparation',error)}
     if(!access.allowed())return false;

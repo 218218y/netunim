@@ -425,7 +425,7 @@ const cloudStartup=createOrdersCloudStartup({
     canHydrate:()=>startupWritable()&&navigator.onLine&&!!cloudAuth.loadSession()},
 });
 const localServices=createOrdersLocalServices({
-  files,storage:storageIndexedDb,
+  files,storage:storageIndexedDb,canBackup:startupWritable,
   folder:{refreshPermission:interactive=>storageFiles.refreshDirPermission(interactive),syncStatus:()=>uiFolderStatus.syncFolderAccessButton(),backupAvailable:()=>uiFolderStatus.folderBackupAvailable()},
   backup:{capture:()=>stateSelectors.prepareState(),save:state=>storageBackup.maybeCreateAutomaticFolderBackup(state)},
 });

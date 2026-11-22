@@ -140,6 +140,38 @@ test('background phases join callers and start each owner once in the required o
   assert.deepEqual(f.calls,['poll','backup','prepare-alerts','alerts','finance']);
 });
 
+test('a pending native backup does not block startup alerts or Finance automation',async()=>{
+  const gate=deferred(),f=background();
+  f.ports.localServices.backupAfterHydration=async()=>{f.calls.push('backup');await gate.promise};
+  const started=f.runtime.start({ordersOnline:true});
+  try{
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.deepEqual(f.calls.slice(),['poll','backup','prepare-alerts','alerts','finance']);
+    assert.equal(await started,true);
+  }finally{gate.resolve();await started}
+});
+
+test('folder discovery and the startup backup proceed while browser persistence is pending',async()=>{
+  const gate=deferred(),f=local();f.ports.storage.requestPersistentBrowserStorage=()=>gate.promise;
+  const started=f.runtime.start(),backup=f.runtime.backupAfterHydration();
+  try{
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.deepEqual(f.calls.slice(),['folder','permission','capture',['backup',{value:'local'}]]);
+    await backup;
+  }finally{gate.resolve();await started;await backup}
+});
+
+test('late folder discovery keeps a manual selection and respects lost write access',async()=>{
+  const gate=deferred();let writable=true;
+  const f=local({canBackup:()=>writable});f.ports.storage.loadDirHandle=()=>gate.promise;
+  const started=f.runtime.start(),backup=f.runtime.backupAfterHydration();
+  await Promise.resolve();
+  const selected={id:'manual'};f.files.dirHandle=selected;writable=false;
+  gate.resolve({id:'remembered'});await started;await backup;
+  assert.equal(f.files.dirHandle,selected);
+  assert.deepEqual(f.calls,['persist']);
+});
+
 for(const phase of ['backup','prepare','show'])test(`optional ${phase} failure cannot replay effects or suppress Finance startup`,async t=>{
   t.mock.method(console,'error',noop);const f=background();let calls=0;
   const fail=()=>{calls++;throw new Error('optional_failed')};

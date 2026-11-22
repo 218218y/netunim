@@ -233,11 +233,14 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 *::-webkit-scrollbar-thumb{background:var(--scroll-thumb);border:2px solid transparent;background-clip:content-box;border-radius:999px}
 *::-webkit-scrollbar-thumb:hover{background:var(--scroll-thumb-hover);background-clip:content-box}
 button,input,select,textarea{font-family:inherit;color:inherit}
-/* Keep the right-aligned desktop navigation stable against async startup geometry.
-   Cloud text and IndexedDB folder discovery must not add/remove inline width around the nav. */
+/* The optional folder control uses the space between the action and navigation groups. */
 .folder-access-slot{display:contents}
 @media(min-width:901px){
-  .cloud-pill{inline-size:9.5rem;min-inline-size:9.5rem;text-align:center}
+  .cloud-pill,.save-pill{overflow:hidden;text-overflow:ellipsis;text-align:center}
+  .cloud-pill{flex:0 0 9.5rem;inline-size:9.5rem}
+  .save-pill{flex:0 0 8.5rem;inline-size:8.5rem}
+}
+@media(min-width:1161px){
   .folder-access-slot{display:flex;flex:0 0 5rem;inline-size:5rem}
   .folder-access-slot .top-settings-btn{inline-size:100%}
 }

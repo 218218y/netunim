@@ -1,4 +1,4 @@
-import {amountRangeMatch,amountRangeMarkup} from '../../shared/search.js';
+import {createAmountRangeMatcher,amountRangeMarkup} from '../../shared/search.js';
 import {financeSyncProgressMarkup,updateFinanceSyncProgress} from '../../shared/sync-status.js';
 import {synchronizedCardKey,rowCardKey,filterMatch,selectKupaCreditDetail} from './detail-read-model.js';
 import {createResultPages} from '../../shared/result-pages.js';
@@ -141,7 +141,8 @@ function creditDetailState(){
     creditProviderFilter:ui.creditProviderFilter,creditCardFilter:ui.creditCardFilter,
     creditView:ui.creditView,creditDateFrom:ui.creditDateFrom,creditDateTo:ui.creditDateTo,
   };
-  const detail=selectKupaCreditDetail({prepared:detailModel(),query,reference:todayISO(),matches:row=>matches(row.search)&&amountRangeMatch(row.includedInIlsTotal?row.amount:null,ui.creditAmountFrom,ui.creditAmountTo)});
+  const matchesAmount=createAmountRangeMatcher(ui.creditAmountFrom,ui.creditAmountTo);
+  const detail=selectKupaCreditDetail({prepared:detailModel(),query,reference:todayISO(),matches:row=>matches(row.search)&&matchesAmount(row.includedInIlsTotal?row.amount:null)});
   if(detail.mode==='month')ui.creditDetailFocus=detail.detailFocus;
   return detail;
 }

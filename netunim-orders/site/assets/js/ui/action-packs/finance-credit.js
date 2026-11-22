@@ -1,4 +1,4 @@
-import {refreshAmountRange} from '../../shared/search.js';
+import {createAmountRangeSearch} from '../../shared/search.js';
 import { creditDateRangeFromControl } from '../../shared/credit-detail-controls.js';
 import { createLazyDeferredSearchUpdater } from '../../shared/search-scheduler.js';
 import { markMutationActions } from '../../shared/action-registry.js';
@@ -27,6 +27,7 @@ export function createFinanceCreditActions({ domainsFinanceView, ui }) {
   const setOrdersCreditView = (...args) => domainsFinanceView.setCreditView(...args);
   const toggleOrdersCreditSyncOptions = (...args) => domainsFinanceView.toggleCreditSyncOptions(...args);
   const creditSearch = createLazyDeferredSearchUpdater(value => { ui.creditSearchValue = value; }, setOrdersCreditSearch);
+  const amountRange = createAmountRangeSearch(ui, 'credit', creditSearch);
   const actions = {
     'orders-credit-finance-history':()=>domainsFinanceView.openFinanceHistory(),
     'refresh-orders-credit': (element, event) => { return refreshOrdersCredit(false, 'forecast'); },
@@ -56,8 +57,8 @@ export function createFinanceCreditActions({ domainsFinanceView, ui }) {
     'orders-credit-detail-month-day': (element, event) => { return setOrdersCreditDetailMonth(element.dataset.clickArg0, element.dataset.clickArg1); },
     'orders-credit-detail-focus': (element, event) => { return setOrdersCreditDetailFocus(element.dataset.clickArg0, element.dataset.clickArg1); },
     'clear-orders-credit-detail-focus': (element, event) => { return clearOrdersCreditDetailFocus(element.dataset.clickArg0); },
-    'orders-credit-amount-from': element=>{ui.creditAmountFrom=element.value;return refreshAmountRange(element,()=>setOrdersCreditSearch(ui.creditSearchValue))},
-    'orders-credit-amount-to': element=>{ui.creditAmountTo=element.value;return refreshAmountRange(element,()=>setOrdersCreditSearch(ui.creditSearchValue))},
+    'orders-credit-amount-from': amountRange.from,
+    'orders-credit-amount-to': amountRange.to,
     'orders-credit-search': (element, event) => { return creditSearch(element.value, element); },
     'toggle-orders-credit-sync-options': (element, event) => { return toggleOrdersCreditSyncOptions(); },
     'orders-credit-included': (element, event) => { return setOrdersCreditCardMapping(element.dataset.changeArg0, element.dataset.changeArg1, 'included', element.checked); },

@@ -1,4 +1,4 @@
-import {refreshAmountRange} from '../../shared/search.js';
+import {createAmountRangeSearch} from '../../shared/search.js';
 import { createLazyDeferredSearchUpdater } from '../../shared/search-scheduler.js';
 import { creditDateRangeFromControl } from '../../shared/credit-detail-controls.js';
 // Credit owns these delegated UI actions and its local event ports.
@@ -20,12 +20,13 @@ export function createCreditActions({ creditCommands, domainsCreditEditor, domai
   const setCreditSearch = (...args) => domainsCreditView.setCreditSearch(...args);
   const toggleCreditSyncOptions = (...args) => domainsCreditView.toggleCreditSyncOptions(...args);
   const creditSearch = search || createLazyDeferredSearchUpdater(value => { ui.creditSearchValue = value; }, setCreditSearch);
+  const amountRange = createAmountRangeSearch(ui, 'credit', creditSearch);
   return {
     'credit-finance-history':()=>creditCommands.openCreditHistory(),
     'expenses-hub-tab': (element, event) => { ui.expensesTab = element.dataset.clickArg0 === 'expenses' ? 'expenses' : 'credit'; return renderCredit(); },
     'credit-details-page': element => pageCreditDetails(element.dataset.clickArg0, element.dataset.clickArg1),
-    'credit-amount-from': element=>{ui.creditAmountFrom=element.value;return refreshAmountRange(element,()=>setCreditSearch(ui.creditSearchValue))},
-    'credit-amount-to': element=>{ui.creditAmountTo=element.value;return refreshAmountRange(element,()=>setCreditSearch(ui.creditSearchValue))},
+    'credit-amount-from': amountRange.from,
+    'credit-amount-to': amountRange.to,
     'credit-search': (element, event) => { return creditSearch(element.value, element); },
     'toggle-credit-sync-options': (element, event) => { return toggleCreditSyncOptions(); },
     'credit-view': (element, event) => { ui.creditView = element.value; if (ui.creditDetailFocus?.cardKey)

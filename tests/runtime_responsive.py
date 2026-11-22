@@ -153,7 +153,37 @@ def check_orders(browser: BrowserSession) -> list[dict]:
               const folder=document.getElementById('folderAccessButton');
               const alertSlot=document.getElementById('alertCenterSlot');
               const alertButton=document.getElementById('alertCenterButton');
+              const weather=document.getElementById('weatherLink');
+              const save=document.getElementById('savePill'),cloud=document.getElementById('cloudPill');
+              const settings=document.getElementById('settingsTopButton');
+              const bounds=element=>{
+                const {left,right,top,bottom}=element.getBoundingClientRect();
+                return [left,right,top,bottom];
+              };
+              const permanent=[weather,save,cloud,settings,nav];
+              const priorFolder={dirHandle:files.dirHandle,dirPermission:files.dirPermission,folderLastError:files.folderLastError};
+              const priorSave=save.textContent,priorCloud=cloud.textContent;
+              Object.assign(files,{dirHandle:{},dirPermission:'unknown',folderLastError:''});
+              uiFolderStatus.syncFolderAccessButton();
               await frame();
+              if(!folder.hidden)throw Error('Folder action is visible before permission discovery');
+              const startupBounds=permanent.map(bounds);
+              for(const dirPermission of ['granted','prompt','missing']){
+                files.dirHandle=dirPermission==='missing'?null:{};files.dirPermission=dirPermission;
+                uiFolderStatus.syncFolderAccessButton();
+                if(folder.hidden!==(dirPermission==='granted'))throw Error(`Folder action visibility is wrong for ${dirPermission}`);
+                save.textContent='מקומי: ממתין לאישור IndexedDB';
+                cloud.textContent='ענן: מאמת מול האחסון המקומי';
+                if(JSON.stringify(permanent.map(bounds))!==JSON.stringify(startupBounds)){
+                  throw Error(`Folder permission ${dirPermission} shifts permanent header controls at ${innerWidth}px`);
+                }
+                if(save.getClientRects().length&&Math.abs(bounds(weather)[0]-bounds(save)[1]-6)>1){
+                  throw Error(`Weather and local status are not evenly spaced at ${innerWidth}px`);
+                }
+                if(!folder.hidden&&bounds(folder)[0]<bounds(weather)[1])throw Error('Folder action overlaps Weather');
+              }
+              Object.assign(files,priorFolder);uiFolderStatus.syncFolderAccessButton();
+              save.textContent=priorSave;cloud.textContent=priorCloud;
               folder.hidden=false;folder.textContent='אשר תיקייה';
               const tabButtons=[...nav.querySelectorAll('button[data-view]')];
               const tabBounds=()=>tabButtons.map(button=>{
@@ -182,7 +212,6 @@ def check_orders(browser: BrowserSession) -> list[dict]:
                 sendKey('keydown','Escape');
                 if(nav.classList.contains('keytips-active'))throw Error('Escape did not close Alt shortcuts');
               }
-              const settings=document.getElementById('settingsTopButton');
               const header={
                 settingsVisible:withinViewport(settings),
                 settingsLabel:settings?.getAttribute('aria-label'),

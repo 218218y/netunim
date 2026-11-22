@@ -1,4 +1,4 @@
-import {amountRangeMatch,amountRangeMarkup} from '../../shared/search.js';
+import {createAmountRangeMatcher,amountRangeMarkup} from '../../shared/search.js';
 import {financeSyncProgressMarkup} from '../../shared/sync-status.js';
 import {creditForecastCardGroups,selectOrdersCreditDetail} from './credit-detail-read-model.js';
 import {creditViewAllowsMonth} from '../../shared/credit-detail-policy.js';
@@ -88,13 +88,14 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
         );
     }
     function bankTransactionsMarkup(feed, role, state) {
+        const matchesAmount = createAmountRangeMatcher(ui.bankAmountFrom, ui.bankAmountTo);
         const mode = bankDataMode(ui),
             directSnapshot = feed?.directSnapshot || null,
             archiveRows = feed?.transactions || [],
             directRows = attachBankArchiveMetadata(directSnapshot?.transactions || [], archiveRows),
             historyRows = bankSmartRows(archiveRows, directRows),
             allRows = mode === 'direct' ? directRows : historyRows,
-            periodRows = allRows.filter(row=>bankRowMatchesDateRange(row)&&amountRangeMatch(row.amount,ui.bankAmountFrom,ui.bankAmountTo)),
+            periodRows = allRows.filter(row=>bankRowMatchesDateRange(row)&&matchesAmount(row.amount)),
             query = ui.bankSearchValue || '',
             rows = query.trim() ? periodRows.filter(row => bankRowMatchesSearch(row, query)) : periodRows;
         const scoped = bankDateFilterActive() || query.trim(), countLabel = scoped ? `${rows.length} מתוך ${allRows.length} תנועות` : `${rows.length} תנועות`;
@@ -247,10 +248,11 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             creditView:ui.creditView,creditDateFrom:ui.creditDateFrom,creditDateTo:ui.creditDateTo,
         };
         const search=String(ui.creditSearchValue||'');
+        const matchesAmount = createAmountRangeMatcher(ui.creditAmountFrom, ui.creditAmountTo);
         const detail=selectOrdersCreditDetail({
             allMonths:creditDetailMonths(s.kupa,creditDetailFilters()),
             upcomingRows:creditUpcomingDetailRows(s.kupa,creditDetailFilters()),
-            query,reference:checkTodayISO(),matches:row=>(!search.trim()||creditRowMatchesSearch(row,search))&&amountRangeMatch(row.includedInIlsTotal?row.amount:null,ui.creditAmountFrom,ui.creditAmountTo),
+            query,reference:checkTodayISO(),matches:row=>(!search.trim()||creditRowMatchesSearch(row,search))&&matchesAmount(row.includedInIlsTotal?row.amount:null),
         });
         ui.creditDetailFocus=detail.focus;
         const upcoming=detail.mode==='upcoming',chargeDay=detail.chargeDay,

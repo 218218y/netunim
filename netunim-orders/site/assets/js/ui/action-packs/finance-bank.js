@@ -1,4 +1,4 @@
-import {refreshAmountRange} from '../../shared/search.js';
+import {createAmountRangeSearch} from '../../shared/search.js';
 import { createLazyDeferredSearchUpdater } from '../../shared/search-scheduler.js';
 import { markMutationActions } from '../../shared/action-registry.js';
 export function createFinanceBankActions({ domainsFinanceController, domainsFinanceView, importFinanceConnections, ui, uiStatus }) {
@@ -22,6 +22,7 @@ export function createFinanceBankActions({ domainsFinanceController, domainsFina
   const setOrdersBankTransactionHandled = (...args) => domainsFinanceView.setBankTransactionHandled(...args);
   const toggleOrdersBankSyncOptions = (...args) => domainsFinanceView.toggleBankSyncOptions(...args);
   const bankSearch = createLazyDeferredSearchUpdater(value => { ui.bankSearchValue = value; }, setOrdersBankSearch);
+  const amountRange = createAmountRangeSearch(ui, 'bank', bankSearch);
   const actions = {
     'orders-cashflow-breakdown': element => openOrdersCashflowBreakdown(element.dataset.clickArg0),
     'orders-cashflow-breakdown-date': element => { return openOrdersCashflowBreakdown(element.dataset.changeArg0, element.value, element); },
@@ -32,8 +33,8 @@ export function createFinanceBankActions({ domainsFinanceController, domainsFina
     'orders-bank-create-document': (element, event) => { event?.preventDefault(); event?.stopPropagation(); return createOrdersBankDocument(Number(element.dataset.clickArg0), Number(element.dataset.clickArg1)); },
     'view-orders-bank-cheque-image': (element, event) => { event?.preventDefault(); event?.stopPropagation(); return openOrdersBankChequeImage(element.dataset.clickArg0, element.dataset.clickArg1, element.dataset.clickArg2); },
     'ack-orders-bank-missing': (element, event) => { event?.preventDefault(); event?.stopPropagation(); return acknowledgeOrdersBankMissing(Number(element.dataset.clickArg0)); },
-    'orders-bank-amount-from': element=>{ui.bankAmountFrom=element.value;return refreshAmountRange(element,()=>setOrdersBankSearch(ui.bankSearchValue))},
-    'orders-bank-amount-to': element=>{ui.bankAmountTo=element.value;return refreshAmountRange(element,()=>setOrdersBankSearch(ui.bankSearchValue))},
+    'orders-bank-amount-from': amountRange.from,
+    'orders-bank-amount-to': amountRange.to,
     'orders-bank-search': (element, event) => { return bankSearch(element.value, element); },
     'orders-bank-date-mode': (element, event) => { return setOrdersBankDateMode(element.dataset.clickArg0 || element.value); },
     'orders-bank-date-apply': (element, event) => { const host = element.closest('.bank-date-filter'); return setOrdersBankDateMode('range', host?.querySelector('[data-bank-date-from]')?.value || '', host?.querySelector('[data-bank-date-to]')?.value || ''); },

@@ -52,7 +52,8 @@ export function withOrdersStartup(controls){
       canHydrate:()=>allowed()&&!!globalThis.navigator?.onLine&&!!p.loadSession?.()},
   });
   const localServices=createOrdersLocalServices({
-    files:p.files||{},storage:{requestPersistentBrowserStorage:p.requestPersistentBrowserStorage||(async()=>{}),loadDirHandle:p.loadDirHandle||(async()=>null)},
+    files:p.files||{},canBackup:allowed,
+    storage:{requestPersistentBrowserStorage:p.requestPersistentBrowserStorage||(async()=>{}),loadDirHandle:p.loadDirHandle||(async()=>null)},
     folder:{refreshPermission:p.refreshDirPermission||(async()=>false),syncStatus:p.syncFolderAccessButton||noop,backupAvailable:p.folderBackupAvailable||(()=>false)},
     backup:{capture:p.prepareState||(()=>({})),save:p.maybeCreateAutomaticFolderBackup||(async()=>false)},
   });

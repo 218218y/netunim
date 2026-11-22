@@ -1,4 +1,4 @@
-import {amountRangeMatch,amountRangeMarkup} from '../../shared/search.js';
+import {createAmountRangeMatcher,amountRangeMarkup} from '../../shared/search.js';
 import {evidenceDate} from '../../shared/observation-time.js';
 import {withFinanceDerivations} from '../../shared/finance-derivations.js';
 import {updateCashflowExplorer,cashflowExplorerMarkup,cashflowBreachMarkup} from '../../shared/cashflow-breakdown.js';
@@ -183,7 +183,8 @@ function bankChequeDetailsMarkup(row){
 }
 
 function bankTransactionsTableMarkup(feed,role){
-  const mode=bankDataMode(),directSnapshot=feed?.directSnapshot||null,historyRows=bankSmartRows(feed?.transactions||[],directSnapshot?.transactions||[]),allRows=mode==='direct'?(directSnapshot?.transactions||[]):historyRows,periodRows=allRows.filter(row=>bankRowMatchesDateRange(row)&&amountRangeMatch(row.amount,ui.bankAmountFrom,ui.bankAmountTo)),query=ui.bankSearchValue||'',rows=query.trim()?periodRows.filter(row=>bankRowMatchesSearch(row,query)):periodRows,balance=readBankMoney(feed?.balance);
+  const matchesAmount=createAmountRangeMatcher(ui.bankAmountFrom,ui.bankAmountTo);
+  const mode=bankDataMode(),directSnapshot=feed?.directSnapshot||null,historyRows=bankSmartRows(feed?.transactions||[],directSnapshot?.transactions||[]),allRows=mode==='direct'?(directSnapshot?.transactions||[]):historyRows,periodRows=allRows.filter(row=>bankRowMatchesDateRange(row)&&matchesAmount(row.amount)),query=ui.bankSearchValue||'',rows=query.trim()?periodRows.filter(row=>bankRowMatchesSearch(row,query)):periodRows,balance=readBankMoney(feed?.balance);
   const scoped=bankDateFilterActive()||query.trim(),countLabel=scoped?`${rows.length} מתוך ${allRows.length} תנועות`:`${rows.length} תנועות`;
   const available=readBankMoney(feed?.availableBalance),limit=readBankMoney(feed?.creditLimit),difference=Number.isFinite(balance)&&Number.isFinite(available)?available-balance:null;
   const roleName=role==='home'?'ביתי':'עסקי',cashflow=kupaAccountCashflowData(model.state,roleName),facts=[];

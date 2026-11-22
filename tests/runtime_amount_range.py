@@ -19,7 +19,10 @@ for app in ('kupa', 'orders'):
                     creditSync:{version:4,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'C',txns:rows}]}],cardMappings:{'P:C':{included:true}}}};
                   ui.bankDateMode='all';ui.creditDetailMode='all';ui.creditView='all';
                   __SETUP__
-                  const change=(side,value)=>{const input=document.querySelector('[data-change="__PREFIX____KIND__-amount-'+side+'"]');check(input,'missing range input');input.value=value;input.dispatchEvent(new Event('change',{bubbles:true}))};
+                  const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+                  const checkEventually=async(test,message)=>{for(let i=0;i<50;i++){if(test())return;await wait(20)}check(false,message)};
+                  const rangeInput=side=>document.querySelector('[data-change="__PREFIX____KIND__-amount-'+side+'"]');
+                  const change=(side,value)=>{const input=rangeInput(side);check(input,'missing range input');input.value=value;input.dispatchEvent(new Event('change',{bubbles:true}))};
                   const host=document.querySelector('.movement-search'),button=host.querySelector('[popovertarget]'),panel=host.querySelector('[popover]');
                   check(!panel.matches(':popover-open')&&panel.getBoundingClientRect().height===0,'range fields are always visible');
                   const bounds=host.getBoundingClientRect(),toggle=button.getBoundingClientRect();
@@ -31,15 +34,29 @@ for app in ('kupa', 'orders'):
                     input.value='150';input.stepUp();check(input.value==='151','amount arrow must increase by one shekel');
                     input.stepDown();check(input.value==='150','amount arrow must decrease by one shekel');input.value='';
                   }
-                  change('from','150.25');await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+                  const resultSelector='__SELECTOR__ tbody',initialResults=document.querySelector(resultSelector);
+                  let priorResults=initialResults,redraws=0;
+                  const observer=new MutationObserver(()=>{const current=document.querySelector(resultSelector);if(current!==priorResults){redraws++;priorResults=current}});
+                  observer.observe(document.body,{childList:true,subtree:true});
+                  const stepper=rangeInput('from');stepper.focus();stepper.value='145';
+                  for(let i=0;i<5;i++){
+                    stepper.stepUp();
+                    stepper.dispatchEvent(new Event('input',{bubbles:true}));
+                    stepper.dispatchEvent(new Event('change',{bubbles:true}));
+                  }
+                  check(document.querySelector(resultSelector)===initialResults,'stepping redraws the results synchronously');
+                  await checkEventually(()=>document.querySelector(resultSelector)!==initialResults,'stepping did not refresh results');
+                  observer.disconnect();check(redraws===1,'range edits did not coalesce into a single redraw');
+                  check(document.activeElement===stepper&&panel.matches(':popover-open')&&stepper.value==='150','stepping disturbed input focus or value');
+                  change('from','150.25');
                   check(document.querySelector('[popover]').matches(':popover-open'),'editing first bound closed the panel');
                   change('to','250.75');
-                  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+                  await checkEventually(()=>!document.querySelector(resultSelector).textContent.includes('movement-300'),'upper bound did not refresh results');
                   check(document.querySelector('[data-change="__PREFIX____KIND__-amount-from"]').value==='150.25'&&document.querySelector('[data-change="__PREFIX____KIND__-amount-to"]').value==='250.75','typed cents must be retained');
                   const text=document.querySelector('__SELECTOR__ tbody')?.textContent||'';
                   check(text.includes('movement-200')&&!text.includes('movement-100')&&!text.includes('movement-300'),'incorrect filtered table: '+text);
-                  change('from','');await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));change('to','');
-                  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+                  change('from','');change('to','');
+                  await checkEventually(()=>document.querySelector(resultSelector).textContent.includes('movement-100'),'clearing did not refresh results');
                   check(document.querySelector('__SELECTOR__ tbody').textContent.includes('movement-100'),'clear did not restore movements');
                   check(document.documentElement.scrollWidth<=innerWidth,'horizontal page overflow');
                   return true;

@@ -6,7 +6,7 @@ const root=new URL('../netunim-orders/site/',import.meta.url);
 const html=readFileSync(new URL('index.html',root),'utf8');
 const css=readFileSync(new URL('assets/weather-link.css',root),'utf8');
 
-test('the weather link is the first action to the right of the folder control in RTL',()=>{
+test('the optional folder control sits outside the permanent RTL header group',()=>{
   assert.match(html,/<html lang="he" dir="rtl">/);
   const nav=html.split('<div class="topbar-nav-cluster">')[1]?.split('<div class="topbar-actions">')[0];
   assert.ok(nav);
@@ -15,7 +15,8 @@ test('the weather link is the first action to the right of the folder control in
   assert.ok(actions);
   const weather=actions.match(/<a\b[^>]*id="weatherLink"[^>]*>[\s\S]*?<\/a>/)?.[0];
   assert.ok(weather);
-  assert.ok(actions.indexOf('id="weatherLink"')<actions.indexOf('class="folder-access-slot"'));
+  assert.ok(actions.indexOf('class="folder-access-slot"')<actions.indexOf('id="weatherLink"'));
+  assert.ok(actions.indexOf('id="weatherLink"')<actions.indexOf('id="savePill"'));
   assert.match(weather,/href="https:\/\/ims\.gov\.il\/he"/);
   assert.match(weather,/target="_blank"/);
   assert.match(weather,/rel="noopener noreferrer"/);

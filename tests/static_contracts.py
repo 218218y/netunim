@@ -413,19 +413,18 @@ ok(combined.lower().count("deploy_site_core.bat") == 2,
 ok("--skip-verify" not in combined.lower() and "--skip-verify" not in deploy_core.lower(),
    "deployment: no public skip-verification switch was introduced")
 
-# Header geometry: the folder permission control has a deliberately reserved desktop slot
-# so async IndexedDB permission discovery cannot move the centered navigation. In RTL the
-# slot must live immediately to the visual right of the local-save pill, never between the
-# two persistent action buttons where its hidden state would look like a missing button.
+# At wide desktop widths the folder slot uses the separation between the
+# navigation and the permanent actions, which must remain adjacent.
 orders_html = (O / "site/index.html").read_text(encoding="utf-8")
 folder_slot_pos = orders_html.find('class="folder-access-slot"')
+weather_pos = orders_html.find('id="weatherLink"')
 save_pill_pos = orders_html.find('id="savePill"')
 cloud_pill_pos = orders_html.find('id="cloudPill"')
 save_now_pos = orders_html.find('id="saveNowButton"')
 settings_pos = orders_html.find('id="settingsTopButton"')
-ok(-1 not in (folder_slot_pos, save_pill_pos, cloud_pill_pos, settings_pos)
+ok(-1 not in (folder_slot_pos, weather_pos, save_pill_pos, cloud_pill_pos, settings_pos)
    and save_now_pos == -1
-   and folder_slot_pos < save_pill_pos < cloud_pill_pos < settings_pos,
+   and folder_slot_pos < weather_pos < save_pill_pos < cloud_pill_pos < settings_pos,
    "orders: autosave status leads directly to settings; redundant manual save action is removed")
 runtime_events = (O / "site/assets/js/runtime-events.js").read_text(encoding="utf-8")
 orders_persistence = (O / "site/assets/js/storage/persistence.js").read_text(encoding="utf-8")

@@ -50,38 +50,45 @@ export function dateInRange(value,from='',to=''){
 
 // Range comparisons use cents and absolute movement size: a 200 ILS debit and
 // a 200 ILS credit both match 150–250. Blank bounds are independently open.
-export function amountRangeMatch(value,from='',to=''){
+export function createAmountRangeMatcher(from='',to=''){
   const bound=text=>String(text??'').trim()===''?null:Number(String(text).replaceAll(',',''));
   const low=bound(from),high=bound(to);
-  if(low===null&&high===null)return true;
+  if(low===null&&high===null)return ()=>true;
   if(low!==null&&(!Number.isFinite(low)||low<0)||high!==null&&(!Number.isFinite(high)||high<0)||
-    low!==null&&high!==null&&low>high||value===null||value===undefined||value==='')return false;
-  const amount=Number(value);if(!Number.isFinite(amount))return false;
-  const cents=Math.round(Math.abs(amount)*100);
-  return (low===null||cents>=Math.round(low*100))&&(high===null||cents<=Math.round(high*100));
+    low!==null&&high!==null&&low>high)return ()=>false;
+  const minimum=low===null?0:Math.round(low*100),maximum=high===null?Infinity:Math.round(high*100);
+  return value=>{
+    if(value===null||value===undefined||value==='')return false;
+    const amount=Number(value);if(!Number.isFinite(amount))return false;
+    const cents=Math.round(Math.abs(amount)*100);
+    return cents>=minimum&&cents<=maximum;
+  };
 }
 
 export function amountRangeMarkup({from='',to='',action='',fromAction=action+'-from',toAction=action+'-to',searchMarkup='',className='',escapeHtml}){
-  const id='advanced-'+fromAction,anchor='--'+id,active=String(from||to).trim()!=='';
-  const input=(side,value,label)=>`<label>${label}<input type="number" min="0" step="1" inputmode="decimal" value="${escapeHtml(String(value??''))}" aria-label="סכום ${label} בשקלים" data-change="${escapeHtml(side==='from'?fromAction:toAction)}"></label>`;
+  const id='advanced-'+fromAction,anchor='--'+id,active=amountRangeActive(from,to);
+  const input=(actionName,value,label)=>`<label>${label}<input type="number" min="0" step="1" inputmode="decimal" value="${escapeHtml(String(value??''))}" aria-label="סכום ${label} בשקלים" data-input="${escapeHtml(actionName)}" data-change="${escapeHtml(actionName)}"></label>`;
   const toggle=`<button type="button" class="movement-advanced-toggle ${active?'active':''}" popovertarget="${escapeHtml(id)}" style="anchor-name:${escapeHtml(anchor)}" aria-label="חיפוש מתקדם לפי סכום" title="חיפוש מתקדם לפי סכום">`+
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4"/></svg></button>';
   const panel=`<div id="${escapeHtml(id)}" popover class="movement-advanced-panel" style="position-anchor:${escapeHtml(anchor)}"><strong>חיפוש מתקדם</strong>`+
-    `<div class="movement-amount-range" role="group" aria-label="טווח סכום בשקלים ללא סימן">${input('from',from,'מ־')}${input('to',to,'עד')}</div>`+
+    `<div class="movement-amount-range" role="group" aria-label="טווח סכום בשקלים ללא סימן">${input(fromAction,from,'מ־')}${input(toAction,to,'עד')}</div>`+
     '<small>סכומים בשקלים, ללא סימן. שדה ריק אינו מגביל.</small></div>';
   return `<div class="movement-search ${escapeHtml(className)}">${searchMarkup}${toggle}${panel}</div>`;
 }
 
-// Keep the native popover and keyboard focus across a domain table redraw.
-export async function refreshAmountRange(element,render){
-  const panel=element.closest('[popover]'),id=panel?.id,action=element.dataset.change;
-  const opened=panel?.matches(':popover-open');
-  await render();
-  const current=id?element.ownerDocument.getElementById(id):null;
-  if(opened&&current&&!current.matches(':popover-open'))current.showPopover();
-  if(current){
-    const inputs=[...current.querySelectorAll('input')];
-    current.closest('.movement-search')?.querySelector('.movement-advanced-toggle')?.classList.toggle('active',inputs.some(input=>input.value!==''));
-    if(!element.isConnected)inputs.find(input=>input.dataset.change===action)?.focus();
+function amountRangeActive(from,to){return !!(String(from??'').trim()||String(to??'').trim())}
+
+// Range controls and text search share a render schedule per table. Existing
+// result-only renderers leave the native popover and its focused input in place.
+export function createAmountRangeSearch(ui,kind,scheduleSearch){
+  const fromKey=`${kind}AmountFrom`,toKey=`${kind}AmountTo`,queryKey=`${kind}SearchValue`;
+  function change(key,element){
+    // Native number steppers can emit both input and change for the same value.
+    if(element.validity?.badInput||element.value===String(ui[key]??''))return;
+    ui[key]=element.value;
+    const toggle=element.closest('.movement-search')?.querySelector('.movement-advanced-toggle');
+    toggle?.classList.toggle('active',amountRangeActive(ui[fromKey],ui[toKey]));
+    scheduleSearch(ui[queryKey],element);
   }
+  return {from:element=>change(fromKey,element),to:element=>change(toKey,element)};
 }

@@ -12,7 +12,7 @@ export function createUiStatus({session, checksSession, tab, storageRecovery}){
 if(typeof storageRecovery?.isReady!=='function')throw new TypeError('ui_storage_recovery_required');
 function toast(msg){const el=$('#toast');el.textContent=msg;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),2600)}
 
-function setSave(text,cls='',title=''){const e=$('#savePill');if(e){const failed=hasFailedLocalMutation(session);e.textContent=failed?'שינוי לא נשמר — אין לסגור את החלון; ייצא JSON לשמירת הטיוטה':text;e.className='save-pill '+(failed?'error':cls);e.title=title||''}}
+function setSave(text,cls='',title=''){const e=$('#savePill');if(e){const failed=hasFailedLocalMutation(session);e.textContent=failed?'שינוי לא נשמר — אין לסגור את החלון; ייצא JSON לשמירת הטיוטה':text;e.className='save-pill '+(failed?'error':cls);e.title=[e.textContent,title].filter(Boolean).join('\n')}}
 
 function latestSyncedAt(){return latestCloudUpdatedAt(session.cloudUpdatedAt,checksSession.checksCloudUpdatedAt)}
 function syncedCloudText(text='ענן: מסונכרן'){const at=latestSyncedAt();return at?`${text} ${formatCloudSyncTime(at)}`:text}
