@@ -5,9 +5,17 @@ import {createDomainsCustomersDocuments} from './documents.js';
 import {createDomainsCustomersDocumentsBrowser} from './documents-browser.js';
 import {createMorningMetadataPersistence} from './morning-metadata-persistence.js';
 
-export function createDomainsCustomers({morningOperationScope,morningRequest,contactsRequest,documentMedia,customerRevision,model,customerUi,selectors,uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,refreshForMorningRecovery,subscribeAccountScope,getBusinessBankTransactions,ensureBusinessBankTransactions,onBankDocumentVerified}){
+export function createDomainsCustomers({
+  morningOperationScope,morningRequest,contactsRequest,documentMedia,customerRevision,model,customerUi,selectors,
+  uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,reminderPicker,refreshAlertCenter=()=>{},
+  refreshForMorningRecovery,subscribeAccountScope,getBusinessBankTransactions,ensureBusinessBankTransactions,onBankDocumentVerified,
+}){
   let view,editor,disposed=false;
-  const scheduleSave=(...args)=>storagePersistence.scheduleSave(...args);
+  function scheduleSave(message,options){
+    const saved=storagePersistence.scheduleSave(message,options);
+    if(options?.domains?.includes('customerDebts'))refreshAlertCenter();
+    return saved;
+  }
   const metadataPersistence=createMorningMetadataPersistence({model,operationScope:morningOperationScope,commitSave:(...args)=>storagePersistence.commitSave(...args),canMutate:()=>storagePersistence.canMutate?.()!==false});
   const persistResolvedDebtDocumentMetadata=metadataPersistence.persist;
   if(typeof selectors?.customerStats!=='function')throw new TypeError('customers_selectors_required');
@@ -74,7 +82,8 @@ export function createDomainsCustomers({morningOperationScope,morningRequest,con
     hydrateMorningDebtDocuments:(...args)=>documentsBrowser.hydrateDebtDocumentLinks(...args),
   });
   editor=createDomainsCustomersEditor({
-    model,customerUi,
+    model,customerUi,reminderPicker,
+    rejectMutation:()=>storagePersistence.rejectSecondaryMutation(),
     morningMetadataState:metadataPersistence.state,
     isDebtRecoveryPending:(...args)=>documents.isDebtRecoveryPending(...args),
     rejectDebtRecoveryMutation:(...args)=>documents.rejectDebtRecoveryMutation(...args),
@@ -112,8 +121,11 @@ export function createDomainsCustomers({morningOperationScope,morningRequest,con
     saveDebtField:(...args)=>view.saveDebtField(...args),
     openDebtModal:(...args)=>editor.openDebtModal(...args),
     openDebtUrgency:(...args)=>editor.openDebtUrgency(...args),
+    openDebtUrgencyReminder:(...args)=>editor.openDebtUrgencyReminder(...args),
     saveDebtUrgency:(...args)=>editor.saveDebtUrgency(...args),
+    removeDebtUrgencyReminder:(...args)=>editor.removeDebtUrgencyReminder(...args),
     openDebtProgressDetails:(...args)=>editor.openDebtProgressDetails(...args),
+    removeDebtProgressEntry:(...args)=>editor.removeDebtProgressEntry(...args),
     saveDebt:(...args)=>editor.saveDebt(...args),
     deleteDebt:(...args)=>editor.deleteDebt(...args),
     openMorningDocument:(...args)=>documents.openMorningDocument(...args),

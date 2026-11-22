@@ -4,6 +4,7 @@ import {composeActionRegistry} from '../shared/action-registry.js';
 import {createCreditCardOrderView} from '../shared/credit-card-order-view.js';
 import {createNotesWorkbook} from '../shared/notes-workbook.js';
 import {createSpreadsheetWorkspace} from '../shared/spreadsheet-workspace.js';
+import {createReminderPicker} from '../netunim-orders/site/assets/js/ui/reminder-picker.js';
 import {createExternalActionPacks,createAlertsActions,createFinanceBankActions,createFinanceCreditActions,createChecksActions,createShellActions,createDashboardActions,createSuppliersActions,createCustomersActions,createMorningActions,createServiceActions,createWarehouseActions,createBackupActions,createCloudActions,createNotesActions,createCalendarActions,wrapMutationActions} from '../netunim-orders/site/assets/js/ui/actions.js';
 
 test('Orders capability packs compose with the exact startup mutation domains',()=>{
@@ -28,6 +29,7 @@ test('Orders capability packs compose with the exact startup mutation domains',(
     {name:'backup',actions:createBackupActions({ui,uiBackup:port,uiFolders:port,uiModal:port})},
     {name:'cloud',actions:createCloudActions({uiCloud:port})},
     {name:'notes',actions:createNotesActions({domainsNotesController:port})},
+    {name:'reminder-picker',actions:createReminderPicker(port).actions},
     {name:'calendar',actions:createCalendarActions({calendarPorts:port})},
   ]);
   assert.ok(Object.keys(actions).length>320);
@@ -35,6 +37,7 @@ test('Orders capability packs compose with the exact startup mutation domains',(
     'save-supplier':'orders','save-check':'checks','refresh-orders-credit':'finance',
     'calendar-save-event':'calendar','apply-json-restore':'all',
     'spreadsheet-restore':'notes','credit-card-order-save':'finance',
+    'remove-debt-progress-entry':'orders','remove-debt-urgency-reminder':'orders','dismiss-debt-urgency-reminder':'orders',
   }))assert.equal(actions[name].startupMutationDomain,domain,name);
   assert.equal(actions['choose-supplier'].startupMutationDomain,undefined);
   const wrapped=wrapMutationActions(actions,()=>false);

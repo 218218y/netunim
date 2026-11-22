@@ -23,9 +23,20 @@ export function customerDebtProgressEntries(debt,kind=null){
 /** @type {DebtCalculation['progressAction']} */
 function progressAction(row){return row?.action==='reset'?'reset':'add'}
 
+/** @type {DebtCalculation['customerDebtVisibleProgressEntries']} */
+export function customerDebtVisibleProgressEntries(debt,kind){
+  const rows=customerDebtProgressEntries(debt,kind),removed=new Set();
+  // A single-entry removal is retained in the append-only sync history. It
+  // uses the reset shape so older clients can still read and merge the debt.
+  for(const row of rows){
+    if(row?.action==='reset'&&row.removesEntry===true&&Array.isArray(row.clears))removed.add(row.clears[0]);
+  }
+  return rows.filter(row=>row?.removesEntry!==true&&!removed.has(row?.id));
+}
+
 /** @type {DebtCalculation['customerDebtActiveProgressEntries']} */
 export function customerDebtActiveProgressEntries(debt,kind){
-  const rows=customerDebtProgressEntries(debt,kind),cleared=new Set();
+  const rows=customerDebtVisibleProgressEntries(debt,kind),cleared=new Set();
   for(const row of rows){if(progressAction(row)==='reset')for(const id of Array.isArray(row?.clears)?row.clears:[])cleared.add(String(id))}
   return rows.filter(row=>progressAction(row)==='add'&&!cleared.has(String(row?.id))&&cents(row?.amount)>0);
 }
@@ -103,6 +114,7 @@ export function validateCustomerDebtProgress(debt,path='customerDebts'){
     if(!id||id!==row.id||ids.has(id))throw new Error(`${path}.debtProgress[${index}] has invalid id`);ids.add(id);
     if(!PROGRESS_KINDS.has(row.kind))throw new Error(`${path}.debtProgress[${index}] has invalid kind`);
     const action=row.action===undefined?'add':row.action;if(!PROGRESS_ACTIONS.has(action))throw new Error(`${path}.debtProgress[${index}] has invalid action`);
+    if(row.removesEntry!==undefined&&(row.removesEntry!==true||action!=='reset'||!Array.isArray(row.clears)||row.clears.length!==1||row.clears[0]===id))throw new Error(`${path}.debtProgress[${index}] has invalid removal`);
     if(action==='add'){
       const value=Number(row.amount);if(!Number.isFinite(value)||value<0.005)throw new Error(`${path}.debtProgress[${index}] has invalid amount`);
       if(row.clears!==undefined)throw new Error(`${path}.debtProgress[${index}] add cannot clear entries`);

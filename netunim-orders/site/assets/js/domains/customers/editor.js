@@ -1,12 +1,14 @@
 import {esc,uid,clone} from '../../core/values.js';
 import {money} from '../../core/money.js';
-import {customerDebtProgressData,customerDebtProgressEntries,customerDebtActiveProgressEntries,customerDebtProgressMode} from '../../shared/customer-debt-progress.js';
+import {customerDebtProgressData,customerDebtProgressEntries,customerDebtActiveProgressEntries,customerDebtVisibleProgressEntries,customerDebtProgressMode} from '../../shared/customer-debt-progress.js';
+import {normalizeNoteReminderDate} from '../../contracts/note-reminder-date.js';
+import {checkDateFmt} from '../../core/dates.js';
 import {applyVerifiedMorningDocumentToDebt} from './morning-debt.js';
 import {addVerifiedMorningDebtDocument,morningDebtDocuments} from './morning-debt-documents.js';
 import {morningDocumentLabel} from '../../core/morning-document-types.js';
 import {$} from '../../state/constants.js';
 
-function saveDebtNotes(debt,message,scheduleSave){
+function saveDebtChange(debt,message,scheduleSave){
   debt.updatedAt=new Date().toISOString();
   scheduleSave(message,{
     domains:['customerDebts'],
@@ -17,20 +19,20 @@ function saveDebtNotes(debt,message,scheduleSave){
 export function updateDebtNote(debt,note,scheduleSave){
   if(note===String(debt.note||''))return false;
   debt.note=note;
-  saveDebtNotes(debt,'הערת הלקוח עודכנה',scheduleSave);
+  saveDebtChange(debt,'הערת הלקוח עודכנה',scheduleSave);
   return true;
 }
 
-export function updateDebtUrgency(debt,note,scheduleSave){
-  if(note===(debt.urgency?.note??null))return false;
+export function updateDebtUrgency(debt,note,scheduleSave,reminderDate=normalizeNoteReminderDate(debt.urgency?.reminderDate)){
+  if(note===(debt.urgency?.note??null)&&reminderDate===(debt.urgency?.reminderDate??''))return false;
   if(note===null)delete debt.urgency;
-  else debt.urgency={note};
-  saveDebtNotes(debt,note===null?'סימון הדחיפות הוסר':'סימון הדחיפות נשמר',scheduleSave);
+  else debt.urgency=reminderDate?{note,reminderDate}:{note};
+  saveDebtChange(debt,note===null?'סימון הדחיפות הוסר':'סימון הדחיפות נשמר',scheduleSave);
   return true;
 }
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsCustomersEditor({model, customerUi, modal, toast, scheduleSave, closeModal, renderCustomers, confirmDialog,hydrateMorningDebtDocuments=()=>{},isDebtRecoveryPending=()=>false,rejectDebtRecoveryMutation=()=>false,morningMetadataState=()=> ''}){
+export function createDomainsCustomersEditor({model, customerUi, modal, toast, scheduleSave, closeModal, renderCustomers, confirmDialog,reminderPicker,rejectMutation=()=>false,hydrateMorningDebtDocuments=()=>{},isDebtRecoveryPending=()=>false,rejectDebtRecoveryMutation=()=>false,morningMetadataState=()=> ''}){
 
 const persistedMorningDebts=new WeakMap();
 
@@ -98,11 +100,29 @@ function openDebtModal(id=null){
 function openDebtUrgency(id){
   const debt=model.state.customerDebts.find(row=>row.id===id);
   if(!debt)return toast('חוב הלקוח לא נמצא');
-  const urgency=debt.urgency;
+  const urgency=debt.urgency,date=normalizeNoteReminderDate(urgency?.reminderDate);
   modal('דחוף לטיפול',
-    `<div class="field customer-debt-urgency-dialog"><b>${esc(debt.customerName)}</b><label for="debtUrgencyNote">הערת דחיפות</label><textarea id="debtUrgencyNote" rows="3">${esc(urgency?.note||'')}</textarea></div>`,
+    `<div class="field customer-debt-urgency-dialog"><b>${esc(debt.customerName)}</b>
+      <label for="debtUrgencyNote">הערת דחיפות</label><textarea id="debtUrgencyNote" rows="3">${esc(urgency?.note??'')}</textarea>
+      <div class="debt-urgency-reminder-actions">
+        <button type="button" class="btn small" data-action="open-debt-urgency-reminder" data-click-arg0="${esc(id)}"
+      aria-controls="debtUrgencyReminder" aria-expanded="false">${date?`התראה · ${esc(checkDateFmt(date))}`:'התראה'}</button>
+        ${date?`<button type="button" class="btn small" data-action="remove-debt-urgency-reminder" data-click-arg0="${esc(id)}">בטל התראה</button>`:''}</div>
+      <div id="debtUrgencyReminder" hidden></div></div>`,
     `<button type="button" class="btn primary" data-action="save-debt-urgency" data-click-arg0="${esc(id)}">${urgency?'שמור':'אישור'}</button>${urgency?`<button type="button" class="btn danger" data-action="remove-debt-urgency" data-click-arg0="${esc(id)}">הסר סימון</button>`:''}<button type="button" class="btn" data-action="close-modal">ביטול</button>`);
   $('#debtUrgencyNote')?.focus();
+}
+
+function openDebtUrgencyReminder(id,button){
+  const debt=model.state.customerDebts.find(row=>row.id===id),host=$('#debtUrgencyReminder');
+  if(!debt||!host)return false;
+  if(host.hidden){
+    host.innerHTML=reminderPicker.markup({date:debt.urgency?.reminderDate});
+    host.hidden=false;
+  }
+  button.setAttribute('aria-expanded','true');
+  reminderPicker.focus();
+  return true;
 }
 
 function saveDebtUrgency(id,urgent){
@@ -110,8 +130,30 @@ function saveDebtUrgency(id,urgent){
   if(!debt)return toast('חוב הלקוח לא נמצא');
   const note=urgent?$('#debtUrgencyNote')?.value.trim():null;
   if(note===undefined)return;
+  const editingDate=urgent&&$('#debtUrgencyReminder')?.hidden===false;
+  const date=editingDate?reminderPicker.readDate():undefined;
+  if(editingDate&&!date)return;
   closeModal();
-  if(updateDebtUrgency(debt,note,scheduleSave))renderCustomers({resultsOnly:true});
+  if(updateDebtUrgency(debt,note,scheduleSave,date))renderCustomers({resultsOnly:true});
+}
+
+async function removeDebtUrgencyReminder(id,{button,expectedDate}={}){
+  const getDebt=()=>model.state.customerDebts.find(row=>row.id===id);
+  const date=normalizeNoteReminderDate(getDebt()?.urgency?.reminderDate);
+  if(!date||(expectedDate&&date!==expectedDate)||!await confirmDialog('ביטול התראה',`לבטל את התראת הדחיפות ל־${checkDateFmt(date)}?`,{confirmText:'בטל התראה'}))return false;
+  const debt=getDebt();
+  if(normalizeNoteReminderDate(debt?.urgency?.reminderDate)!==date||rejectMutation())return false;
+  updateDebtUrgency(debt,debt.urgency.note??'',scheduleSave,'');
+  if(button?.isConnected){
+    const host=$('#debtUrgencyReminder'),toggle=$('[aria-controls="debtUrgencyReminder"]');
+    host.hidden=true;
+    host.replaceChildren();
+    toggle.textContent='התראה';
+    toggle.setAttribute('aria-expanded','false');
+    button.remove();
+    toggle.focus();
+  }
+  return true;
 }
 
 function parseAddedAmount(selector,label){
@@ -164,26 +206,75 @@ function saveDebt(id=''){
 
 function localDateTime(value){const date=new Date(value||'');return Number.isFinite(date.getTime())?date.toLocaleString('he-IL',{dateStyle:'short',timeStyle:'short'}):'ללא תאריך'}
 function progressSourceLabel(source){return source==='manual'?'ידני':source==='morning'?'Morning':source||'מערכת'}
-function progressEntryMarkup(row){const payment=row.kind==='payment',reset=row.action==='reset',label=payment?'תשלום':'חשבונית',action=reset?'איפוס':'נוסף';return `<div class="debt-progress-history-row"><div><b>${esc(label)} · ${esc(action)}</b><small>${esc(localDateTime(row.createdAt))} · ${esc(progressSourceLabel(row.source))}${reset?` · ${esc((row.clears||[]).length)} תנועות בוטלו`:''}</small></div><strong class="${esc(reset?'warntext':'goodtext')}">${reset?'איפוס':money(row.amount)}</strong></div>`}
+function progressEntryMarkup(debt,row,link,blocked){
+  const label=row.kind==='payment'?'תשלום':'חשבונית',reset=row.action==='reset';
+  const removeLabel=reset?`מחק איפוס ${label}`:`מחק תנועת ${label} בסך ${money(row.amount)}`;
+  const remove=`<button type="button" class="icon-btn debt-progress-remove" title="${esc(removeLabel)}"
+    aria-label="${esc(removeLabel)}" data-action="remove-debt-progress-entry"
+    data-click-arg0="${esc(debt.id)}" data-click-arg1="${esc(row.kind)}" data-click-arg2="${esc(row.id)}"${blocked?' disabled':''}>
+    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5"/></svg></button>`;
+  let documentButton='';
+  if(link){
+    const status=morningMetadataState(debt,link.operationId),unresolved=!link.documentId||!link.documentNumber||!Number(link.documentType)||!!status;
+    const title=morningDocumentLabel(link,unresolved?'טוען פרטי מסמך…':'מסמך Morning')+(status==='unconfirmed'?' · לא נשמר בחוב':status==='pending'?' · שומר פרטים…':'');
+    documentButton=`<button type="button" class="bank-row-morning-doc" data-action="morning-open-document"
+      data-click-arg0="${esc(link.documentId)}" data-click-arg1="${esc(link.operationId)}"
+      ${unresolved?`data-morning-debt-operation="${esc(link.operationId)}"`:''}
+      title="צפה במסמך Morning ${esc(link.documentNumber||'')}">
+      <span aria-hidden="true">▤</span><span data-morning-debt-label>${esc(title)}</span></button>`;
+  }
+  return `<div class="debt-progress-history-row"><div><b>${reset?'איפוס':label}</b><small>${esc(localDateTime(row.createdAt))} · ${esc(progressSourceLabel(row.source))}${reset?` · ${esc((row.clears||[]).length)} תנועות בוטלו`:''}</small>${documentButton}</div><strong class="${reset?'warntext':'goodtext'}">${reset?'':money(row.amount)}</strong>${remove}</div>`;
+}
 
-function progressHistoryMarkup(debt,rows){
-  const links=new Map(morningDebtDocuments(debt).map(link=>[link.operationId,link])),shown=new Set();
-  return rows.map(row=>{
-    const operation=/^MORNING:([^:]+):(payment|invoice)$/.exec(String(row.id||''))?.[1],link=links.get(operation);
-    if(!link||shown.has(operation))return progressEntryMarkup(row);
-    shown.add(operation);
-    const status=morningMetadataState(debt,link.operationId),unresolved=!link.documentId||!link.documentNumber||!Number(link.documentType)||!!status,label=morningDocumentLabel(link,unresolved?'טוען פרטי מסמך…':'מסמך Morning')+(status==='unconfirmed'?' · לא נשמר בחוב':status==='pending'?' · שומר פרטים…':'');
-    return `<div class="debt-progress-linked-row">${progressEntryMarkup(row)}<button type="button" class="bank-row-morning-doc" data-action="morning-open-document" data-click-arg0="${esc(link.documentId)}" data-click-arg1="${esc(link.operationId)}" ${unresolved?`data-morning-debt-operation="${esc(link.operationId)}"`:''} title="צפה במסמך Morning ${esc(link.documentNumber||'')}"><span aria-hidden="true">▤</span><span data-morning-debt-label>${esc(label)}</span></button></div>`;
+function progressHistoryMarkup(debt,kind,links,blocked){
+  const rows=customerDebtVisibleProgressEntries(debt,kind).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))||String(b.id||'').localeCompare(String(a.id||'')));
+  const entries=rows.map(row=>{
+    const operation=/^MORNING:([^:]+):(payment|invoice)$/.exec(String(row.id||''))?.[1];
+    return progressEntryMarkup(debt,row,links.get(operation),blocked);
   }).join('');
+  const title=kind==='payment'?'תנועות חוב':'תנועות חשבונית';
+  return `<section class="debt-progress-history" data-debt-progress-kind="${kind}"><h4>${title}</h4>${entries||'<div class="empty debt-progress-empty">אין תנועות שנרשמו</div>'}</section>`;
 }
 
 function openDebtProgressDetails(id){
-  const d=(model.state.customerDebts||[]).find(x=>x.id===id);if(!d)return toast('חוב הלקוח לא נמצא');const p=customerDebtProgressData(d),rows=customerDebtProgressEntries(d).slice().sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))||String(b.id||'').localeCompare(String(a.id||'')));
+  const d=(model.state.customerDebts||[]).find(x=>x.id===id);
+  if(!d)return toast('חוב הלקוח לא נמצא');
+  const p=customerDebtProgressData(d),blocked=isDebtRecoveryPending(id);
+  const links=new Map(morningDebtDocuments(d).map(link=>[link.operationId,link]));
+  const paymentHistory=progressHistoryMarkup(d,'payment',links,blocked),invoiceHistory=progressHistoryMarkup(d,'invoice',links,blocked);
   const remainingLabel=p.paymentPartial?'נותר לתשלום':p.invoicePartial?'נותר לחשבונית':'יתרה שנותרה',remainingValue=p.paymentPartial?p.remainingPayment:p.invoicePartial?p.remainingInvoice:p.remainingPayment;
-  modal(`פירוט חוב · ${d.customerName||'לקוח'}`,`<div class="debt-progress-details"><section class="debt-progress-total debt-progress-total-remaining"><div><span>${esc(remainingLabel)}</span><small>מתוך חוב מקורי ${money(d.amount)}</small></div><b>${money(remainingValue)}</b></section><section class="debt-progress-detail-grid"><div><span>שולם</span><b>${money(p.paymentApplied)}</b><small>מתוך ${money(p.targetMagnitude)}</small></div><div><span>חשבוניות</span><b>${money(p.invoiceApplied)}</b><small>נותר ${money(p.remainingInvoice)}</small></div></section><div class="debt-progress-history"><h4>תנועות שנרשמו</h4>${progressHistoryMarkup(d,rows)||'<div class="empty debt-progress-empty">אין תנועות חלקיות. מצב מלא שסומן ידנית נשמר בשדות הסטטוס הרגילים.</div>'}</div></div>`,`<button class="btn primary" data-action="open-debt-modal-2" data-click-arg0="${esc(d.id)}">עריכת החוב</button><button class="btn" data-action="close-modal">סגור</button>`);
+  modal(`פירוט חוב · ${d.customerName||'לקוח'}`,`<div class="debt-progress-details">
+    <section class="debt-progress-total debt-progress-total-remaining">
+    <div><span>${esc(remainingLabel)}</span><small>מתוך חוב מקורי ${money(d.amount)}</small></div><b>${money(remainingValue)}</b></section>
+    <section class="debt-progress-detail-grid"><div><span>שולם</span><b>${money(p.paymentApplied)}</b><small>מתוך ${money(p.targetMagnitude)}</small></div>
+    <div><span>חשבוניות</span><b>${money(p.invoiceApplied)}</b><small>נותר ${money(p.remainingInvoice)}</small></div></section>
+    <div class="debt-progress-history-grid" dir="rtl">${paymentHistory}${invoiceHistory}</div>
+    </div>`,`<button class="btn primary" data-action="open-debt-modal-2" data-click-arg0="${esc(d.id)}">עריכת החוב</button><button class="btn" data-action="close-modal">סגור</button>`);
   hydrateMorningDebtDocuments(globalThis.document);
 }
 
+async function removeDebtProgressEntry(id,kind,entryId){
+  if(!['payment','invoice'].includes(kind))return false;
+  const findDebt=()=>model.state.customerDebts.find(row=>row.id===id);
+  const findEntry=debt=>customerDebtVisibleProgressEntries(debt,kind).find(row=>row.id===entryId);
+  const entry=findEntry(findDebt());
+  if(!entry||rejectDebtRecoveryMutation(id))return false;
+  const label=kind==='payment'?'תשלום':'חשבונית';
+  const detail=entry.action==='reset'?`למחוק את איפוס ה${label}? תנועות שבוטלו רק באיפוס הזה ישובו להיכלל בחישוב.`:`למחוק תנועת ${label} בסך ${money(entry.amount)} מרישום החוב?`;
+  if(!await confirmDialog('מחיקת תנועה',detail,{confirmText:'מחק תנועה'}))return false;
+  const debt=findDebt();
+  if(!findEntry(debt)||rejectMutation()||rejectDebtRecoveryMutation(id))return false;
+  const before=customerDebtProgressData(debt),now=new Date().toISOString();
+  debt.debtProgress=[...customerDebtProgressEntries(debt),{id:uid('DREMOVE'),kind,action:'reset',clears:[entryId],removesEntry:true,source:'manual',createdAt:now}];
+  const after=customerDebtProgressData(debt);
+  if(kind==='payment')debt.paidAt=after.paymentComplete?(before.paymentComplete?debt.paidAt:now):null;
+  else debt.invoiceIssuedAt=after.invoiceComplete?(before.invoiceComplete?debt.invoiceIssuedAt:now):null;
+  debt.closedAt=after.paymentComplete&&after.invoiceComplete?(debt.closedAt||now):null;
+  saveDebtChange(debt,'התנועה נמחקה מרישום החוב',scheduleSave);
+  renderCustomers({resultsOnly:true});
+  openDebtProgressDetails(id);
+  return true;
+}
 
 function applyVerifiedMorningDocument({debtId,operationId,documentId,documentNumber,type,amount,verifiedAt,applyPayment=true,applyInvoice=true}={}){
   const d=(model.state.customerDebts||[]).find(row=>row.id===debtId);if(!d)return {changed:false,reason:'missing-debt'};
@@ -203,5 +294,5 @@ function applyVerifiedMorningDocument({debtId,operationId,documentId,documentNum
 
 async function deleteDebt(id){const d=model.state.customerDebts.find(x=>x.id===id);if(!d||rejectDebtRecoveryMutation(id))return;if(!await confirmDialog('מחיקת חוב',`למחוק את החוב של ${d.customerName}?`,{confirmText:'מחק חוב'}))return;if(rejectDebtRecoveryMutation(id))return;model.state.customerDebts=model.state.customerDebts.filter(x=>x.id!==id);closeModal();scheduleSave('חוב הלקוח נמחק',{deleteIntents:{customerDebts:[id]},mutationType:'delete',surface:'orders.delete.customerDebts',domains:['customerDebts'],operations:[{type:'delete',collection:'customerDebts',id}]});renderCustomers({resultsOnly:true})}
 
-return { addCustomerOrder, saveCustomerOrderField, deleteCustomerOrder, openDebtModal, saveDebt, openDebtUrgency, saveDebtUrgency, openDebtProgressDetails, applyVerifiedMorningDocument, deleteDebt };
+return { addCustomerOrder, saveCustomerOrderField, deleteCustomerOrder, openDebtModal, saveDebt, openDebtUrgency, openDebtUrgencyReminder, saveDebtUrgency, removeDebtUrgencyReminder, openDebtProgressDetails, removeDebtProgressEntry, applyVerifiedMorningDocument, deleteDebt };
 }

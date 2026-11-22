@@ -4,7 +4,10 @@ import {normalizeNoteReminderDate,noteReminderWarningItems} from '../netunim-ord
 import {createDomainsNotesController} from '../netunim-orders/site/assets/js/domains/notes/controller.js';
 import {createStateNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
 import {createUiAlertCenter} from '../netunim-orders/site/assets/js/ui/alert-center.js';
-import {noteReminderCalendarDays,noteReminderCalendarMarkup,noteReminderMonthKey,shiftNoteReminderFocusDate,shiftNoteReminderMonth} from '../netunim-orders/site/assets/js/domains/notes/reminder-calendar.js';
+import {createDomainsCustomersEditor,updateDebtUrgency} from '../netunim-orders/site/assets/js/domains/customers/editor.js';
+import {debtUrgencyWarningItems} from '../netunim-orders/site/assets/js/domains/customers/alerts.js';
+import {checkTodayISO} from '../netunim-orders/site/assets/js/core/dates.js';
+import {noteReminderCalendarDays,noteReminderCalendarMarkup,noteReminderMonthKey,shiftNoteReminderFocusDate,shiftNoteReminderMonth} from '../netunim-orders/site/assets/js/ui/reminder-calendar.js';
 import {createUiDateEditor,shiftDateEditorIso} from '../netunim-orders/site/assets/js/ui/date-editor.js';
 import {stickyNoteGridSpan} from '../netunim-orders/site/assets/js/domains/notes/layout.js';
 
@@ -113,4 +116,47 @@ test('alert center includes due note reminders, opens the note, and can cancel t
     center.openAlertCenter();
     assert.equal(await center.dismissNoteAlert('note:N1'),true);assert.equal(dismissed,'N1');assert.equal(count.textContent,'0');assert.equal(button.hidden,true);assert.ok(closed>=2);
   }finally{if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument}
+});
+
+test('a debt urgency reminder is saved with the note, opens at startup, and can be dismissed independently',async()=>{
+  const debt={id:'D1',customerName:'לקוח <א>',amount:100};
+  const model={state:{customerDebts:[debt]}};
+  const host={hidden:true,innerHTML:''},note={value:'לקבוע שיחה',focus(){}},count={};
+  const alertButton={classList:{toggle(){}},setAttribute(){}};
+  const targets={'#debtUrgencyReminder':host,'#debtUrgencyNote':note};
+  const previous=globalThis.document;
+  globalThis.document={querySelector:selector=>targets[selector],getElementById:id=>({alertCenterButton:alertButton,alertCenterCount:count})[id]};
+  let title='',body='',revision=0;
+  const modal=(nextTitle,markup)=>{title=nextTitle;body=markup};
+  const scheduleSave=()=>{revision++};
+  const editor=createDomainsCustomersEditor({model,modal,scheduleSave,confirmDialog:async()=>true,closeModal:()=>{},renderCustomers:()=>{},
+    reminderPicker:{markup:()=>'<calendar></calendar>',focus:()=>{},readDate:checkTodayISO},
+  });
+  const center=createUiAlertCenter({model,alertsRevision:()=>revision,modal,navigateToDebtUrgency:editor.openDebtUrgency,dismissDebtUrgencyReminder:editor.removeDebtUrgencyReminder});
+  try{
+    editor.openDebtUrgency('D1');
+    assert.match(body,/data-action="open-debt-urgency-reminder"/);
+    assert.equal(center.refreshIndicator().length,0);
+    editor.openDebtUrgencyReminder('D1',{setAttribute(){}});
+    assert.equal(host.innerHTML,'<calendar></calendar>');
+    editor.saveDebtUrgency('D1',true);
+    assert.deepEqual(debt.urgency,{note:'לקבוע שיחה',reminderDate:checkTodayISO()});
+    assert.deepEqual(debtUrgencyWarningItems([debt],'2000-01-01'),[]);
+    updateDebtUrgency(debt,'שיחה חוזרת',scheduleSave);
+    assert.equal(center.showStartupAlerts(),true);
+    assert.equal(count.textContent,'1');
+    assert.equal(alertButton.hidden,false);
+    assert.match(title,/התראות בפתיחת המערכת/);
+    assert.match(body,/לקוח &lt;א&gt;/);
+    assert.match(body,/שיחה חוזרת/);
+    assert.equal(center.openAlertTarget('debt-urgency:D1'),true);
+    assert.equal(title,'דחוף לטיפול');
+    assert.match(body,/data-action="remove-debt-urgency-reminder"/);
+    center.openAlertCenter();
+    assert.equal(await center.dismissDebtUrgencyAlert('debt-urgency:D1'),true);
+    assert.deepEqual(debt.urgency,{note:'שיחה חוזרת'});
+    assert.equal(alertButton.hidden,true);
+  }finally{
+    if(previous===undefined)delete globalThis.document;else globalThis.document=previous;
+  }
 });

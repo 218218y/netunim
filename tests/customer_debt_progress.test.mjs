@@ -174,6 +174,42 @@ test('Orders merge unions concurrent debt progress events and makes concurrent r
  result=merge.merge3(base,localReset,remoteReset);assert.deepEqual(result.conflicts,[]);assert.equal(customerDebtProgressData(result.state.customerDebts[0]).paymentApplied,0);
 });
 
+test('individual debt movement removal survives sync, while removing a reset restores only its surviving movements',async()=>{
+ const normalization=createStateNormalization({}),merge=createSyncMerge({normalizeState:normalization.normalizeState});
+ const base=normalization.normalizeState(baseOrderState([{
+  id:'D',amount:100,invoiceIssued:true,debtProgress:[add('P1','payment',70),add('P2','payment',30),add('I1','invoice',20),reset('R','payment',['P1','P2'])],
+ }]));
+ const local=structuredClone(base),remote=structuredClone(base),model={state:local};
+ let allow=false,body='',saves=0;
+ const editor=createDomainsCustomersEditor({model,modal:(_title,html)=>{body=html},confirmDialog:async()=>allow,scheduleSave:()=>{saves++},renderCustomers:()=>{}});
+ editor.openDebtProgressDetails('D');
+ const [billing,invoices]=body.split('data-debt-progress-kind="invoice"');
+ assert.match(billing,/data-debt-progress-kind="payment"[\s\S]*data-click-arg2="P1"/);
+ assert.doesNotMatch(billing,/data-click-arg2="I1"/);
+ assert.match(invoices,/data-click-arg2="I1"/);
+ assert.equal(await editor.removeDebtProgressEntry('D','payment','P1'),false);
+ allow=true;
+ assert.equal(await editor.removeDebtProgressEntry('D','invoice','P1'),false);
+ assert.equal(await editor.removeDebtProgressEntry('D','payment','P1'),true);
+ assert.equal(await editor.removeDebtProgressEntry('D','payment','R'),true);
+ assert.equal(await editor.removeDebtProgressEntry('D','payment','R'),false);
+ assert.equal(saves,2);
+ assert.match(body,/data-click-arg2="P2"/);
+ assert.doesNotMatch(body,/data-click-arg2="(?:P1|R)"/);
+ remote.customerDebts[0].debtProgress.push(add('P3','payment',80));
+ const merged=merge.merge3(base,local,remote);
+ assert.deepEqual(merged.conflicts,[]);
+ model.state=merged.state;
+ const debt=model.state.customerDebts[0],progress=customerDebtProgressData(debt);
+ assert.equal(progress.paymentRecorded,110);
+ assert.equal(progress.invoiceRecorded,20);
+ assert.ok(debt.paidAt&&debt.closedAt);
+ assert.equal(await editor.removeDebtProgressEntry('D','payment','P3'),true);
+ assert.equal(debt.paidAt,null);
+ assert.equal(debt.closedAt,null);
+ assert.equal(debt.invoiceIssued,true);
+});
+
 
 test('Orders merge treats progress timestamps as metadata and safely combines realistic concurrent editor updates',()=>{
  const normalization=createStateNormalization({}),merge=createSyncMerge({normalizeState:normalization.normalizeState});

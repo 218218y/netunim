@@ -44,6 +44,7 @@ import {createSyncMerge} from './sync/merge.js';
 import {createSyncDocument} from './composition/main-sync.js';
 import {composeCloudUi} from './composition/cloud.js';
 import {createNotesDomain} from './domains/notes/index.js';
+import {createReminderPicker} from './ui/reminder-picker.js';
 import {createOrdersCalendarRuntime} from './composition/calendar.js';
 import {createUiSettings} from './ui/settings.js';
 import {createLifecycle} from './lifecycle.js';
@@ -322,7 +323,7 @@ finance.assertReady();
 
 const uiAlertCenter=createUiAlertCenter({
   syncIncidents:()=>syncIncidents?.alerts||[],openSyncIncidents:()=>syncIncidents?.open(),
-  alertsRevision:()=>domainRevisions.stamp(['checks','notes','finance','bankDisplay']),
+  alertsRevision:()=>domainRevisions.stamp(['checks','notes','customerDebts','finance','bankDisplay']),
   runFinance:financeDerivations.run,
   model,
   financeSnapshot:(...args)=>finance.queries.readSnapshot(...args),
@@ -332,8 +333,10 @@ const uiAlertCenter=createUiAlertCenter({
   navigateToCashflow:(...args)=>uiNavigation.openKupaBank(...args),
   navigateToBank:(...args)=>uiNavigation.openKupaBank(...args),
   navigateToNote:(...args)=>uiNavigation.openNotesNote(...args),
+  navigateToDebtUrgency:(...args)=>domainsCustomers.openDebtUrgency(...args),
   markCheckDeposited:(...args)=>checks.commands.markDeposited(...args),
   dismissNoteReminder:(...args)=>domainsNotesController.removeStickyNoteReminder(...args),
+  dismissDebtUrgencyReminder:(...args)=>domainsCustomers.removeDebtUrgencyReminder(...args),
   dismissBankWarning:async item=>item?.kind==='bank_missing'
     ?finance.commands.acknowledgeMissingBankTransaction(item.archiveId)
     :finance.commands.acknowledgePersistentBankAlert(item?.archiveId,item?.alertKind),
@@ -363,8 +366,10 @@ storageV2Coordinator.configure({
   cloudTransport,cloudAuth,mainStorageV2,verifyStorageV2AccountMarker:()=>verifyStorageV2AccountMarker(),
 });
 
+const reminderPicker=createReminderPicker({...uiDateEditor,toast:(...args)=>uiStatus.toast(...args)});
 domainsCustomers.bindUi({
-  morningOperationScope,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,
+  morningOperationScope,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,reminderPicker,
+  refreshAlertCenter:()=>uiAlertCenter.refreshIndicator(),
   refreshForMorningRecovery:(...args)=>syncDocument.refreshForMorningRecovery(...args),
   bankTransactions:finance.customerBankPort(),
 });
@@ -383,7 +388,7 @@ const domainsCalendarController=calendarRuntime.createController({
   ui,tab,calendarUi,uiLayout,uiModal,uiStatus,uiCloud,uiDateEditor,
 });
 
-const {spreadsheetWorkspace,domainsNotesController}=createNotesDomain({cloudAuth,tab,ui,notesUi,model,uiModal,storagePersistence,uiStatus,uiLayout,uiAlertCenter,uiDateEditor});
+const {spreadsheetWorkspace,domainsNotesController}=createNotesDomain({cloudAuth,tab,ui,notesUi,model,uiModal,storagePersistence,uiStatus,uiLayout,uiAlertCenter,reminderPicker});
 
 const uiSettings=createUiSettings({
   mountSyncIncidents:container=>void syncIncidentsReady.then(feature=>{if(container.isConnected)feature?.mountSettings(container)}),
@@ -482,6 +487,7 @@ const uiActions=composeActionRegistry([
   {name:'backup',actions:createBackupActions({ui,uiBackup,uiFolders,uiModal})},
   {name:'cloud',actions:createCloudActions({uiCloud})},
   {name:'notes',actions:createNotesActions({domainsNotesController})},
+  {name:'reminder-picker',actions:reminderPicker.actions},
   {name:'calendar',actions:createCalendarActions({calendarPorts})},
 ]);
 

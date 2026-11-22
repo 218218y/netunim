@@ -15,6 +15,7 @@ export interface DebtCalculation {
   amountFromCents(value:unknown):number;
   customerDebtProgressEntries(debt?:Debt|null,kind?:ProgressKind|null):UnknownRecord[];
   progressAction(row?:UnknownRecord|null):'reset'|'add';
+  customerDebtVisibleProgressEntries(debt:Debt|null|undefined,kind:ProgressKind):UnknownRecord[];
   customerDebtActiveProgressEntries(debt:Debt|null|undefined,kind:ProgressKind):UnknownRecord[];
   progressNetCents(debt:Debt|null|undefined,kind:ProgressKind):number;
   domainProgress(targetCents:number,directComplete:boolean,recordedCents:number):ProgressDomain;

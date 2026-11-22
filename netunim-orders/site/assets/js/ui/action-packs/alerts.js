@@ -9,6 +9,7 @@ export function createAlertsActions({ uiAlertCenter }) {
     'mark-alert-check-deposited': (element, event) => { event?.preventDefault(); event?.stopPropagation(); return markAlertCheckDeposited(element.dataset.clickArg0); },
     'dismiss-bank-alert': (element, event) => { event?.preventDefault(); event?.stopPropagation(); return dismissBankAlert(element.dataset.clickArg0); },
     'dismiss-note-reminder': (element, event) => { event?.preventDefault(); event?.stopPropagation(); return dismissNoteAlert(element.dataset.clickArg0); },
+    'dismiss-debt-urgency-reminder': (element, event) => { event?.preventDefault(); event?.stopPropagation(); return uiAlertCenter.dismissDebtUrgencyAlert(element.dataset.clickArg0); },
   };
-  return markMutationActions(actions, { orders: ['dismiss-note-reminder'], checks: ['mark-alert-check-deposited'] });
+  return markMutationActions(actions, { orders: ['dismiss-note-reminder','dismiss-debt-urgency-reminder'], checks: ['mark-alert-check-deposited'] });
 }

@@ -1004,11 +1004,17 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 .debt-progress-total-remaining{padding:13px 14px;border-color:color-mix(in srgb,var(--warn) 38%,#e0e7eb);background:var(--warn-soft);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--warn) 12%,transparent)}
 .debt-progress-total-remaining span{color:var(--warn);font-size:11px}.debt-progress-total-remaining b{color:var(--warn);font-size:25px;font-weight:950}
 .debt-progress-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.debt-progress-history{display:grid;gap:6px}.debt-progress-history h4{margin:2px 0;font-size:11px}
-.debt-progress-history-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 9px;border:1px solid #e7ecef;border-radius:9px;background:#fff}
-.debt-progress-history-row>div{display:grid;gap:2px}.debt-progress-history-row b{font-size:10px}.debt-progress-history-row small{color:var(--muted);font-size:8.5px}.debt-progress-history-row strong{direction:ltr;font-variant-numeric:tabular-nums;font-size:11px}
+.debt-urgency-reminder-actions{display:flex;flex-wrap:wrap;gap:6px}
+.debt-progress-history-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}
+.debt-progress-history{display:grid;gap:6px;min-width:0}.debt-progress-history h4{margin:2px 0;font-size:12px}
+.debt-progress-history-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:6px;padding:6px 8px;border:1px solid #e7ecef;border-radius:9px;background:#fff}
+.debt-progress-history-row>div{display:grid;gap:3px;min-width:0}.debt-progress-history-row b{font-size:11px}.debt-progress-history-row small{color:var(--muted);font-size:9px}.debt-progress-history-row strong{direction:ltr;font-variant-numeric:tabular-nums;font-size:11px}
+.debt-progress-history-row .bank-row-morning-doc{justify-self:start;min-width:0}
+.debt-progress-remove{color:var(--bad);align-self:center;min-width:30px;min-height:30px}
+.debt-progress-remove svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .debt-progress-empty{padding:10px}
 @media(max-width:620px){.debt-progress-editor-summary{grid-template-columns:1fr 1fr}.debt-progress-editor-summary>.btn{grid-column:1/-1}.debt-progress-detail-grid{grid-template-columns:1fr}}
+@media(max-width:500px){.debt-progress-history-grid{grid-template-columns:1fr}}
 .morning-debt-update-panel{background:#fffaf0;border-color:#ead9ad}.morning-debt-update-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.morning-debt-update-option{display:flex;align-items:flex-start;gap:8px;padding:9px 10px;border:1px solid #e7d6aa;border-radius:10px;background:#fff;cursor:pointer}.morning-debt-update-option[hidden]{display:none}.morning-debt-update-option input{margin-top:2px}.morning-debt-update-option b{display:block;font-size:11px}.morning-debt-update-option small{display:block;margin-top:2px;color:var(--muted);font-size:9px;line-height:1.4}.morning-debt-update-warning{margin-top:8px;padding:8px 9px;border-radius:9px;background:#fff4d9;color:#73591e;font-size:9px;line-height:1.55}.morning-debt-update-warning strong{font-weight:850}
 @media(max-width:760px){.morning-debt-update-options{grid-template-columns:1fr}}
 
@@ -1231,7 +1237,6 @@ button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-v
 .bank-row-morning-docs{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-top:6px}.bank-row-morning-doc{display:inline-flex;align-items:center;gap:5px;max-width:100%;border:1px solid #bcdcca;border-radius:999px;padding:3px 7px;background:#f5fbf7;color:#2f6d4d;font:inherit;font-size:9px;cursor:pointer}.bank-row-morning-doc:hover{background:#ebf7ef}.bank-row-morning-doc span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bank-row-morning-docs>small{color:var(--muted);font-size:8px}
 @media(max-width:760px){.morning-bank-transaction-toolbar{align-items:stretch;flex-direction:column}.morning-bank-transaction-clear{width:100%}.morning-bank-transaction-table-head{display:none}.morning-bank-transaction-row{grid-template-columns:repeat(2,minmax(0,1fr));padding:7px}.morning-bank-transaction-cell{padding:5px}.morning-bank-transaction-cell:before{content:attr(data-label);display:block;margin-bottom:2px;color:var(--muted);font-size:8px;font-weight:800}.morning-bank-transaction-description{grid-column:1/-1}}
 .customer-debt-documents{display:flex;flex-wrap:wrap;align-items:center;gap:4px;max-width:100%;margin-top:5px}.customer-debt-documents .bank-row-morning-doc{max-width:min(100%,190px);font-size:9px}.customer-col-name{min-width:0}.customer-col-name>b{overflow-wrap:anywhere}
-.debt-progress-linked-row{display:flex;align-items:center;gap:6px;min-width:0}.debt-progress-linked-row>.debt-progress-history-row{flex:1;min-width:0}.debt-progress-linked-row>.bank-row-morning-doc{flex:none;max-width:150px}@media(max-width:620px){.debt-progress-linked-row{flex-wrap:wrap}.debt-progress-linked-row>.debt-progress-history-row{flex-basis:100%}}
 
 .credit-cycle-explanation{margin:0;padding:5px 11px 8px;color:var(--muted);font-size:11px;line-height:1.5;background:#fff}
 

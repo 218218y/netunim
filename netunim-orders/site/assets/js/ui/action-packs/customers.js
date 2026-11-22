@@ -40,12 +40,19 @@ export function createCustomersActions({ customerUi, domainsCustomers }) {
     'save-debt-field': (element, event) => { return saveDebtField(element.dataset.blurArg0, element.dataset.blurArg1, element); },
     'open-debt-modal-2': (element, event) => { return openDebtModal(element.dataset.clickArg0); },
     'open-debt-urgency': element => domainsCustomers.openDebtUrgency(element.dataset.clickArg0),
+    'open-debt-urgency-reminder': element => domainsCustomers.openDebtUrgencyReminder(element.dataset.clickArg0,element),
+    'remove-debt-urgency-reminder': element => domainsCustomers.removeDebtUrgencyReminder(element.dataset.clickArg0,{button:element}),
     'save-debt-urgency': element => domainsCustomers.saveDebtUrgency(element.dataset.clickArg0, true),
     'remove-debt-urgency': element => domainsCustomers.saveDebtUrgency(element.dataset.clickArg0, false),
     'open-debt-progress-details': (element, event) => { return openDebtProgressDetails(element.dataset.clickArg0); },
+    'remove-debt-progress-entry': element => domainsCustomers.removeDebtProgressEntry(element.dataset.clickArg0,element.dataset.clickArg1,element.dataset.clickArg2),
     'save-debt': (element, event) => { return saveDebt(element.dataset.clickArg0); },
     'delete-debt': (element, event) => { return deleteDebt(element.dataset.clickArg0); },
     'customer-results-page': el => pageCustomerResults(el.dataset.clickArg0, el.dataset.clickArg1),
   };
-  return markMutationActions(actions, { orders: ['open-debt-modal', 'add-customer-order', 'save-customer-order-field', 'toggle-customer-order-urgent', 'delete-customer-order', 'set-customer-flag', 'set-customer-flag-2', 'save-debt-field', 'open-debt-modal-2', 'save-debt-urgency', 'remove-debt-urgency', 'save-debt', 'delete-debt', 'delete-selected-customer-rows'] });
+  return markMutationActions(actions, { orders: [
+    'open-debt-modal','add-customer-order','save-customer-order-field','toggle-customer-order-urgent','delete-customer-order',
+    'set-customer-flag','set-customer-flag-2','save-debt-field','open-debt-modal-2','save-debt-urgency','remove-debt-urgency',
+    'remove-debt-urgency-reminder','remove-debt-progress-entry','save-debt','delete-debt','delete-selected-customer-rows',
+  ] });
 }

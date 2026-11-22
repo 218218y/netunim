@@ -18,7 +18,7 @@ export function createOrdersCustomersRuntime({model,customerUi,customerRevision}
     return bound;
   }
 
-  function bindUi({morningOperationScope,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,refreshForMorningRecovery,bankTransactions}={}){
+  function bindUi({morningOperationScope,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,reminderPicker,refreshAlertCenter,refreshForMorningRecovery,bankTransactions}={}){
     if(disposed)throw new Error('customers_runtime_disposed');
     if(bound)throw new Error('customers_ui_already_bound');
     for(const [name,port,methods] of [
@@ -42,7 +42,7 @@ export function createOrdersCustomersRuntime({model,customerUi,customerRevision}
         const {requestGoogleContacts}=await import('../integrations/google-contacts.js');
         return requestGoogleContacts(cloudAuth.supaFetch,...args);
       },
-      uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,
+      uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,reminderPicker,refreshAlertCenter,
       refreshForMorningRecovery,subscribeAccountScope:cloudAuth.subscribeAccountScope,
       getBusinessBankTransactions:bankTransactions.getTransactions,
       ensureBusinessBankTransactions:bankTransactions.ensureTransactions,
@@ -61,6 +61,8 @@ export function createOrdersCustomersRuntime({model,customerUi,customerRevision}
     bindUi,
     assertReady:()=>{ready();return true},
     renderCustomers:(...args)=>ready().domain.renderCustomers(...args),
+    openDebtUrgency:(...args)=>ready().domain.openDebtUrgency(...args),
+    removeDebtUrgencyReminder:(...args)=>ready().domain.removeDebtUrgencyReminder(...args),
     openBankMorningDocument:(...args)=>ready().domain.openBankMorningDocument(...args),
     recoverPendingMorningOperation:(...args)=>ready().domain.recoverPendingMorningOperation(...args),
     get actions(){return ready().actions},

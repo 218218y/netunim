@@ -1,6 +1,6 @@
-import {esc} from '../../core/values.js';
-import {checkTodayISO} from '../../core/dates.js';
-import {normalizeNoteReminderDate} from './alerts.js';
+import {esc} from '../core/values.js';
+import {checkTodayISO} from '../core/dates.js';
+import {normalizeNoteReminderDate} from '../contracts/note-reminder-date.js';
 
 const HEBREW_WEEKDAYS=['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','שבת'];
 const monthFormatter=new Intl.DateTimeFormat('he-IL',{month:'long',year:'numeric'});
@@ -48,5 +48,18 @@ export function noteReminderCalendarMarkup({monthKey='',selectedDate='',focusedD
   const previous=shiftNoteReminderMonth(month,-1),previousDisabled=previous<minimum.slice(0,7),days=noteReminderCalendarDays(month,{today,minDate:minimum});
   const requestedFocus=normalizeNoteReminderDate(focusedDate)||selected||minimum;
   const focusDate=days.some(day=>day.iso===requestedFocus&&!day.disabled)?requestedFocus:(days.find(day=>!day.disabled&&!day.outside)||days.find(day=>!day.disabled))?.iso||'';
-  return `<section class="note-reminder-calendar" data-note-reminder-month="${esc(month)}" aria-label="בחירת תאריך התראה"><header class="note-reminder-calendar-head"><button class="note-reminder-calendar-nav" type="button" data-action="note-reminder-prev-month" aria-label="החודש הקודם" ${previousDisabled?'disabled':''}>‹</button><strong>${esc(monthFormatter.format(monthDate))}</strong><button class="note-reminder-calendar-nav" type="button" data-action="note-reminder-next-month" aria-label="החודש הבא">›</button></header><div class="note-reminder-calendar-weekdays" aria-hidden="true">${HEBREW_WEEKDAYS.map(day=>`<span>${esc(day)}</span>`).join('')}</div><div class="note-reminder-calendar-grid" role="grid" aria-label="ימים בחודש">${days.map(day=>`<button type="button" role="gridcell" class="note-reminder-calendar-day${day.outside?' outside':''}${day.today?' today':''}${day.iso===selected?' selected':''}" data-action="note-reminder-select-day" data-keydown="note-reminder-calendar-keydown" data-click-arg0="${esc(day.iso)}" data-note-reminder-date="${esc(day.iso)}" tabindex="${day.iso===focusDate?'0':'-1'}" ${day.disabled?'disabled':''} aria-label="${esc(day.iso)}" ${day.today?'aria-current="date" ':''}aria-selected="${day.iso===selected?'true':'false'}">${day.day}</button>`).join('')}</div></section>`;
+  const dayButtons=days.map(day=>`<button type="button" role="gridcell"
+    class="note-reminder-calendar-day${day.outside?' outside':''}${day.today?' today':''}${day.iso===selected?' selected':''}"
+    data-action="note-reminder-select-day" data-keydown="note-reminder-calendar-keydown"
+    data-click-arg0="${esc(day.iso)}" data-note-reminder-date="${esc(day.iso)}" tabindex="${day.iso===focusDate?'0':'-1'}"
+    ${day.disabled?'disabled':''} aria-label="${esc(day.iso)}" ${day.today?'aria-current="date" ':''}aria-selected="${day.iso===selected?'true':'false'}">${day.day}</button>`).join('');
+  return `<section class="note-reminder-calendar" data-note-reminder-month="${esc(month)}" aria-label="בחירת תאריך התראה">
+    <header class="note-reminder-calendar-head">
+      <button class="note-reminder-calendar-nav" type="button" data-action="note-reminder-prev-month" aria-label="החודש הקודם" ${previousDisabled?'disabled':''}>‹</button>
+      <strong>${esc(monthFormatter.format(monthDate))}</strong>
+      <button class="note-reminder-calendar-nav" type="button" data-action="note-reminder-next-month" aria-label="החודש הבא">›</button>
+    </header>
+    <div class="note-reminder-calendar-weekdays" aria-hidden="true">${HEBREW_WEEKDAYS.map(day=>`<span>${esc(day)}</span>`).join('')}</div>
+    <div class="note-reminder-calendar-grid" role="grid" aria-label="ימים בחודש">${dayButtons}</div>
+  </section>`;
 }

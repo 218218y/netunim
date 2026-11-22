@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-9d402b0e1177';
+const CACHE='orders-app-shell-esm-085aa8f62bff';
 const SHELL=[
   './',
   './index.html',
@@ -78,6 +78,7 @@ const SHELL=[
   './assets/js/domains/checks/editor.js',
   './assets/js/domains/checks/model.js',
   './assets/js/domains/checks/view.js',
+  './assets/js/domains/customers/alerts.js',
   './assets/js/domains/customers/bulk.js',
   './assets/js/domains/customers/composition.js',
   './assets/js/domains/customers/documents-browser.js',
@@ -229,7 +230,6 @@ const SHELL=[
   './assets/js/domains/notes/controller.js',
   './assets/js/domains/notes/index.js',
   './assets/js/domains/notes/layout.js',
-  './assets/js/domains/notes/reminder-calendar.js',
   './assets/js/domains/search/model.js',
   './assets/js/domains/service/action-ports.js',
   './assets/js/domains/service/bulk.js',
@@ -551,6 +551,8 @@ const SHELL=[
   './assets/js/ui/layout.js',
   './assets/js/ui/modal.js',
   './assets/js/ui/navigation.js',
+  './assets/js/ui/reminder-calendar.js',
+  './assets/js/ui/reminder-picker.js',
   './assets/js/ui/settings.js',
   './assets/js/ui/status.js',
   './assets/js/ui/tab-guard.js',

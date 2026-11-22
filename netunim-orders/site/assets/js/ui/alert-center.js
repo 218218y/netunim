@@ -6,6 +6,7 @@ import {money} from '../core/money.js';
 import {checkDateFmt,checkTodayISO} from '../core/dates.js';
 import {bankWarningItems,cashflowWarningItems} from '../domains/bank/alerts.js';
 import {dueCheckWarningItems} from '../domains/checks/alerts.js';
+import {debtUrgencyWarningItems} from '../domains/customers/alerts.js';
 import {noteReminderWarningItems} from '../domains/notes/alerts.js';
 
 function cashflowReason(item){
@@ -32,16 +33,28 @@ function bankAlertCard(item){
   return `<div class="alert-center-card bank-warning ${returned?'bank-returned-warning':'bank-missing-warning'} alert-center-bank-card"><button type="button" class="alert-center-bank-open alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">בנק · חשבון ${esc(item.account)}</div><div class="alert-center-card-title"><span>${esc(title)}</span><strong>${amount}</strong></div><p>${esc(detail)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button><div class="alert-center-bank-actions"><button type="button" class="alert-center-card-dismiss" data-action="dismiss-bank-alert" data-click-arg0="${esc(item.id)}">${returned?'אישור · הסר התראה':'בדקתי · הסר התראה'}</button></div></div>`;
 }
 
-function noteAlertCard(item){
-  const content=item.content||'הערה ללא תוכן';
-  return `<div class="alert-center-card note-warning alert-center-note-card"><button type="button" class="alert-center-note-open alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">תזכורת מהערות</div><div class="alert-center-card-title"><span>התראה פעילה</span></div><p>${esc(content)}</p><small>ההתראה פעילה מ־${esc(checkDateFmt(item.reminderDate))} ותישאר פעילה עד לביטול.</small></div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button><div class="alert-center-note-actions"><button type="button" class="alert-center-card-dismiss" data-action="dismiss-note-reminder" data-click-arg0="${esc(item.id)}">בטל התראה</button></div></div>`;
+function reminderAlertCard(item){
+  const debt=item.kind==='debt_urgency_reminder';
+  const kicker=debt?'חוב דחוף לטיפול':'תזכורת מהערות';
+  const title=debt?(item.customerName||'חוב לקוח'):'התראה פעילה';
+  const content=item.content||(debt?'':'הערה ללא תוכן');
+  const dismissAction=debt?'dismiss-debt-urgency-reminder':'dismiss-note-reminder';
+  return `<div class="alert-center-card note-warning alert-center-note-card">
+    <button type="button" class="alert-center-note-open alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}">
+    <div class="alert-center-card-icon" aria-hidden="true">!</div>
+    <div class="alert-center-card-main">
+    <div class="alert-center-card-kicker">${kicker}</div>
+    <div class="alert-center-card-title"><span>${esc(title)}</span></div>${content?`<p>${esc(content)}</p>`:''}
+    <small>ההתראה פעילה מ־${esc(checkDateFmt(item.reminderDate))} ותישאר פעילה עד לביטול.</small>
+    </div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button>
+    <div class="alert-center-note-actions"><button type="button" class="alert-center-card-dismiss" data-action="${dismissAction}" data-click-arg0="${esc(item.id)}">בטל התראה</button></div></div>`;
 }
 
 function alertCard(item){
   if(item.kind==='sync_incident')return `<button type="button" class="alert-center-card" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-main"><strong>אזהרת סנכרון בין מחשבים</strong><p>${esc(item.description)}</p></div></button>`;
   if(item.kind==='check_bank')return checkBankReviewCard(item);
   if(item.kind==='bank_returned_cheque'||item.kind==='bank_missing')return bankAlertCard(item);
-  if(item.kind==='note_reminder')return noteAlertCard(item);
+  if(item.kind==='note_reminder'||item.kind==='debt_urgency_reminder')return reminderAlertCard(item);
   const actionAttrs=`type="button" class="alert-center-card ${item.kind==='cashflow'?'cashflow-warning':'check-warning'} alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"`;
   if(item.kind==='cashflow')return `<button ${actionAttrs}><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">עו״ש תזרימי · חשבון ${esc(item.account)}</div><div class="alert-center-card-title">יתרה צפויה <strong>${money(item.projected)}</strong></div><p>${esc(cashflowReason(item))}${item.breachDate?` · מועד צפוי: ${esc(checkDateFmt(item.breachDate))}`:''}</p><small>התחזית מבוססת על יתרת העו״ש ועל החיובים והתקבולים הצפויים בחשבון עד מועד החריגה.</small></div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button>`;
   const dueText=item.isToday?`הגיע זמן להפקיד · ${checkDateFmt(item.dueDate)}`:`מועד ההפקדה עבר · ${checkDateFmt(item.dueDate)}`;
@@ -49,7 +62,7 @@ function alertCard(item){
   return `<div class="alert-center-card check-warning alert-center-check-card"><button type="button" class="alert-center-check-open alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">צ׳ק ${esc(item.account||'עסקי')} להפקדה</div><div class="alert-center-card-title"><span>${esc(item.name||'ללא שם')}</span><strong>${money(item.amount)}</strong></div><p>${esc(dueText)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button><div class="alert-center-check-actions"><button type="button" class="alert-center-card-deposit" data-action="mark-alert-check-deposited" data-click-arg0="${esc(item.checkId)}">סמן כהופקד</button></div></div>`;
 }
 
-export function createUiAlertCenter({alertsRevision,runFinance=withFinanceDerivations,model,financeSnapshot,modal,closeModal=()=>{},navigateToChecks=()=>{},navigateToCashflow=()=>{},navigateToBank=navigateToCashflow,navigateToNote=()=>{},markCheckDeposited=()=>false,dismissBankWarning=async()=>false,dismissNoteReminder=async()=>false,syncIncidents=()=>[],openSyncIncidents=()=>{}}){
+export function createUiAlertCenter({alertsRevision,runFinance=withFinanceDerivations,model,financeSnapshot,modal,closeModal=()=>{},navigateToChecks=()=>{},navigateToCashflow=()=>{},navigateToBank=navigateToCashflow,navigateToNote=()=>{},navigateToDebtUrgency=()=>{},markCheckDeposited=()=>false,dismissBankWarning=async()=>false,dismissNoteReminder=async()=>false,dismissDebtUrgencyReminder=async()=>false,syncIncidents=()=>[],openSyncIncidents=()=>{}}){
   let startupHandled=false,openMode=null,dateRefreshTimer=null,lastKnownDate=checkTodayISO();
 
   let cachedAlerts=null,cachedRevision=null,cachedDate='';
@@ -81,6 +94,7 @@ export function createUiAlertCenter({alertsRevision,runFinance=withFinanceDeriva
       ...bankCheckItems,
       ...dueCheckWarningItems(model?.state?.checks,today).filter(item=>!explainedChecks.has(item.checkId)),
       ...noteReminderWarningItems(model?.state?.notes,today),
+      ...debtUrgencyWarningItems(model?.state?.customerDebts,today),
     ];
   }
 
@@ -102,7 +116,7 @@ export function createUiAlertCenter({alertsRevision,runFinance=withFinanceDeriva
     const count=alerts.length;
     const intro=startup
       ?`<div class="alert-center-intro"><div class="alert-center-intro-icon" aria-hidden="true">!</div><div><b>${count===1?'יש אזהרה שדורשת תשומת לב':`יש ${count} אזהרות שדורשות תשומת לב`}</b><span>הפרטים מוצגים כאן בצורה מרוכזת וברורה. אותן אזהרות זמינות גם מסימן האזהרה בראש המסך.</span></div></div>`
-      :`<div class="alert-center-summary"><b>${count?`${count} אזהרות פעילות`:'אין כרגע אזהרות פעילות'}</b><span>${count?'הרשימה מתעדכנת לפי הנתונים הנוכחיים.':'כשהמערכת תזהה אירוע בנק חשוב, חריגה תזרימית, צ׳ק שהגיע להפקדה או תזכורת מהערות, הוא יופיע כאן.'}</span></div>`;
+      :`<div class="alert-center-summary"><b>${count?`${count} אזהרות פעילות`:'אין כרגע אזהרות פעילות'}</b><span>${count?'הרשימה מתעדכנת לפי הנתונים הנוכחיים.':'כשהמערכת תזהה אירוע בנק חשוב, חריגה תזרימית, צ׳ק שהגיע להפקדה או תזכורת, הם יופיעו כאן.'}</span></div>`;
     const list=count?`<div class="alert-center-list">${alerts.map(alertCard).join('')}</div>`:'<div class="alert-center-empty"><span aria-hidden="true">✓</span><b>הכול תקין כרגע</b></div>';
     return `${intro}${list}`;
   }
@@ -143,15 +157,24 @@ export function createUiAlertCenter({alertsRevision,runFinance=withFinanceDeriva
     return ok===true;
   }
 
+  async function dismissDebtUrgencyAlert(alertId){
+    const item=currentAlerts().find(row=>row.id===String(alertId||'')&&row.kind==='debt_urgency_reminder');
+    if(!item)return false;
+    const ok=await dismissDebtUrgencyReminder(item.debtId,{expectedDate:item.reminderDate});
+    if(ok===true)renderOpenAlertCenter();
+    return ok===true;
+  }
+
   function openAlertTarget(alertId){
     const item=currentAlerts().find(row=>row.id===String(alertId||''));
     if(!item)return false;
-    closeModal();
+    closeModal();openMode=null;
     if(item.kind==='sync_incident'){openSyncIncidents();return true}
     if(item.kind==='check_due'){navigateToChecks(item.checkId,item.account);return true}
     if(item.kind==='cashflow'){navigateToCashflow(item.account);return true}
     if(item.kind==='bank_returned_cheque'||item.kind==='bank_missing'){navigateToBank(item.account);return true}
     if(item.kind==='note_reminder'){navigateToNote(item.noteId);return true}
+    if(item.kind==='debt_urgency_reminder'){navigateToDebtUrgency(item.debtId);return true}
     return false;
   }
 
@@ -177,5 +200,5 @@ export function createUiAlertCenter({alertsRevision,runFinance=withFinanceDeriva
   function startDateWatcher(){lastKnownDate=checkTodayISO();scheduleDateRefresh();return true}
   function stopDateWatcher(){if(dateRefreshTimer)clearTimeout(dateRefreshTimer);dateRefreshTimer=null}
 
-  return {currentAlerts,refreshIndicator,openAlertCenter,markAlertCheckDeposited,dismissBankAlert,dismissNoteAlert,openAlertTarget,showStartupAlerts,startDateWatcher,stopDateWatcher};
+  return {currentAlerts,refreshIndicator,openAlertCenter,markAlertCheckDeposited,dismissBankAlert,dismissNoteAlert,dismissDebtUrgencyAlert,openAlertTarget,showStartupAlerts,startDateWatcher,stopDateWatcher};
 }

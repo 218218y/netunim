@@ -2,7 +2,7 @@ import {createSpreadsheetWorkspace} from '../../shared/spreadsheet-workspace.js'
 import {createDomainsNotesController} from './controller.js';
 import {esc} from '../../core/values.js';
 
-export function createNotesDomain({cloudAuth,tab,ui,notesUi,model,uiModal,storagePersistence,uiStatus,uiLayout,uiAlertCenter,uiDateEditor}){
+export function createNotesDomain({cloudAuth,tab,ui,notesUi,model,uiModal,storagePersistence,uiStatus,uiLayout,uiAlertCenter,reminderPicker}){
 const spreadsheetWorkspace=createSpreadsheetWorkspace({
   domain:'orders',accountScope:()=>cloudAuth.getAccountScope(),request:(...args)=>cloudAuth.supaFetch(...args),account:()=>cloudAuth.loadSession()?.user?.id,enabled:()=>cloudAuth.cloudEnabled(),primary:()=>tab.primaryTab,
   active:()=>ui.currentView==='notes'&&notesUi.notesTab==='sheet',render:()=>domainsNotesController.renderNotes(),legacy:()=>model.legacyNotesSheet,
@@ -21,8 +21,7 @@ const domainsNotesController=createDomainsNotesController({
   closeModal:(...args)=>uiModal.closeModal(...args),
   refreshAlertCenter:(...args)=>uiAlertCenter.refreshIndicator(...args),
   currentView:()=>ui.currentView,
-  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
-  setDateValue:(...args)=>uiDateEditor.setDateValue(...args),
+  reminderPicker,
 });
 
 return {spreadsheetWorkspace,domainsNotesController};

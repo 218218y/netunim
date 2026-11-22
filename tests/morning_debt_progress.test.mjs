@@ -103,7 +103,7 @@ test('a debt may be deleted after a verified Morning application once no recover
  });
  const applied=editor.applyVerifiedMorningDocument({debtId:row.id,operationId:op(13),documentId:'morning-doc-13',documentNumber:'1013',type:320,amount:1000,verifiedAt:'2026-09-09T16:00:00.000Z'});assert.equal(applied.changed,true);assert.equal(applied.persisted,true);
  const debtDocumentMarkup=morningDebtLinksMarkup(row);assert.match(debtDocumentMarkup,/morning-doc-13/);assert.match(debtDocumentMarkup,/חשבונית מס \/ קבלה 1013/);
- editor.openDebtProgressDetails(row.id);assert.match(details,/debt-progress-linked-row/);assert.match(details,/data-click-arg0="morning-doc-13"/);assert.match(details,/חשבונית מס \/ קבלה 1013/);
+ editor.openDebtProgressDetails(row.id);assert.match(details,/data-action="morning-open-document"/);assert.match(details,/data-click-arg0="morning-doc-13"/);assert.match(details,/חשבונית מס \/ קבלה 1013/);
  await editor.deleteDebt(row.id);
  assert.equal(model.state.customerDebts.length,0,'verified Morning progress does not create a permanent local reference that prevents later debt deletion');
  assert.equal(model.state.customerDebts.some(debt=>morningDebtLinksMarkup(debt).includes('morning-doc-13')),false,'deleting a debt removes its row and embedded document link');
