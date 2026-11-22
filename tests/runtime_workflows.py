@@ -102,6 +102,9 @@ flows={
  const suppliedDebt=addDebt('Supplied debt',2000,true);
  const urgentDebt=addDebt('Urgent debt',1500);
  const largerUrgentDebt=addDebt('Larger urgent debt',3000);
+ click('open-debt-modal');fill({dName:'Partly paid delivery',dAmount:'1750',dSupplied:'true',dPaid:'partial'});
+ element('#dPaid').dispatchEvent(new Event('change',{bubbles:true}));fill({dAddPayment:'500'});saveModal();
+ const partialDebt=state.customerDebts.find(debt=>debt.customerName==='Partly paid delivery').id;
  const debtRow=id=>element('.customer-table tbody [data-customer-bulk-id="'+id+'"]');
  const urgencyButton=id=>debtRow(id).querySelector('.customer-row-actions [data-action="open-debt-urgency"]');
  const debtOrder=()=>[...document.querySelectorAll('.customer-table tbody [data-customer-bulk-id]')].map(row=>row.dataset.customerBulkId);
@@ -111,9 +114,11 @@ flows={
    assert(!document.querySelector('#modal [data-action="remove-debt-urgency"]'),'New urgency dialog offers confirmation');
    fill({debtUrgencyNote:note});saveModal();
  }
- assert(debtOrder().join(',')===[largerUrgentDebt,suppliedDebt,urgentDebt,regularDebt].join(','),'Urgent and supplied unpaid debts share one descending priority group');
+ assert(debtOrder().join(',')===[largerUrgentDebt,suppliedDebt,partialDebt,urgentDebt,regularDebt].join(','),'Urgent and supplied debts with a balance share one descending priority group');
  const urgentAmount=debtRow(urgentDebt).querySelector('.customer-debt-amount');
  const suppliedAmount=debtRow(suppliedDebt).querySelector('.customer-debt-amount');
+ const partialAmount=debtRow(partialDebt).querySelector('.customer-debt-amount');
+ assert(getComputedStyle(partialAmount).backgroundColor===getComputedStyle(suppliedAmount).backgroundColor&&partialAmount.querySelector('b').textContent.includes('1,250')&&debtRow(partialDebt).querySelector('.debt-partial-chip'),'Partly paid delivery has the supplied debt background and its own remaining balance and partial status');
  assert(urgentAmount.classList.contains('is-urgent')&&getComputedStyle(urgentAmount).backgroundColor===getComputedStyle(suppliedAmount).backgroundColor,'Urgent amount has the supplied unpaid red background');
  assert(urgencyButton(urgentDebt).getAttribute('aria-pressed')==='true','Urgency button stays pressed');
  element('.customer-debt-amount [data-action="open-debt-urgency"][data-click-arg0="'+urgentDebt+'"]').click();
@@ -124,7 +129,7 @@ flows={
  urgencyButton(urgentDebt).click();
  assert(element('#debtUrgencyNote').value==='Follow up tomorrow','Action warning opens the same edited note');
  click('remove-debt-urgency');
- assert(debtOrder().join(',')===[largerUrgentDebt,suppliedDebt,regularDebt,urgentDebt].join(','),'Removing urgency restores the regular amount order');
+ assert(debtOrder().join(',')===[largerUrgentDebt,suppliedDebt,partialDebt,regularDebt,urgentDebt].join(','),'Removing urgency restores the regular amount order');
  assert(urgencyButton(urgentDebt).getAttribute('aria-pressed')==='false'&&!debtRow(urgentDebt).querySelector('.customer-debt-urgent-indicator'),'Removing urgency clears both row indicators');
  await mainStorageV2.commitPromise;
  assert(!(await mainStorageV2.recover()).state.customerDebts.find(debt=>debt.id===urgentDebt).urgency,'Removed urgency stays removed after journal recovery');

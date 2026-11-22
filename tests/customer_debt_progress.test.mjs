@@ -62,8 +62,8 @@ test('supplied debts stay in the priority group until full payment', () => {
   {id:'supplied-unpaid',amount:400,supplied:true},
   {id:'supplied-paid',amount:350,supplied:true,debtProgress:[add('P2','payment',350)]},
  ]}).rows;
- assert.deepEqual(rows.map(({record,prioritized})=>[record.id,prioritized]),[
-  ['urgent',true],['supplied-partial',true],['supplied-unpaid',true],['regular',false],['supplied-paid',false],
+ assert.deepEqual(rows.map(({record,priorityClass})=>[record.id,priorityClass]),[
+  ['urgent','is-urgent'],['supplied-partial','is-supplied'],['supplied-unpaid','is-supplied'],['regular',''],['supplied-paid',''],
  ]);
  assert.equal(rows[1].progress.remainingPayment,200);
  assert.equal(rows[1].status.key,'partial');
@@ -150,7 +150,8 @@ test('partial customer row makes the unpaid balance primary and exposes clearly-
  const debt={id:'D1',customerName:'לקוח',amount:1000,supplied:true,paid:false,invoiceIssued:false,note:'',debtProgress:[add('P1','payment',250)]};
  const view=createDomainsCustomersView({model:{state:{customerDebts:[debt],customerOrders:[]}},customerUi:{customerBulkMode:false,customerBulkSelected:new Set()},bindScrollViewport:()=>{},mountViewLayout:()=>{},customerStats:()=>({}),customerBulkHeader:()=>'',customerBulkControls:()=>'',syncCustomerBulkUi:()=>{},customerBottomSummary:()=>'',customerBulkCell:()=>'',scheduleSave:()=>{}});
  const html=view.debtRow(debt);
- assert.match(html,/customer-debt-amount is-payment-partial/);assert.match(html,/750/);assert.doesNotMatch(html,/customer-debt-amount is-supplied/);
+ assert.match(html,/customer-debt-amount is-supplied/);assert.match(html,/750/);assert.doesNotMatch(html,/customer-debt-amount is-payment-partial/);
+ assert.match(view.debtRow({...debt,supplied:false}),/customer-debt-amount is-payment-partial/);
  assert.match(html,/מתוך/);assert.match(html,/1,000/);assert.doesNotMatch(html,/שולם 250 מתוך/);assert.match(html,/debt-partial-chip/);assert.match(html,/data-action="open-debt-progress-details"/);assert.match(html,/debt-details-icon/);assert.match(html,/badge orange/);assert.match(html,/הצג פירוט חוב/);
 });
 
