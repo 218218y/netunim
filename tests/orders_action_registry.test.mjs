@@ -4,8 +4,7 @@ import {composeActionRegistry} from '../shared/action-registry.js';
 import {createCreditCardOrderView} from '../shared/credit-card-order-view.js';
 import {createNotesWorkbook} from '../shared/notes-workbook.js';
 import {createSpreadsheetWorkspace} from '../shared/spreadsheet-workspace.js';
-import {createReminderPicker} from '../netunim-orders/site/assets/js/ui/reminder-picker.js';
-import {createExternalActionPacks,createAlertsActions,createFinanceBankActions,createFinanceCreditActions,createChecksActions,createShellActions,createDashboardActions,createSuppliersActions,createCustomersActions,createMorningActions,createServiceActions,createWarehouseActions,createBackupActions,createCloudActions,createNotesActions,createCalendarActions,wrapMutationActions} from '../netunim-orders/site/assets/js/ui/actions.js';
+import {createExternalActionPacks,createAlertsActions,createFinanceBankActions,createFinanceCreditActions,createChecksActions,createShellActions,createDashboardActions,createSuppliersActions,createCustomersActions,createMorningActions,createServiceActions,createWarehouseActions,createBackupActions,createCloudActions,createNotesActions,createReminderPickerActions,createCalendarActions,wrapMutationActions} from '../netunim-orders/site/assets/js/ui/actions.js';
 
 test('Orders capability packs compose with the exact startup mutation domains',()=>{
   const port=new Proxy({}, {get:()=>()=>{}});
@@ -29,7 +28,7 @@ test('Orders capability packs compose with the exact startup mutation domains',(
     {name:'backup',actions:createBackupActions({ui,uiBackup:port,uiFolders:port,uiModal:port})},
     {name:'cloud',actions:createCloudActions({uiCloud:port})},
     {name:'notes',actions:createNotesActions({domainsNotesController:port})},
-    {name:'reminder-picker',actions:createReminderPicker(port).actions},
+    {name:'reminder-picker',actions:createReminderPickerActions({reminderPicker:port})},
     {name:'calendar',actions:createCalendarActions({calendarPorts:port})},
   ]);
   assert.ok(Object.keys(actions).length>320);

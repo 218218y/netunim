@@ -50,7 +50,7 @@ import {createUiSettings} from './ui/settings.js';
 import {createLifecycle} from './lifecycle.js';
 import {bindActionEvents,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {composeActionRegistry} from './shared/action-registry.js';
-import {wrapMutationActions,createExternalActionPacks,createAlertsActions,createShellActions,createDashboardActions,createBackupActions,createCloudActions,createNotesActions,createCalendarActions} from './ui/actions.js';
+import {wrapMutationActions,createExternalActionPacks,createAlertsActions,createShellActions,createDashboardActions,createBackupActions,createCloudActions,createNotesActions,createReminderPickerActions,createCalendarActions} from './ui/actions.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
 import {createUiKeyboardNavigation} from './ui/keyboard-navigation.js';
 import {createContexts} from './state/contexts.js';
@@ -487,7 +487,7 @@ const uiActions=composeActionRegistry([
   {name:'backup',actions:createBackupActions({ui,uiBackup,uiFolders,uiModal})},
   {name:'cloud',actions:createCloudActions({uiCloud})},
   {name:'notes',actions:createNotesActions({domainsNotesController})},
-  {name:'reminder-picker',actions:reminderPicker.actions},
+  {name:'reminder-picker',actions:createReminderPickerActions({reminderPicker})},
   {name:'calendar',actions:createCalendarActions({calendarPorts})},
 ]);
 

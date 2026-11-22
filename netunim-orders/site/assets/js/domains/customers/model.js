@@ -1,3 +1,4 @@
+import {normalizeNoteReminderDate} from '../../contracts/note-reminder-date.js';
 import {ordersOpenCustomerDebtSummaryData} from '../../shared/orders-finance.js';
 import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
 import {createRevisionSelector} from '../../shared/revision-selector.js';
@@ -59,4 +60,21 @@ export function customerDebtFilteredTotal(rows,filter,progressFor=customerDebtPr
 export function customerStatsData(state){
   const rows=state.customerDebts||[],openRows=rows.filter(customerDebtIsOutstanding),openSuppliedRows=openRows.filter(d=>d.supplied===true),openUnsuppliedRows=openRows.filter(d=>d.supplied!==true),sumOriginal=items=>items.reduce((total,d)=>total+Number(d.amount||0),0),sumRemaining=items=>items.reduce((total,d)=>total+customerDebtProgressData(d).remainingPayment,0),openSummary=ordersOpenCustomerDebtSummaryData(state);
   return{openTotal:openSummary.openTotal,openSuppliedTotal:sumRemaining(openSuppliedRows),openUnsuppliedTotal:sumRemaining(openUnsuppliedRows),allTotal:sumOriginal(rows),open:openSummary.open,openSupplied:openSuppliedRows.length,openUnsupplied:openUnsuppliedRows.length,missingInvoice:rows.filter(d=>customerDebtMatchesFilter(customerDebtProgressData(d),'invoice')).length,closed:rows.filter(d=>customerDebtMatchesFilter(customerDebtProgressData(d),'closed')).length,trackedOrders:(state.customerOrders||[]).length}
+}
+
+export function debtUrgencyWarningItems(debts,today){
+  const items=[];
+  for(const debt of debts||[]){
+    const reminderDate=normalizeNoteReminderDate(debt.urgency?.reminderDate);
+    if(!reminderDate||reminderDate>today)continue;
+    items.push({
+      id:`debt-urgency:${debt.id}`,
+      kind:'debt_urgency_reminder',
+      debtId:debt.id,
+      reminderDate,
+      customerName:String(debt.customerName||''),
+      content:String(debt.urgency.note||'').trim(),
+    });
+  }
+  return items.sort((a,b)=>a.reminderDate.localeCompare(b.reminderDate)||a.id.localeCompare(b.id));
 }

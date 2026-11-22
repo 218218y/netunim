@@ -22,3 +22,13 @@ export function createNotesActions({ domainsNotesController }) {
   };
   return markMutationActions(actions, { orders: ['delete-selected-sticky-notes', 'update-sticky-note', 'delete-sticky-note', 'open-sticky-note-reminder', 'save-sticky-note-reminder', 'add-sticky-note'] });
 }
+
+export function createReminderPickerActions({reminderPicker}){
+  return {
+    'note-reminder-prev-month':()=>reminderPicker.changeMonth(-1),
+    'note-reminder-next-month':()=>reminderPicker.changeMonth(1),
+    'note-reminder-select-day':element=>reminderPicker.selectDate(element.dataset.clickArg0),
+    'note-reminder-calendar-keydown':(element,event)=>reminderPicker.handleCalendarKey(event,element),
+    'note-reminder-date-change':()=>reminderPicker.renderCalendar(),
+  };
+}

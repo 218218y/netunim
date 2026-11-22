@@ -27,6 +27,6 @@ export {createServiceActions} from './action-packs/service.js';
 export {createWarehouseActions} from './action-packs/warehouse.js';
 export {createBackupActions} from './action-packs/backup.js';
 export {createCloudActions} from './action-packs/cloud.js';
-export {createNotesActions} from './action-packs/notes.js';
+export {createNotesActions,createReminderPickerActions} from './action-packs/notes.js';
 export {createCalendarActions} from './action-packs/calendar.js';
 export {createExternalActionPacks} from './action-packs/external.js';

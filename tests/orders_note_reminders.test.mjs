@@ -5,9 +5,9 @@ import {createDomainsNotesController} from '../netunim-orders/site/assets/js/dom
 import {createStateNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
 import {createUiAlertCenter} from '../netunim-orders/site/assets/js/ui/alert-center.js';
 import {createDomainsCustomersEditor,updateDebtUrgency} from '../netunim-orders/site/assets/js/domains/customers/editor.js';
-import {debtUrgencyWarningItems} from '../netunim-orders/site/assets/js/domains/customers/alerts.js';
+import {debtUrgencyWarningItems} from '../netunim-orders/site/assets/js/domains/customers/model.js';
 import {checkTodayISO} from '../netunim-orders/site/assets/js/core/dates.js';
-import {noteReminderCalendarDays,noteReminderCalendarMarkup,noteReminderMonthKey,shiftNoteReminderFocusDate,shiftNoteReminderMonth} from '../netunim-orders/site/assets/js/ui/reminder-calendar.js';
+import {noteReminderCalendarDays,noteReminderCalendarMarkup,noteReminderMonthKey,shiftNoteReminderFocusDate,shiftNoteReminderMonth} from '../netunim-orders/site/assets/js/ui/reminder-picker.js';
 import {createUiDateEditor,shiftDateEditorIso} from '../netunim-orders/site/assets/js/ui/date-editor.js';
 import {stickyNoteGridSpan} from '../netunim-orders/site/assets/js/domains/notes/layout.js';
 

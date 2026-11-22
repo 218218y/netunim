@@ -6,7 +6,7 @@ import {money} from '../core/money.js';
 import {checkDateFmt,checkTodayISO} from '../core/dates.js';
 import {bankWarningItems,cashflowWarningItems} from '../domains/bank/alerts.js';
 import {dueCheckWarningItems} from '../domains/checks/alerts.js';
-import {debtUrgencyWarningItems} from '../domains/customers/alerts.js';
+import {debtUrgencyWarningItems} from '../domains/customers/model.js';
 import {noteReminderWarningItems} from '../domains/notes/alerts.js';
 
 function cashflowReason(item){
