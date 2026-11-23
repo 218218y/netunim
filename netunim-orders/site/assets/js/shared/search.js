@@ -46,6 +46,62 @@ export function createPreparedSearchMatcher(query){
   };
 }
 
+// Structured financial search distinguishes money (an exact value) from visible
+// references (a substring within ONE field). Neither amounts nor identifiers
+// may be fabricated by joining distinct fields or unrelated numbers in prose.
+function financialQuery(query){
+  const raw=String(query??'').trim().replace(/[\s\u00a0\u202f₪]/g,'');
+  if(!/^[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/.test(raw))return null;
+  const number=Number(raw.replaceAll(',',''));
+  if(!Number.isFinite(number))return null;
+  return {cents:Math.round(Math.abs(number)*100),digits:raw.replace(/^[+-]/,'').split('.')[0].replaceAll(',','')};
+}
+function monetaryCents(value){
+  if(typeof value!=='number'&&(typeof value!=='string'||!value.trim()))return null;
+  const numeric=Number(value);
+  return Number.isFinite(numeric)?Math.round(Math.abs(numeric)*100):null;
+}
+function identifierIncludes(value,digits){
+  if(value===null||value===undefined||!digits)return false;
+  // Separators inside an identifier are cosmetic. Do not combine separate fields.
+  return String(value).replace(/[^0-9]/g,'').includes(digits);
+}
+function visibleNumberIncludes(value,digits){
+  if(!digits||value===null||value===undefined)return false;
+  const numbers=String(value).match(/\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?/g)||[];
+  return numbers.some(number=>number.replaceAll(',','').includes(digits));
+}
+export function prepareFinancialSearchFields({amounts=[],identifiers=[],texts=[],dates=[]}={}){
+  return {amounts,identifiers,texts,dates,prepared:prepareSearchValues([...amounts,...identifiers,...texts],dates)};
+}
+export function createFinancialSearchMatcher(query){
+  const numeric=financialQuery(query),textMatcher=numeric?null:createPreparedSearchMatcher(query);
+  return ({amounts=[],identifiers=[],texts=[],dates=[],prepared})=>numeric
+    ?amounts.some(value=>monetaryCents(value)===numeric.cents)
+      ||identifiers.some(value=>identifierIncludes(value,numeric.digits))
+      ||texts.some(value=>visibleNumberIncludes(value,numeric.digits))
+      ||(/^\d{4}$/.test(numeric.digits)&&dates.some(value=>String(value??'').startsWith(`${numeric.digits}-`)))
+    :textMatcher(prepared||prepareSearchValues([...amounts,...identifiers,...texts],dates));
+}
+// The same business semantics apply in Kupa and Orders. A record's technical
+// UUID is deliberately excluded: it isn't a searchable fact in the table.
+export function creditTransactionSearchFields(row,providerLabels={},precompute=true){
+  const fields={
+    amounts:[row?.amount,row?.displayAmount,row?.originalAmount,row?.totalAmount],
+    identifiers:[row?.part,row?.totalParts],
+    texts:[row?.card,row?.account,row?.ownerLabel,row?.description,row?.transactionDate,
+      row?.transactionTime,row?.date,row?.displayCurrency,row?.originalCurrency,row?.provider,
+      row?.source,row?.status,row?.status==='pending'?'ממתינה':'',
+      row?.foreignCurrency?'מט״ח':'',providerLabels[row?.provider]||''],
+    dates:[row?.transactionDate,row?.date],
+  };
+  return precompute?prepareFinancialSearchFields(fields):fields;
+}
+export function createCreditTransactionSearchMatcher(query,providerLabels={}){
+  const match=createFinancialSearchMatcher(query);
+  return row=>match(row?.search||creditTransactionSearchFields(row,providerLabels,false));
+}
+
 export function dateInRange(value,from='',to=''){
   const parts=dateParts(value);if(!parts)return false;
   const key=`${parts.year}-${String(parts.month).padStart(2,'0')}-${String(parts.day).padStart(2,'0')}`;

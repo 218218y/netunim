@@ -1,1 +1,1 @@
-export {normalizeSearchText,dateSearchAliases,searchMatch,prepareSearchValues,createPreparedSearchMatcher,dateInRange} from '../shared/search.js';
+export {normalizeSearchText,dateSearchAliases,searchMatch,prepareSearchValues,createPreparedSearchMatcher,dateInRange,prepareFinancialSearchFields,createFinancialSearchMatcher,creditTransactionSearchFields,createCreditTransactionSearchMatcher} from '../shared/search.js';

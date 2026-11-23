@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-361782b5aa8e';
+const CACHE='orders-app-shell-esm-b14d866e4b89';
 const SHELL=[
   './',
   './index.html',
@@ -289,7 +289,6 @@ const SHELL=[
   './assets/js/shared/bank-transaction-evidence.js',
   './assets/js/shared/bank-transaction-identity.js',
   './assets/js/shared/bank-transaction-order.js',
-  './assets/js/shared/bank-transaction-search.js',
   './assets/js/shared/bridge-pairing-page.js',
   './assets/js/shared/bridge-pairing-scope.js',
   './assets/js/shared/browser-account-observation.js',

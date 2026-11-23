@@ -10,7 +10,7 @@ import {normalizeBankSenderAccount} from '../../shared/bank-sender-account.js';
 import {dateFmt} from '../../core/dates.js';
 import {financeSyncProgressMeta,financeSyncProgressMarkup,updateFinanceSyncProgress,syncEventCurrent} from '../../shared/sync-status.js';
 import {dateInRange} from '../../core/search.js';
-import {createBankTransactionSearchMatcher} from '../../shared/bank-transaction-search.js';
+import {createBankTransactionSearchMatcher} from '../../shared/bank-transaction-order.js';
 import {localSearchMarkup} from '../../ui-primitives/local-search.js';
 import {bankTransactionIdentity} from './feed.js';
 import {bankSmartHistoryRows,bankMissingSummaryText,bankChequeTransitionNeedsReview} from '../../shared/bank-transaction-order.js';

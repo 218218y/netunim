@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {searchMatch,prepareSearchValues,createPreparedSearchMatcher} from '../shared/search.js';
-import {bankTransactionMatchesSearch,createBankTransactionSearchMatcher} from '../shared/bank-transaction-search.js';
+import {bankTransactionMatchesSearch,createBankTransactionSearchMatcher} from '../shared/bank-transaction-order.js';
 import {bankRowMatchesSearch as ordersSearch} from '../netunim-orders/site/assets/js/domains/finance/bank-view-helpers.js';
 import {createDomainsBankView} from '../netunim-kupa/site/assets/js/domains/bank/view.js';
 import {createDomainsFinanceView} from '../netunim-orders/site/assets/js/domains/finance/view.js';
@@ -45,6 +45,21 @@ test('bank 2500 matches the actual absolute amount, not 500, 5000, cheque metada
   assert.equal(bankTransactionMatchesSearch({amount:12500},'2500'),false);
   assert.equal(bankTransactionMatchesSearch({amount:null,balanceAfter:null},'0'),false);
   assert.equal(bankTransactionMatchesSearch({amount:550,checkDetails:{checkItems:[null,{}]}},'2500'),false);
+});
+
+test('bank numeric search matches a genuine partial deposit reference, never stitched fields',()=>{
+  const deposit={date:'2026-08-31',description:'הפק.שיק בסלולר',bankReference:'85525007896',amount:550,
+    checkDetails:{checkItems:[{bankNumber:'2',accountNumber:'500',amount:550}]}};
+  for(const query of ['2500','52500','85525007896','2,500']){
+    assert.equal(bankTransactionMatchesSearch(deposit,query),true,query);
+    assert.equal(ordersSearch(deposit,query),true,query);
+  }
+  assert.equal(bankTransactionMatchesSearch({...deposit,bankReference:'85588007896'},'2500'),false);
+  assert.equal(bankTransactionMatchesSearch({amount:500,bankReference:'123',senderAccount:{accountNumber:'2'}},'2500'),false);
+  assert.equal(bankTransactionMatchesSearch({description:'מספר 2 ומספר 500',amount:500},'2500'),false);
+  assert.equal(bankTransactionMatchesSearch({description:'מספר 85525007896',amount:500},'2500'),true);
+  assert.equal(bankTransactionMatchesSearch({bankReference:'855-2500-7896',amount:500},'2500'),true);
+  assert.equal(bankTransactionMatchesSearch({amount:500,checkDetails:{checkItems:[{imageFrontKey:'2500'}]}},'2500'),false);
 });
 
 test('visible dates, references, cheque and card IDs, account numbers, balance and descriptions remain searchable',()=>{

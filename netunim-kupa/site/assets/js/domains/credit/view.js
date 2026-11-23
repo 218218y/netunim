@@ -10,7 +10,7 @@ import {dateFmt, todayISO, monthKey, monthLabel, addMonthsISO} from '../../core/
 import {creditMonthlyDetailData,creditUpcomingDetailData,creditDetailItemIdentity,creditForecastInstallmentsData} from './model.js';
 import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,creditFrameStatus,creditUpcomingCharge,creditSyncSummary} from './sync-feed.js';
 import {kupaCardDisplayBillingDateFromRowsData,kupaReconciledCardUpcomingChargeData,kupaReconciledCreditRowsData} from '../../shared/kupa-cashflow.js';
-import {prepareSearchValues,createPreparedSearchMatcher} from '../../core/search.js';
+import {creditTransactionSearchFields,createCreditTransactionSearchMatcher} from '../../core/search.js';
 import {localSearchMarkup} from '../../ui-primitives/local-search.js';
 import {
   creditViewAllowsMonth,
@@ -28,29 +28,6 @@ import {
   createCreditMonthlyDetailRowMarkup,
 } from './presentation.js';
 export {creditSyncHeadlineState} from './presentation.js';
-function creditSearchValues(row){
-  return prepareSearchValues([
-    row?.card,
-    row?.account,
-    row?.ownerLabel,
-    row?.description,
-    row?.transactionDate,
-    row?.date,
-    row?.part,
-    row?.totalParts,
-    row?.amount,
-    row?.displayAmount,
-    row?.totalAmount,
-    row?.provider,
-    row?.source,
-    row?.status,
-    row?.foreignCurrency?'מט״ח':'',
-    row?.status==='pending'?'ממתינה':'',
-    CREDIT_PROVIDER_LABELS[row?.provider]||'',
-    row?.record?.id
-  ],
-    [row?.transactionDate,row?.date])
-}
 function summaryCard(row){
   return row.hidden?'כרטיסים מוסתרים':row.card
 }
@@ -129,12 +106,12 @@ const detailModel=createRevisionSelector({
   name:'kupa-credit-detail',
   select:()=>runFinance(()=>{
   const detail=creditMonthlyDetailData(model.state),upcoming=creditUpcomingDetailData(model.state);
-  const prepare=row=>({...row,search:creditSearchValues(row)});
+  const prepare=row=>({...row,search:creditTransactionSearchFields(row,CREDIT_PROVIDER_LABELS)});
   return {detail:{...detail,months:detail.months.map(month=>({...month,items:month.items.map(prepare)}))},upcoming:{items:upcoming.items.map(prepare)}};
 })
 });
 function creditDetailState(){
-  const matches=createPreparedSearchMatcher(ui.creditSearchValue);
+  const matches=createCreditTransactionSearchMatcher(ui.creditSearchValue,CREDIT_PROVIDER_LABELS);
   const query={
     creditDetailMode:ui.creditDetailMode,creditDetailChargeDay:ui.creditDetailChargeDay,
     creditDetailFocus:ui.creditDetailFocus,creditAccountFilter:ui.creditAccountFilter,
@@ -142,7 +119,7 @@ function creditDetailState(){
     creditView:ui.creditView,creditDateFrom:ui.creditDateFrom,creditDateTo:ui.creditDateTo,
   };
   const matchesAmount=createAmountRangeMatcher(ui.creditAmountFrom,ui.creditAmountTo);
-  const detail=selectKupaCreditDetail({prepared:detailModel(),query,reference:todayISO(),matches:row=>matches(row.search)&&matchesAmount(row.includedInIlsTotal?row.amount:null)});
+  const detail=selectKupaCreditDetail({prepared:detailModel(),query,reference:todayISO(),matches:row=>matches(row)&&matchesAmount(row.includedInIlsTotal?row.amount:null)});
   if(detail.mode==='month')ui.creditDetailFocus=detail.detailFocus;
   return detail;
 }

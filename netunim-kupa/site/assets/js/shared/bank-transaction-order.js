@@ -1,3 +1,29 @@
+import {createFinancialSearchMatcher} from './search.js';
+
+function bankChequeItems(row){return Array.isArray(row?.checkDetails?.checkItems)?row.checkDetails.checkItems.filter(item=>item&&typeof item==='object'):[]}
+function bankChequeNumbers(row){return Array.isArray(row?.checkDetails?.checkNumbers)?row.checkDetails.checkNumbers:[]}
+function bankCardSuffixes(row){return Array.isArray(row?.creditSettlementDetails?.cardLast4s)?row.creditSettlementDetails.cardLast4s:[]}
+function bankSearchFields(row,dateLabel){
+  const sender=row?.senderAccount||{},cheques=bankChequeItems(row),credit=row?.creditSettlementDetails||{};
+  return {
+    amounts:[row?.amount,row?.balanceAfter,...cheques.map(item=>item.amount)],
+    identifiers:[row?.bankReference,sender.bankNumber,sender.branchNumber,sender.accountNumber,
+      ...bankChequeNumbers(row),...cheques.flatMap(item=>[item.bankNumber,item.branchNumber,item.accountNumber,item.checkNumber]),
+      credit.permissionReference,credit.issuerReference,...bankCardSuffixes(row)],
+    texts:[row?.description,row?.memo,row?.partyName,row?.partyHeadline,row?.messageHeadline,
+      row?.messageDetail,row?.status,row?.presenceState,credit.providerLabel,
+      row?.checkDetails?.warning,credit.warning,dateLabel],
+    dates:[row?.date,row?.processedDate],
+  };
+}
+export function createBankTransactionSearchMatcher(query){
+  const match=createFinancialSearchMatcher(query);
+  return (row,dateLabel='')=>match(bankSearchFields(row,dateLabel));
+}
+export function bankTransactionMatchesSearch(row,query,dateLabel=''){
+  return createBankTransactionSearchMatcher(query)(row,dateLabel);
+}
+
 function rowKey(row){return String(row?.id||row?.mergeKey||'').trim()}
 function rowDate(row){return String(row?.date||row?.processedDate||'')}
 function valueDate(row){return String(row?.processedDate||'')}

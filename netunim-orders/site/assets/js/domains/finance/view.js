@@ -16,7 +16,7 @@ import { checkDateFmt, checkMonthKey, checkMonthLabel, checkTodayISO } from '../
 import { CREDIT_PROVIDER_LABELS, normalizeCreditSync } from './credit-feed.js';
 import { creditAccountAggregate, creditDetailMonths, creditUpcomingDetailRows, creditFilterAccountModels, creditMonthBuckets, creditSummary } from './reporting.js';
 import { kupaAccountCashflowData } from '../bank/readout.js';
-import { dateInRange, searchMatch } from '../../core/search.js';
+import { dateInRange, createCreditTransactionSearchMatcher } from '../../core/search.js';
 import { bankDataMode, bankDataViewToggleMarkup, bankDirectSnapshotNote, bankMissingActive, bankMissingDetail, bankMissingSummary, bankSmartRows } from './bank-reconciliation-view.js';
 import { bankChequeDetails, bankCreditSettlementDetails, bankTransferReferenceDetails } from './bank-transaction-detail-view.js';
 import { bankChequeImageDownloadName, retainBankChequeImagePreviewUrl } from '../../shared/bank-cheque-images.js';
@@ -29,17 +29,12 @@ import { CREDIT_DETAIL_HISTORY_MONTHS } from '../../shared/credit-history.js';
 import { attachBankArchiveMetadata } from './bank-morning.js';
 import { bankMorningActionCell, bankMorningLinkedDocumentsMarkup, createBankMorningDocumentActions } from './bank-morning-view.js';
 import { bankDateLabel } from './bank-view-helpers.js';
-import {createBankTransactionSearchMatcher} from '../../shared/bank-transaction-search.js';
+import {createBankTransactionSearchMatcher} from '../../shared/bank-transaction-order.js';
 import { creditDiagnostics, creditHeadlineState } from './credit-status-view.js';
 const KUPA_SECTIONS = ['bank', 'credit', 'checks', 'summary'];
 const KUPA_SECTION_LABELS = { bank: 'בנק', credit: 'אשראי', checks: 'צ׳קים', summary: 'מאזן ודוחות' };
 function rowCardKey(row) {
     return row?.creditAccountKey || '';
-}
-function creditRowMatchesSearch(row, query) {
-    return searchMatch(query, [
-        row?.card, row?.account, row?.ownerLabel, row?.description, row?.transactionDate, row?.transactionTime, row?.date, row?.part, row?.totalParts, row?.amount, row?.displayAmount, row?.displayCurrency, row?.originalAmount, row?.originalCurrency, row?.totalAmount, row?.provider, row?.source, row?.status, row?.status === 'pending' ? 'ממתינה' : '', row?.foreignCurrency ? 'מט״ח' : '', CREDIT_PROVIDER_LABELS[row?.provider] || ''
-    ], [row?.transactionDate, row?.date]);
 }
 export function createDomainsFinanceView({ runFinance = withFinanceDerivations, ui, controller, checksView, dashboardView, morningReportsMarkup = () => '', morningExpensesMarkup = () => '', mountViewLayout, modal, closeModal, downloadBankChequeImage = async () => null, confirmDialog, dateEditorMarkup, openBankMorningDocument = () => {
 }, isActive = () => true }) {
@@ -250,11 +245,12 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             creditView:ui.creditView,creditDateFrom:ui.creditDateFrom,creditDateTo:ui.creditDateTo,
         };
         const search=String(ui.creditSearchValue||'');
+        const matchesCredit=createCreditTransactionSearchMatcher(search,CREDIT_PROVIDER_LABELS);
         const matchesAmount = createAmountRangeMatcher(ui.creditAmountFrom, ui.creditAmountTo);
         const detail=selectOrdersCreditDetail({
             allMonths:creditDetailMonths(s.kupa,creditDetailFilters()),
             upcomingRows:creditUpcomingDetailRows(s.kupa,creditDetailFilters()),
-            query,reference:checkTodayISO(),matches:row=>(!search.trim()||creditRowMatchesSearch(row,search))&&matchesAmount(row.includedInIlsTotal?row.amount:null),
+            query,reference:checkTodayISO(),matches:row=>matchesCredit(row)&&matchesAmount(row.includedInIlsTotal?row.amount:null),
         });
         ui.creditDetailFocus=detail.focus;
         const upcoming=detail.mode==='upcoming',chargeDay=detail.chargeDay,
