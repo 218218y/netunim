@@ -91,8 +91,9 @@ function creditDescriptionCell(item){
   const fx=item.foreignCurrency===true?'<span class="credit-transaction-fx">מט״ח</span>':'',
   missing=item.amountStatus==='unknown_amount'?`<span class="credit-transaction-pending">${item.coverageIncomplete?'כיסוי חסר':'סכום חסר'}</span>`:'',
   coverage=item.coverageIncomplete&&item.amountStatus!=='unknown_amount'?'<span class="credit-transaction-pending">LKG/כיסוי חלקי</span>':'';
+  const reference=item.issuerReference?`<small class="muted">אסמכתא <bdi>${esc(item.issuerReference)}</bdi></small>`:'';
   return (`<td class="credit-detail-description" title="${esc(item.description||'')}"><div class="credit-detail-description-line"><span>${esc(item.description)||'—'}</span>` +
-  `${fx}${missing}${coverage}</div></td>`);
+  `${fx}${missing}${coverage}</div>${reference}</td>`);
 }
 function syncedMonthlyCreditRow(item,boundaryClass,bulkPlaceholder){
   const series=item.series||{},
@@ -109,6 +110,7 @@ function syncedMonthlyCreditRow(item,boundaryClass,bulkPlaceholder){
   `${esc(status.label)}</span>${partial?`<div class="muted credit-detail-partial">${!item.date?'אין מועד חיוב אמין':item.coverageIncomplete?'כיסוי חברה חלקי':'אופק חלקי'}</div>`:''}</td></tr>`);
 }
 function pendingAmountMarkup(item){
+  if(item.amountSource==='unknown')return '<span class="muted">לא נמסר</span>';
   if(item.foreignCurrency&&Number.isFinite(Number(item.originalAmount))&&item.originalCurrency){
   const formatted=new Intl.NumberFormat('he-IL',{maximumFractionDigits:2}).format(Number(item.originalAmount));
   return `${formatted} ${esc(item.originalCurrency)}`

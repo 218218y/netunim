@@ -30,7 +30,7 @@ export type BillingRow = {
   billingDateConfidence:BillingProjection['confidence']|'manual',includedInIlsTotal:boolean,amountEstimated:boolean,
   amountSource:AmountSource|'coverage_missing'|'manual',amountStatus:'known_ils'|'foreign_unconverted'|'unknown_amount',
   unconverted:boolean,unknownAmount:boolean,uncertainBillingDate:boolean,coverageIncomplete:boolean,coverageStatus:string,totalAmount:number,
-  seriesSourceKey?:string,
+  seriesSourceKey?:string,issuerReference?:string,
   record?:Record<string,unknown>,series?:{id:string,totalAmount:number,partial:boolean,transactionDate:string,transactionTime:string},
   charge?:{date:string,amount:number,part:number,totalParts:number},pending?:{id:string,isShekel:boolean},foreign?:{id:string},
 };

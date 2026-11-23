@@ -94,6 +94,48 @@ for label,setup in fixtures.items():
             assert not browser.drain_serious_errors()
             print('PASS orders inline status: stable DOM/scroll, verified V2 journal, filter/archive invalidation;',json.dumps(inline))
 
+def measure_credit_search(browser, app):
+    result = browser.evaluate("""(async app=>{
+      const metrics=await import('./assets/js/shared/runtime-performance.js');
+      const kupa=app==='kupa',id=kupa?'credit-transaction-sections':'ordersCreditDetailRegion';
+      const host=document.body.appendChild(document.createElement('div'));
+      host.appendChild(document.createElement('div')).id=id;
+      const makeCredit=(description,totalAmount,account='עסקי')=>({id:description,description,totalAmount,account,
+        active:true,card:account,installments:1,firstChargeDate:'2026-10-10',transactionDate:'2026-09-10'});
+      const state=Object.freeze({credits:[
+        makeCredit('target',-2500.75),makeCredit('larger',12500.75),
+        makeCredit('reference 85525007896',550),makeCredit('other account',2500.75,'ביתי'),
+        ...Array.from({length:1000},(_,i)=>makeCredit('history '+i,10000+i)),
+      ],checks:[],cards:[],expenses:[]});
+      const ui={creditDetailMode:'all',creditAccountFilter:'עסקי',creditView:'all',bulkSelected:new Set()};
+      const view=kupa
+        ?(await import('./assets/js/domains/credit/view.js')).createDomainsCreditView({
+            ui,model:{state},detailRevision:()=>1,bulkHeader:()=>'',bulkCell:()=>'',syncBulkUi:()=>{},dateEditorMarkup:()=>''})
+        :(await import('./assets/js/domains/finance/view.js')).createDomainsFinanceView({
+            ui,controller:{readSnapshot:()=>({kupa:state})},dateEditorMarkup:()=>''});
+      const body=()=>host.querySelector('.credit-detail-table tbody').textContent;
+      const measurements=[];
+      metrics.configurePerformance(true);
+      try{
+        view.setCreditSearch('target 2,500.75');
+        const exact=body().includes('target')&&!body().includes('larger')&&!body().includes('other account');
+        metrics.clearPerformance();
+        for(const query of ['reference 2500','עסקי 2500.75','עסקי 2500','reference 2500','עסקי 2500.75']){
+          const start=performance.now();view.setCreditSearch(query);measurements.push(performance.now()-start);
+        }
+        const warmDerivations=Object.keys(metrics.performanceSummary()).filter(key=>key.startsWith('finance:compute:')||key.startsWith('selector:compute:'));
+        const filtered=body().includes('target')&&!body().includes('larger')&&!body().includes('other account');
+        view.setCreditSearch('reference 2500');
+        return {exact,filtered,reference:body().includes('85525007896'),warmDerivations,ms:measurements.map(n=>Math.round(n*10)/10)};
+      }finally{host.remove();metrics.configurePerformance(false);metrics.clearPerformance()}
+    })("""+json.dumps(app)+")", timeout=30)
+    assert result['exact'] and result['filtered'] and result['reference'], result
+    assert not result['warmDerivations'], result
+    assert max(result['ms']) < 600, result
+    print('PASS', app, 'financial search, 1004 rows and unchanged derivations;', json.dumps(result))
+    return result
+
+
 # Measure real finance views independently of the simpler Cash/Supplier tables.
 # Absolute times are baseline observations; deterministic work-count gates catch
 # duplicate calculations without depending on the speed of the CI machine.
@@ -144,6 +186,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','kupa-finance-performance') as brow
     assert not browser.drain_serious_errors()
     print('PASS finance: 1000 credit + 2000 bank rows, single detail derivation, two account forecasts, warm DOM identity;',json.dumps(finance))
     report['finance']=finance
+    report['kupa-credit-search']=measure_credit_search(browser,'kupa')
 
 with BrowserSession(ROOT/'netunim-orders/site','orders-domain-performance') as browser:
     domains=browser.evaluate("""(async()=>{
@@ -218,6 +261,7 @@ with BrowserSession(ROOT/'netunim-orders/site','orders-domain-performance') as b
     })()""")
     assert status=={'stable':True,'searchStable':True,'full':1},status
     print('PASS finance status: no data render for ACK, draft/focus preserved, authoritative replacement renders once')
+    report['orders-credit-search']=measure_credit_search(browser,'orders')
 
 # Keep CI observations as an artifact. A baseline must come from the same runner
 # class; desktop timing is not a portable CI budget. Work-count gates above are

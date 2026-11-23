@@ -225,6 +225,17 @@ function transactionTotalAmount(tx,amountData){
   return transactionDisplayAmount(tx,amountData);
 }
 
+// The stored connector ID is the issuer's voucher or confirmation number for
+// numeric IDs. MAX appends the installment ordinal to that number internally.
+/** @param {import('./credit-calculation-contracts.js').Transaction} tx @param {string|undefined} provider */
+function issuerReference(tx,provider){
+    const id=String(tx.id||tx.identifier||'').trim();
+    const suffix=`_${tx.installments?.number}`;
+    const reference=provider==='max'&&id.endsWith(suffix)?id.slice(0,-suffix.length):id;
+    if(/^\d{8}-\d{4}-\d{4}-\d{4}-\d{12}$/.test(reference))return '';
+    return /^\d+(?:[ -]\d+)*$/.test(reference)?reference:'';
+}
+
 /** @type {Calculation['transactionIdentity']} */
 function transactionIdentity(profile,account,tx,index,date,amountData){
   const id=String(tx?.id||tx?.identifier||'').trim(),part=transactionPart(tx),stable=`${id||'idless'}|${date}|${part}|${creditObservationKey(tx)}|${index}`;
@@ -355,6 +366,7 @@ function synchronizedRows(state, asOf, includeHidden) {
                 rows.push({
                     source,
                     creditId: `${pending ? 'PENDING' : 'SYNC'}:${identity}`,
+                    issuerReference: issuerReference(tx,profile.provider),
                     seriesSourceKey: JSON.stringify([profile.profileId,account.accountNumber,String(tx.id||tx.identifier||'').replace(/_\d+$/,''),transactionOriginDate(tx),tx.description,tx.originalAmount,tx.originalCurrency,transactionTotalParts(tx),ordinal]),
                     profileId: String(profile.profileId || ''),
                     provider: String(profile.provider || ''),

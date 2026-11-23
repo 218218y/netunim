@@ -48,6 +48,22 @@ test('financial number segments never concatenate across visible text fields',()
   assert.equal(matcher(prepareFinancialSearchFields({texts:['מספר 2 ומספר 500']})),false);
 });
 
+test('mixed queries retain exact amounts, dates and installment boundaries',()=>{
+  const row={account:'עסקי',description:'עסקת בדיקה',card:'כרטיס ••1234',amount:12500.75,part:2,totalParts:5,
+    transactionDate:'2026-09-10',transactionTime:'08:42'};
+  for(const query of ['עסקי 12,500.75','₪ 12 500.75 עסקי','10/09/26 עסקי','2026-09-10 12500.75','עסקי 2/5','08:42','עסקי 234']){
+    assert.equal(createCreditTransactionSearchMatcher(query)(row),true,query);
+  }
+  for(const query of ['עסקי 2500','עסקי 12500','עסקי 12 500','5/2','01/09/26','25','08:24']){
+    assert.equal(createCreditTransactionSearchMatcher(query)(row),false,query);
+  }
+  assert.equal(createCreditTransactionSearchMatcher('עסקי 2/5')({...row,part:1,description:'פריט 2'}),false);
+  assert.equal(createCreditTransactionSearchMatcher('2500.75')({description:'אסמכתא 85525007896'}),false);
+  assert.equal(createCreditTransactionSearchMatcher('0')({amount:0,displayAmount:0,totalAmount:0,
+    originalAmount:null,amountSource:'unknown',source:'credit_unknown',includedInIlsTotal:false}),false);
+  assert.equal(createCreditTransactionSearchMatcher('0')({originalAmount:0,amountSource:'charged_amount',includedInIlsTotal:true}),true);
+});
+
 import {createDomainsCreditView} from '../netunim-kupa/site/assets/js/domains/credit/view.js';
 import {createDomainsFinanceView} from '../netunim-orders/site/assets/js/domains/finance/view.js';
 
@@ -60,7 +76,14 @@ for(const site of ['kupa','orders'])test(`${site}: rendered credit transaction t
     {id:'a',active:true,card:'1234',account:'עסקי',totalAmount:2500,installments:1,firstChargeDate:'2026-10-10',transactionDate:'2026-09-10',description:'התאמה כספית'},
     {id:'b',active:true,card:'1234',account:'עסקי',totalAmount:12500,installments:1,firstChargeDate:'2026-10-10',transactionDate:'2026-09-10',description:'סכום גדול'},
     {id:'c',active:true,card:'1234',account:'עסקי',totalAmount:550,installments:1,firstChargeDate:'2026-10-10',transactionDate:'2026-09-10',description:'אסמכתא 85525007896'},
-  ],creditSync:{version:4,profiles:[],errors:[],cardMappings:{}},checks:[],expenses:[],cards:[]};
+  ],creditSync:{version:4,profiles:[{profileId:'p1',provider:'max',defaultAccount:'עסקי',accounts:[{
+    accountNumber:'1234',txns:[
+      {id:'85525008888_2',description:'אסמכתת ספק נפרדת',date:'2026-09-10',processedDate:'2026-10-10',
+        chargedAmount:-550,originalAmount:-1100,originalCurrency:'ILS',chargedCurrency:'ILS',installments:{number:2,total:2}},
+      {id:'c2f42500-d891-4f81-981e-dbf09e8e27d9',description:'מזהה טכני',
+        date:'2026-09-10',processedDate:'2026-10-10',chargedAmount:-550,originalAmount:-550,originalCurrency:'ILS'},
+    ],
+  }]}],errors:[],cardMappings:{'p1:1234':{included:true}}},checks:[],expenses:[],cards:[]};
   const ui={creditDetailMode:'all',creditAccountFilter:'all',creditProviderFilter:'all',creditCardFilter:'all',creditView:'all',bulkSelected:new Set()};
   const view=site==='kupa'
     ?createDomainsCreditView({ui,model:{state},syncBulkUi:()=>{},bulkCell:()=>'',bulkHeader:()=>'',dateEditorMarkup:()=>'',creditSyncUiState:()=>({})})
@@ -68,6 +91,9 @@ for(const site of ['kupa','orders'])test(`${site}: rendered credit transaction t
   view.setCreditSearch('2500');
   assert.match(host.outerHTML,/התאמה כספית/);
   assert.match(host.outerHTML,/85525007896/);
+  assert.match(host.outerHTML,/אסמכתת ספק נפרדת/);
+  assert.match(host.outerHTML,/>85525008888</);
+  assert.doesNotMatch(host.outerHTML,/מזהה טכני/);
   assert.doesNotMatch(host.outerHTML,/סכום גדול/);
   view.setCreditSearch('12500');
   assert.match(host.outerHTML,/סכום גדול/);

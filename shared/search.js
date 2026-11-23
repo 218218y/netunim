@@ -46,53 +46,95 @@ export function createPreparedSearchMatcher(query){
   };
 }
 
-// Structured financial search distinguishes money (an exact value) from visible
-// references (a substring within ONE field). Neither amounts nor identifiers
-// may be fabricated by joining distinct fields or unrelated numbers in prose.
-function financialQuery(query){
-  const raw=String(query??'').trim().replace(/[\s\u00a0\u202f₪]/g,'');
-  if(!/^[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/.test(raw))return null;
-  const number=Number(raw.replaceAll(',',''));
-  if(!Number.isFinite(number))return null;
-  return {cents:Math.round(Math.abs(number)*100),digits:raw.replace(/^[+-]/,'').split('.')[0].replaceAll(',','')};
-}
+// Grouped amounts, dates, and installment pairs remain single query terms.
+const financialTerms=/(?:₪\s*|[+-]\s*)?[+-]?\d{1,3}(?:[, \u00a0\u202f]\d{3})+(?:\.\d{1,2})?(?=$|[\s),;])|₪\s*[+-]?\d+(?:\.\d{1,2})?(?=$|[\s),;])|\S+/g;
+const dateTerm=/^(\d{1,2})[./-](\d{1,2})[./-](\d{2}|\d{4})$/;
+const isoDateTerm=/^\d{4}-\d{1,2}-\d{1,2}$/;
+const financialFormatMarks=/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+
 function monetaryCents(value){
   if(typeof value!=='number'&&(typeof value!=='string'||!value.trim()))return null;
-  const numeric=Number(value);
-  return Number.isFinite(numeric)?Math.round(Math.abs(numeric)*100):null;
+  const cents=Math.round(Math.abs(Number(value))*100);
+  return Number.isSafeInteger(cents)?cents:null;
 }
-function identifierIncludes(value,digits){
-  if(value===null||value===undefined||!digits)return false;
-  // Separators inside an identifier are cosmetic. Do not combine separate fields.
-  return String(value).replace(/[^0-9]/g,'').includes(digits);
+function referenceDigits(value){
+  const raw=String(value??'').trim();
+  return /^\d+(?:[\s-]+\d+)*$/.test(raw)?raw.replace(/[\s-]/g,''):'';
 }
-function visibleNumberIncludes(value,digits){
-  if(!digits||value===null||value===undefined)return false;
-  const numbers=String(value).match(/\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?/g)||[];
-  return numbers.some(number=>number.replaceAll(',','').includes(digits));
+function visibleNumbers(value){
+  return (String(value??'').match(/\d{1,3}(?:,\d{3})+(?!\d)|\d+/g)||[]).map(number=>number.replaceAll(',',''));
 }
-export function prepareFinancialSearchFields({amounts=[],identifiers=[],texts=[],dates=[]}={}){
-  return {amounts,identifiers,texts,dates,prepared:prepareSearchValues([...amounts,...identifiers,...texts],dates)};
+function identifierNumbers(value){
+  const digits=referenceDigits(value);
+  return digits?[digits]:visibleNumbers(value);
+}
+function financialDateParts(dates){return dates.map(dateParts).filter(Boolean)}
+function financialText(texts,identifiers){return [...texts,...identifiers].map(normalizeSearchText).filter(Boolean).join('\0')}
+
+export function prepareFinancialSearchFields(fields){
+  const {amounts=[],identifiers=[],texts=[],dates=[]}=fields;
+  return {...fields,prepared:{
+    cents:amounts.map(monetaryCents).filter(value=>value!==null),
+    references:identifiers.flatMap(identifierNumbers),
+    numbers:texts.flatMap(visibleNumbers),
+    dates:financialDateParts(dates),
+    text:financialText(texts,identifiers),
+  }};
+}
+
+function financialTermMatcher(token){
+  const parts=token.match(dateTerm);
+  const dayFirst=parts&&Number(parts[1])>=1&&Number(parts[1])<=31&&Number(parts[2])>=1&&Number(parts[2])<=12?parts:null;
+  if(dayFirst||isoDateTerm.test(token)){
+    const keyed=dayFirst?{day:Number(dayFirst[1]),month:Number(dayFirst[2]),year:Number(dayFirst[3])}:dateParts(token);
+    const short=dayFirst?.[3].length===2;
+    return ({dates=[],prepared})=>!!keyed&&(prepared?.dates??financialDateParts(dates)).some(({day,month,year})=>
+      day===keyed.day&&month===keyed.month&&(short?year%100:year)===keyed.year);
+  }
+  if(/^\d+\/\d+$/.test(token))return fields=>fields.installment===token;
+  if(/^\d{1,2}:\d{2}$/.test(token))return fields=>fields.time===token.padStart(5,'0');
+
+  const raw=token.replace(/[\s₪,]/g,'');
+  const amount=/^[+-]?\d+(?:\.\d{1,2})?$/.test(raw)&&!/^0\d/.test(raw);
+  const cents=amount?monetaryCents(raw):null;
+  const whole=raw.match(/^[+-]?(\d+)(?:\.0{1,2})?$/)?.[1]||'';
+  const reference=whole||referenceDigits(token);
+  if(cents!==null||reference){
+    return ({amounts=[],identifiers=[],texts=[],dates=[],prepared})=>
+      (cents!==null&&(prepared?prepared.cents.includes(cents):amounts.some(value=>monetaryCents(value)===cents)))||
+      (!!reference&&(prepared?prepared.references.some(value=>value.includes(reference)):
+        identifiers.some(value=>identifierNumbers(value).some(number=>number.includes(reference)))))||
+      (!!reference&&(prepared?prepared.numbers.some(value=>value.includes(reference)):
+        texts.some(value=>visibleNumbers(value).some(number=>number.includes(reference)))))||
+      (/^\d{4}$/.test(whole)&&(prepared?.dates??financialDateParts(dates)).some(date=>date.year===Number(whole)));
+  }
+  const words=normalizeSearchText(token).split(' ').filter(Boolean);
+  if(!words.length)return null;
+  return ({texts=[],identifiers=[],prepared})=>{
+    const text=prepared?.text??financialText(texts,identifiers);
+    return words.every(word=>text.includes(word));
+  };
 }
 export function createFinancialSearchMatcher(query){
-  const numeric=financialQuery(query),textMatcher=numeric?null:createPreparedSearchMatcher(query);
-  return ({amounts=[],identifiers=[],texts=[],dates=[],prepared})=>numeric
-    ?amounts.some(value=>monetaryCents(value)===numeric.cents)
-      ||identifiers.some(value=>identifierIncludes(value,numeric.digits))
-      ||texts.some(value=>visibleNumberIncludes(value,numeric.digits))
-      ||(/^\d{4}$/.test(numeric.digits)&&dates.some(value=>String(value??'').startsWith(`${numeric.digits}-`)))
-    :textMatcher(prepared||prepareSearchValues([...amounts,...identifiers,...texts],dates));
+  const tokens=String(query??'').normalize('NFKC').replace(financialFormatMarks,'').replace(/\u2212/g,'-').match(financialTerms)||[];
+  const terms=tokens.map(token=>financialTermMatcher(token.replace(/^\(+|[),;]+$/g,''))).filter(Boolean);
+  return fields=>terms.every(match=>match(fields));
 }
 // The same business semantics apply in Kupa and Orders. A record's technical
 // UUID is deliberately excluded: it isn't a searchable fact in the table.
 export function creditTransactionSearchFields(row,providerLabels={},precompute=true){
+  const pending=row?.status==='pending',unknown=row?.amountStatus==='unknown_amount'||row?.amountSource==='unknown',
+    installment=!pending&&row?.totalParts>1?`${row.part}/${row.totalParts}`:'',
+    original=row?.source==='credit_unknown'||unknown?row?.originalAmount:row?.series?.totalAmount??row?.totalAmount;
   const fields={
-    amounts:[row?.amount,row?.displayAmount,row?.originalAmount,row?.totalAmount],
-    identifiers:[row?.part,row?.totalParts],
-    texts:[row?.card,row?.account,row?.ownerLabel,row?.description,row?.transactionDate,
-      row?.transactionTime,row?.date,row?.displayCurrency,row?.originalCurrency,row?.provider,
-      row?.source,row?.status,row?.status==='pending'?'ממתינה':'',
-      row?.foreignCurrency?'מט״ח':'',providerLabels[row?.provider]||''],
+    amounts:[row?.includedInIlsTotal!==false&&row?.amountSource!=='issuer_not_billed' ? row?.amount:null,
+      original,row?.originalAmount,unknown?null:row?.displayAmount],
+    identifiers:[row?.issuerReference,...(installment?[row.part,row.totalParts]:[])],
+    installment,time:row?.transactionTime,
+    texts:[row?.card,row?.account,row?.ownerLabel,row?.description,row?.displayCurrency,row?.originalCurrency,row?.provider,
+      pending?'ממתינה אישור':installment?'תשלום':'תשלום אחד',
+      row?.source==='manual'?'תוספת ידנית':'מסונכרן',row?.coverageIncomplete?'כיסוי חסר':'',
+      unknown?'סכום חסר':'',row?.foreignCurrency?'מט״ח':'',providerLabels[row?.provider]||''],
     dates:[row?.transactionDate,row?.date],
   };
   return precompute?prepareFinancialSearchFields(fields):fields;

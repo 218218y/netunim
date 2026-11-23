@@ -3,7 +3,17 @@ import {money} from '../../core/money.js';
 import {checkDateFmt} from '../../core/dates.js';
 import {CREDIT_PROVIDER_LABELS} from './credit-feed.js';
 
-function creditDisplayAmount(row){const format=value=>new Intl.NumberFormat('he-IL',{maximumFractionDigits:2}).format(Number(value)||0);if(row.source==='credit_unknown'&&row.originalAmount===null)return '—';if(row.foreignCurrency&&Number.isFinite(Number(row.originalAmount))&&row.originalCurrency)return `${format(row.originalAmount)} ${esc(row.originalCurrency)}`;if(row.source==='credit_foreign')return `${format(row.displayAmount)} ${esc(row.displayCurrency||row.originalCurrency||'')}`;return money(Number.isFinite(Number(row.totalAmount))?Number(row.totalAmount):Number(row.displayAmount||row.amount||0))}
+function creditDisplayAmount(row){
+  const format=value=>new Intl.NumberFormat('he-IL',{maximumFractionDigits:2}).format(value);
+  const original=row.originalAmount;
+  if(row.amountSource==='unknown'||row.source==='credit_unknown'){
+    if(original===null||original===undefined)return '—';
+    return row.foreignCurrency?`${format(original)} ${esc(row.originalCurrency)}`:money(original);
+  }
+  if(row.foreignCurrency&&Number.isFinite(original)&&row.originalCurrency)return `${format(original)} ${esc(row.originalCurrency)}`;
+  if(row.source==='credit_foreign')return `${format(row.displayAmount)} ${esc(row.displayCurrency||row.originalCurrency||'')}`;
+  return money(row.series?.totalAmount??row.totalAmount??row.displayAmount??row.amount);
+}
 
 export function creditDetailRowMarkup(row,{cardBoundary=false}={}){
   const pending=row.status==='pending',
@@ -20,6 +30,7 @@ export function creditDetailRowMarkup(row,{cardBoundary=false}={}){
   statementCycle=row.detailCycleBillingDate?`<small class="credit-pending-estimate">חיוב מיידי בפועל · משויך למחזור ${esc(Number.isInteger(cycleNominal)&&cycleNominal>0?`${cycleNominal} בחודש`:checkDateFmt(row.detailCycleBillingDate))}</small>`:'',
   payment=pending?'<span class="muted">אישור</span>':row.totalParts>1?`<b>${esc(row.part)}/${esc(row.totalParts)}</b>`:'תשלום אחד',
   sourceLabel=row.source==='manual'?'תוספת ידנית · קריאה בלבד':esc(CREDIT_PROVIDER_LABELS[row.provider]||'מסונכרן'),
+  reference=row.issuerReference?`<small class="muted">אסמכתא <bdi>${esc(row.issuerReference)}</bdi></small>`:'',
   rowClass=[
     cardBoundary?'credit-card-boundary':'',
     pending||unknown||coverage?'credit-pending-detail-row':row.source==='credit_foreign'?'credit-foreign-detail-row':'',
@@ -29,7 +40,7 @@ export function creditDetailRowMarkup(row,{cardBoundary=false}={}){
   chargeDate=row.date?checkDateFmt(row.date):'לא נקבע';
   return `<tr class="${rowClass}">`+
   `<td><b>${esc(row.card)}</b><small>${esc([row.account,row.ownerLabel].filter(Boolean).join(' · '))}</small></td>`+
-  `<td class="credit-detail-description"><div class="credit-detail-description-line"><span>${esc(row.description)||'—'}</span>${descriptionTags}</div></td>`+
+  `<td class="credit-detail-description"><div class="credit-detail-description-line"><span>${esc(row.description)||'—'}</span>${descriptionTags}</div>${reference}</td>`+
   `<td>${transactionLabel}</td><td class="amount credit-detail-total">${creditDisplayAmount(row)}</td><td>${payment}</td>`+
   `<td class="credit-detail-charge"><b>${esc(chargeDate)}</b>${chargeAmount}${statementCycle}${estimate}</td>`+
   `<td><span class="checks-badge ${row.source==='manual'?'orange':'blue'}">${sourceLabel}</span></td></tr>`;

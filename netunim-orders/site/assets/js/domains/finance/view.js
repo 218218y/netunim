@@ -16,7 +16,7 @@ import { checkDateFmt, checkMonthKey, checkMonthLabel, checkTodayISO } from '../
 import { CREDIT_PROVIDER_LABELS, normalizeCreditSync } from './credit-feed.js';
 import { creditAccountAggregate, creditDetailMonths, creditUpcomingDetailRows, creditFilterAccountModels, creditMonthBuckets, creditSummary } from './reporting.js';
 import { kupaAccountCashflowData } from '../bank/readout.js';
-import { dateInRange, createCreditTransactionSearchMatcher } from '../../core/search.js';
+import { dateInRange, creditTransactionSearchFields, createCreditTransactionSearchMatcher } from '../../core/search.js';
 import { bankDataMode, bankDataViewToggleMarkup, bankDirectSnapshotNote, bankMissingActive, bankMissingDetail, bankMissingSummary, bankSmartRows } from './bank-reconciliation-view.js';
 import { bankChequeDetails, bankCreditSettlementDetails, bankTransferReferenceDetails } from './bank-transaction-detail-view.js';
 import { bankChequeImageDownloadName, retainBankChequeImagePreviewUrl } from '../../shared/bank-cheque-images.js';
@@ -237,7 +237,20 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
     function creditChargeHeading(items) {
         return creditDetailChargeHeadingMarkup(items, money, esc);
     }
-    function creditDetailSectionMarkup(s, summary = creditSummary(s.kupa)) {
+    let detailInputs;
+    function creditDetailInputs(kupa,reference,summary){
+        const filters=creditDetailFilters(),key=JSON.stringify([reference,filters]);
+        const cacheable=!!kupa&&Object.isFrozen(kupa);
+        if(cacheable&&detailInputs?.source===kupa&&detailInputs.key===key)return detailInputs;
+        const prepare=row=>({...row,search:creditTransactionSearchFields(row,CREDIT_PROVIDER_LABELS)});
+        const inputs={source:kupa,key,summary:summary??creditSummary(kupa),
+            allMonths:creditDetailMonths(kupa,{...filters,asOf:reference}).map(month=>({...month,items:month.items.map(prepare)})),
+            upcomingRows:creditUpcomingDetailRows(kupa,{...filters,asOf:reference}).map(prepare),
+        };
+        detailInputs=cacheable?inputs:undefined;
+        return inputs;
+    }
+    function creditDetailSectionMarkup(s, summary) {
         const query={
             creditDetailMode:ui.creditDetailMode,creditDetailChargeDay:ui.creditDetailChargeDay,
             creditDetailFocus:ui.creditDetailFocus,creditAccountFilter:ui.creditAccountFilter,
@@ -247,11 +260,12 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
         const search=String(ui.creditSearchValue||'');
         const matchesCredit=createCreditTransactionSearchMatcher(search,CREDIT_PROVIDER_LABELS);
         const matchesAmount = createAmountRangeMatcher(ui.creditAmountFrom, ui.creditAmountTo);
+        const reference=checkTodayISO(),inputs=creditDetailInputs(s.kupa,reference,summary);
         const detail=selectOrdersCreditDetail({
-            allMonths:creditDetailMonths(s.kupa,creditDetailFilters()),
-            upcomingRows:creditUpcomingDetailRows(s.kupa,creditDetailFilters()),
-            query,reference:checkTodayISO(),matches:row=>matchesCredit(row)&&matchesAmount(row.includedInIlsTotal?row.amount:null),
+            allMonths:inputs.allMonths,upcomingRows:inputs.upcomingRows,
+            query,reference,matches:row=>matchesCredit(row)&&matchesAmount(row.includedInIlsTotal?row.amount:null),
         });
+        summary=inputs.summary;
         ui.creditDetailFocus=detail.focus;
         const upcoming=detail.mode==='upcoming',chargeDay=detail.chargeDay,
             {historyMonths,upcomingTotal,futureMonths}=detail,

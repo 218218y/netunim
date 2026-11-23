@@ -64,14 +64,17 @@ jobs:
         run: node tests/runtime_camoufox_dependencies.mjs
       - name: Exercise actual scraper and Puppeteer packages against isolated Chromium
         run: NETUNIM_BROWSER="$(command -v google-chrome)" node tests/runtime_bank_dependencies.mjs
+      - name: Provision the pinned Camoufox browser
+        env:
+          CAMOUFOX_INSTALL_DIR: ${{ runner.temp }}/netunim-camoufox
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node netunim-kupa/bank-bridge/provision-camoufox.mjs
       - name: Exercise real Camoufox and locked Playwright with isolated profiles
         env:
           CAMOUFOX_INSTALL_DIR: ${{ runner.temp }}/netunim-camoufox
           NETUNIM_CAMOUFOX_MODULE: ${{ github.workspace }}/netunim-kupa/bank-bridge/node_modules/camoufox-js/dist/index.js
           NETUNIM_REQUIRE_CAMOUFOX: '1'
-        run: |
-          node netunim-kupa/bank-bridge/provision-camoufox.mjs
-          node tests/camoufox_identity_integration.mjs
+        run: node tests/camoufox_identity_integration.mjs
 
   codeql:
     name: CodeQL / ${{ matrix.language }}
