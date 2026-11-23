@@ -28,7 +28,8 @@ import { createCreditCardBoundaryRowMarkup, creditCycleRowsMarkup, creditUpcomin
 import { CREDIT_DETAIL_HISTORY_MONTHS } from '../../shared/credit-history.js';
 import { attachBankArchiveMetadata } from './bank-morning.js';
 import { bankMorningActionCell, bankMorningLinkedDocumentsMarkup, createBankMorningDocumentActions } from './bank-morning-view.js';
-import { bankDateLabel, bankRowMatchesSearch } from './bank-view-helpers.js';
+import { bankDateLabel } from './bank-view-helpers.js';
+import {createBankTransactionSearchMatcher} from '../../shared/bank-transaction-search.js';
 import { creditDiagnostics, creditHeadlineState } from './credit-status-view.js';
 const KUPA_SECTIONS = ['bank', 'credit', 'checks', 'summary'];
 const KUPA_SECTION_LABELS = { bank: 'בנק', credit: 'אשראי', checks: 'צ׳קים', summary: 'מאזן ודוחות' };
@@ -97,7 +98,8 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             allRows = mode === 'direct' ? directRows : historyRows,
             periodRows = allRows.filter(row=>bankRowMatchesDateRange(row)&&matchesAmount(row.amount)),
             query = ui.bankSearchValue || '',
-            rows = query.trim() ? periodRows.filter(row => bankRowMatchesSearch(row, query)) : periodRows;
+            matchesSearch = query.trim() ? createBankTransactionSearchMatcher(query) : null,
+            rows = matchesSearch ? periodRows.filter(row => matchesSearch(row, bankDateLabel(row?.date || row?.processedDate))) : periodRows;
         const scoped = bankDateFilterActive() || query.trim(), countLabel = scoped ? `${rows.length} מתוך ${allRows.length} תנועות` : `${rows.length} תנועות`;
         const roleName = role === 'home' ? '\u05d1\u05d9\u05ea\u05d9' : '\u05e2\u05e1\u05e7\u05d9', { balanceFacts, warning } = bankBalanceCaptionMarkup(feed, role, state.kupa);
         const accountTitle = feed?.accountNumber ? `חשבון ${roleName} ${esc(feed.accountNumber)}` : `חשבון ${roleName}`;

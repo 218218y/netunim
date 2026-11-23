@@ -29,8 +29,13 @@ export function searchMatch(query,values=[],dateValues=[]){
 }
 
 export function prepareSearchValues(values=[],dateValues=[]){
-  const hay=normalizeSearchText([...values,...dateValues,...dateValues.flatMap(dateSearchAliases)].filter(value=>value!==undefined&&value!==null).join(' '));
-  return {hay,hayCompact:hay.replace(/\s+/g,''),words:hay.split(' ').filter(Boolean)};
+  // Compact punctuation and spaces WITHIN a field (phone, amount, date),
+  // but never merge digits from different fields into a fabricated number.
+  const fields=[...values,...dateValues,...dateValues.flatMap(dateSearchAliases)]
+    .filter(value=>value!==undefined&&value!==null)
+    .map(normalizeSearchText).filter(Boolean);
+  const hay=fields.join(' ');
+  return {hay,hayCompact:fields.map(value=>value.replace(/\s+/g,'')).join('\0'),words:hay.split(' ').filter(Boolean)};
 }
 export function createPreparedSearchMatcher(query){
   const q=normalizeSearchText(query),qCompact=compactSearchText(query),tokens=q.split(' ').filter(Boolean);

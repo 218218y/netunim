@@ -9,7 +9,8 @@ import {readBankMoney} from '../../shared/bank-money-value.js';
 import {normalizeBankSenderAccount} from '../../shared/bank-sender-account.js';
 import {dateFmt} from '../../core/dates.js';
 import {financeSyncProgressMeta,financeSyncProgressMarkup,updateFinanceSyncProgress,syncEventCurrent} from '../../shared/sync-status.js';
-import {dateInRange,searchMatch} from '../../core/search.js';
+import {dateInRange} from '../../core/search.js';
+import {createBankTransactionSearchMatcher} from '../../shared/bank-transaction-search.js';
 import {localSearchMarkup} from '../../ui-primitives/local-search.js';
 import {bankTransactionIdentity} from './feed.js';
 import {bankSmartHistoryRows,bankMissingSummaryText,bankChequeTransitionNeedsReview} from '../../shared/bank-transaction-order.js';
@@ -46,7 +47,6 @@ function bankDateLabel(value){
   return `${weekday} ${dd}/${mm}/${yy}`;
 }
 
-function bankRowMatchesSearch(row,query){return searchMatch(query,[row?.date,row?.processedDate,bankDateLabel(row?.date||row?.processedDate),row?.description,row?.memo,row?.amount,row?.balanceAfter,row?.bankReference,row?.status,row?.presenceState,row?.missingSince,row?.lastSeenAt,JSON.stringify(row?.checkDetails||{}),JSON.stringify(row?.creditSettlementDetails||{})],[row?.date,row?.processedDate])}
 function bankMissingActive(row){return row?.presenceState==='missing'&&!row?.missingAcknowledgedAt}
 function bankDataMode(){return ui.bankDataView==='direct'?'direct':'history'}
 function bankSmartRows(rows,directRows=[]){return bankSmartHistoryRows(rows,{directTransactions:directRows,isMissingActive:bankMissingActive})}
@@ -184,7 +184,7 @@ function bankChequeDetailsMarkup(row){
 
 function bankTransactionsTableMarkup(feed,role){
   const matchesAmount=createAmountRangeMatcher(ui.bankAmountFrom,ui.bankAmountTo);
-  const mode=bankDataMode(),directSnapshot=feed?.directSnapshot||null,historyRows=bankSmartRows(feed?.transactions||[],directSnapshot?.transactions||[]),allRows=mode==='direct'?(directSnapshot?.transactions||[]):historyRows,periodRows=allRows.filter(row=>bankRowMatchesDateRange(row)&&matchesAmount(row.amount)),query=ui.bankSearchValue||'',rows=query.trim()?periodRows.filter(row=>bankRowMatchesSearch(row,query)):periodRows,balance=readBankMoney(feed?.balance);
+  const mode=bankDataMode(),directSnapshot=feed?.directSnapshot||null,historyRows=bankSmartRows(feed?.transactions||[],directSnapshot?.transactions||[]),allRows=mode==='direct'?(directSnapshot?.transactions||[]):historyRows,periodRows=allRows.filter(row=>bankRowMatchesDateRange(row)&&matchesAmount(row.amount)),query=ui.bankSearchValue||'',matchesSearch=query.trim()?createBankTransactionSearchMatcher(query):null,rows=matchesSearch?periodRows.filter(row=>matchesSearch(row,bankDateLabel(row?.date||row?.processedDate))):periodRows,balance=readBankMoney(feed?.balance);
   const scoped=bankDateFilterActive()||query.trim(),countLabel=scoped?`${rows.length} מתוך ${allRows.length} תנועות`:`${rows.length} תנועות`;
   const available=readBankMoney(feed?.availableBalance),limit=readBankMoney(feed?.creditLimit),difference=Number.isFinite(balance)&&Number.isFinite(available)?available-balance:null;
   const roleName=role==='home'?'ביתי':'עסקי',cashflow=kupaAccountCashflowData(model.state,roleName),facts=[];
