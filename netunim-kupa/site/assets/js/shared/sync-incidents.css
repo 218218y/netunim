@@ -15,3 +15,8 @@
 .sync-incidents[data-inline=true] .sync-incidents-panel{max-height:none;padding:0}
 .sync-incidents[data-inline=true][data-warning=true]{border-color:#d69b37}
 .secondary-readonly .sync-incidents input{cursor:text}
+.morning-operation-center{border-bottom:1px solid #cbd5e1;margin-bottom:14px;padding-bottom:10px}
+.morning-operation-center dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(133px,1fr));gap:8px 16px}
+.morning-operation-center dt{color:#526174;font-size:.88em}.morning-operation-center dd{margin:0}
+.morning-operation-state{display:inline-block;margin-inline-start:8px;padding:1px 7px;border-radius:5px;background:#f1f5f9}
+.morning-operation-center details{margin-top:9px}.morning-operation-center summary{cursor:pointer}

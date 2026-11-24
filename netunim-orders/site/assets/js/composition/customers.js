@@ -65,6 +65,7 @@ export function createOrdersCustomersRuntime({model,customerUi,customerRevision}
     removeDebtUrgencyReminder:(...args)=>ready().domain.removeDebtUrgencyReminder(...args),
     openBankMorningDocument:(...args)=>ready().domain.openBankMorningDocument(...args),
     recoverPendingMorningOperation:(...args)=>ready().domain.recoverPendingMorningOperation(...args),
+    get morningOperationCenter(){return ready().domain.morningOperationCenter},
     get actions(){return ready().actions},
     get morningActions(){return ready().morningActions},
     // Browser audit harnesses exercise verified Morning replay against the real

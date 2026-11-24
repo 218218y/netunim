@@ -8,15 +8,27 @@ import sys
 from browser_harness import BrowserSession, ROOT, _free_port, _RuntimeHTTPServer
 
 OWNER='11111111-1111-4111-8111-111111111111'
+MORNING_OPERATION='00000000-0000-4000-8000-000000000031'
 
 
 class Registry:
     def __init__(self):
         self.rows={}
         self.lock=threading.Lock()
+        self.morning=dict(operation_id=MORNING_OPERATION,stage='check_registration',document_type=320,
+                          document_number='3972',amount=9300,check_count=10,check_amount=9300,attempts=64,
+                          error_code='mfa_required',resolved_at=None)
+        self.morning_retries=0
 
     def call(self, name, body):
         with self.lock:
+            if name=='morning-documents':
+                if body['action']=='list_recovery':
+                    return {'ok':True,'operations':[self.morning]}
+                assert body=={'action':'status','operation_id':MORNING_OPERATION,'reconcile':True,'retry_checks':True}
+                self.morning_retries+=1
+                self.morning.update(stage='registered',resolved_at='2026-11-24T15:00:00Z',error_code=None)
+                return {'ok':True,'operation':{'operation_id':MORNING_OPERATION}}
             if name=='list_active_sync_incidents_v1':
                 return [row for row in self.rows.values() if row['resolved_at'] is None]
             if name=='mark_sync_incident_reviewed_v1':
@@ -76,17 +88,20 @@ SETUP=r"""(async()=>{
   const {createSyncIncidentRegistry}=await import('./assets/js/shared/sync-incident-registry.js');
   const {createSyncIncidentMonitor}=await import('./assets/js/shared/sync-incident-monitor.js');
   const {createSyncIncidentUi}=await import('./assets/js/shared/sync-incident-ui.js');
+  const {createMorningOperationCenter}=await import('./assets/js/shared/morning-operation-center.js');
   const site=__APP__;
   let time=0;
   globalThis.incidentSample={known:true,pending:true,blocked:true,conflict:true,epoch:'test-E',evidence:'journal',isCurrent:()=>true};
   const store=createSyncIncidentStore(),scope=()=>({owner:'11111111-1111-4111-8111-111111111111',epoch:1});
   const registry=createSyncIncidentRegistry({request:(path,options)=>fetch(path,options),accountScope:scope});
-  const ui=createSyncIncidentUi({clientId:site+'-client',label:()=>site==='orders'?'Office':'Cash desk',saveLabel:()=>{},refresh:()=>monitor.wake(),review:row=>monitor.review(row),confirmReview:()=>true});
+  const financial=createMorningOperationCenter({request:(path,options)=>fetch(path,options),accountScope:scope,publish:()=>ui.update(monitor.view,true)});
+  const ui=createSyncIncidentUi({clientId:site+'-client',label:()=>site==='orders'?'Office':'Cash desk',saveLabel:()=>{},refresh:()=>monitor.wake(),review:row=>monitor.review(row),confirmReview:()=>true,financial});
   const monitor=createSyncIncidentMonitor({site,clientId:site+'-client',deviceLabel:()=>site==='orders'?'Office':'Cash desk',accountScope:scope,primary:()=>true,
     domains:[{domain:site+'_main',read:async()=>globalThis.incidentSample}],store,registry,publish:state=>ui.update(state),now:()=>time,
     timers:{setTimeout:()=>0,clearTimeout:()=>{}}});
-  globalThis.incidentFixture={monitor,store,registry,scope,ui,advance:ms=>{time+=ms}};
+  globalThis.incidentFixture={monitor,store,registry,scope,ui,financial,advance:ms=>{time+=ms}};
   await monitor.start();
+  await financial.refresh();
   return monitor.view;
 })()"""
 
@@ -143,6 +158,21 @@ def run():
         second=kupa.evaluate(SETUP.replace('__APP__',json.dumps('kupa')))
         assert len(second['incidents'])==2
         assert kupa.evaluate("document.querySelectorAll('.sync-incidents')[1].textContent.includes('Office')")
+        for browser in (orders,kupa):
+            assert browser.evaluate("incidentFixture.ui.open(); document.querySelectorAll('.sync-incidents')[1].textContent.includes('3972')")
+        assert orders.evaluate("document.querySelector('[data-incident-action=morning-ack]').click(); incidentFixture.ui.open(); !document.querySelector('[data-incident-action=morning-ack]') && incidentFixture.financial.count===1")
+        assert kupa.evaluate("!!document.querySelector('[data-incident-action=morning-ack]')")
+        assert kupa.evaluate("""(async()=>{
+          const retry=document.querySelector('[data-incident-action=morning-retry]');retry.click();retry.click();
+          for(let n=0;n<100&&incidentFixture.financial.count;n++)await new Promise(resolve=>setTimeout(resolve,20));
+          return incidentFixture.financial.count===0;
+        })()""")
+        assert orders.evaluate("""(async()=>{
+          if(incidentFixture.financial.count!==1)return false;
+          await incidentFixture.financial.refresh({force:true});
+          return incidentFixture.financial.count===0;
+        })()""")
+        assert registry.morning_retries==1
         orders.evaluate('incidentFixture.monitor.stop();incidentFixture.ui.dispose();true')
         orders._navigate()
         restored=orders.evaluate(SETUP.replace('__APP__',json.dumps('orders')))

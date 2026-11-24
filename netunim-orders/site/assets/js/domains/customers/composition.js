@@ -4,6 +4,7 @@ import {createDomainsCustomersEditor,updateDebtNote,updateDebtUrgency} from './e
 import {createDomainsCustomersDocuments} from './documents.js';
 import {createDomainsCustomersDocumentsBrowser} from './documents-browser.js';
 import {createMorningMetadataPersistence} from './morning-metadata-persistence.js';
+import {loadMorningDebtRecoveryContext} from './morning-debt-recovery.js';
 
 export function createDomainsCustomers({
   morningOperationScope,morningRequest,contactsRequest,documentMedia,customerRevision,model,customerUi,selectors,
@@ -103,9 +104,23 @@ export function createDomainsCustomers({
   function dispose(){if(disposed)return false;disposed=true;documents.dispose();documentsBrowser.dispose();return true}
   async function drain(){do{await Promise.all([documents.runtime.drain(),documentsBrowser.runtime.drain()])}while(documents.runtime.isPending()||documentsBrowser.runtime.isPending())}
   const runtime={dispose,drain,cancelPending:()=>{documents.runtime.cancelPending();documentsBrowser.runtime.cancelPending()},isPending:()=>documents.runtime.isPending()||documentsBrowser.runtime.isPending()};
+  const morningOperationCenter={
+    async recoverLocal(operationId){
+      if(!storagePersistence.canMutate()||loadMorningDebtRecoveryContext()?.operationId!==operationId)return false;
+      const result=await documents.recoverPendingMorningOperation({expectedOperationId:operationId,retryChecks:true,quiet:false});
+      if(result.state==='unavailable')throw result.error;
+      return true;
+    },
+    debtAction(row){
+      const context=loadMorningDebtRecoveryContext();
+      const debt=(model.state.customerDebts||[]).find(item=>(context?.operationId===row.operation_id&&context.debtId===item.id)
+        ||item.morningDocuments?.some(link=>link.operationId===row.operation_id));
+      return debt?()=>editor.openDebtProgressDetails(debt.id):null;
+    },
+  };
   return {
     selectors,bulk,view,editor,documents,documentsBrowser,
-    dispose,runtime,
+    dispose,runtime,morningOperationCenter,
     renderCustomers:(...args)=>view.renderCustomers(...args),
     openMorningDocuments:(...args)=>documentsBrowser.openDocuments(...args),
     searchMorningDocuments:(...args)=>documentsBrowser.search(...args),

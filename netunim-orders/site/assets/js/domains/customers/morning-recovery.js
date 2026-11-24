@@ -8,7 +8,7 @@ import {morningCheckRegistrationMessage} from './morning-operation-evidence.js';
 /** @typedef {import('./morning-operation-evidence.js').BankLink} BankLink */
 /** @typedef {{durable:boolean,recoveryCleared:boolean,blocked:boolean}} Settlement */
 /** @typedef {{ok:boolean,state:string,error?:unknown,result?:ApplicationResult}} RecoveryResult */
-/** @typedef {{quiet?:boolean,assertCurrent?:MorningAssertion}} RecoveryOptions */
+/** @typedef {{quiet?:boolean,assertCurrent?:MorningAssertion,retryChecks?:boolean,expectedOperationId?:string}} RecoveryOptions */
 /** @typedef {{recover:(options?:RecoveryOptions)=>Promise<RecoveryResult>}} RecoveryCapability */
 /** @param {unknown} error */
 function changed(error){return error!==null&&typeof error==='object'&&'code' in error&&error.code==='MORNING_OPERATION_SCOPE_CHANGED'}
@@ -29,12 +29,13 @@ function failureMessage(error){return error!==null&&typeof error==='object'&&'me
  */
 export function createMorningRecovery({lifetime,commands,recovery,application,publish}){
 /** @param {RecoveryOptions} options @returns {Promise<RecoveryResult>} */
-async function recoverPendingMorningOperation({quiet=false,assertCurrent}={}){
+async function recoverPendingMorningOperation({quiet=false,assertCurrent,retryChecks=false,expectedOperationId}={}){
   try{const assertSource=assertCurrent||(()=>{}),assertWrite=lifetime.capture();assertCurrent=()=>{assertSource();assertWrite()};assertCurrent()}catch(error){return {ok:false,state:'scope-changed',error}}
   return lifetime.join('recovery',assertCurrent,async()=>{
   const context=recovery.read();if(!context||publish.isBusy())return {ok:true,state:context?'busy':'none'};
+    if(expectedOperationId&&context.operationId!==expectedOperationId)return {ok:false,state:'scope-changed'};
     try{
-      let data=await commands.status(context.operationId,true,assertCurrent);assertCurrent();let operation=data.operation;
+      let data=await commands.status(context.operationId,true,assertCurrent,retryChecks);assertCurrent();let operation=data.operation;
       if(operation?.state==='reserved'){
         const abandoned=await recovery.abandon(context.operationId,{quiet,assertCurrent});assertCurrent();
         if(abandoned.abandoned)return {ok:true,state:'abandoned'};

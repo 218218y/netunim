@@ -19,6 +19,12 @@ def run(db):
         return scalar('begin;set local role service_role;select public.retry_verified_morning_checks('
                       +quote(owner)+','+quote(environment)+','+quote(operation)+');commit;')
 
+    def recovery_rows(owner=OWNER, environment='sandbox'):
+        # Hosted service_role bypasses RLS. Give the disposable role the same
+        # property only within this rolled-back catalog test.
+        return json.loads(scalar('begin;alter role service_role bypassrls;set local role service_role;select coalesce(jsonb_agg(result),\'[]\') '
+                                 'from public.list_morning_recovery_operations('+quote(owner)+','+quote(environment)+') result;rollback;'))
+
     def save(checks, precision=True, deleted=None):
         revision=scalar("select revision from public.shared_checks_documents where owner_id="+quote(OWNER)+" and document_name='main'") or '0'
         audit={'checkAmountPrecision':2} if precision else {}
@@ -201,6 +207,12 @@ def run(db):
         db.sql("update public.morning_document_operations set checks_registration_next_retry_at=clock_timestamp()-interval '1 second' where operation_id="+quote(failed_operation)+";select netunim_internal.retry_morning_check_registrations()")
     assert scalar("select state||':'||checks_registration_attempts from public.morning_document_operations where operation_id="+quote(failed_operation))=='created:5'
     assert scalar("select checks_registration_next_retry_at is null and checks_registration_failure_kind='unexpected' and checks_registration_first_failed_at<checks_registration_last_failed_at from public.morning_document_operations where operation_id="+quote(failed_operation))=='t'
+    active = next(row for row in recovery_rows() if row['operation_id']==failed_operation)
+    assert active['stage']=='check_registration' and active['attempts']==5 and active['next_retry_at'] is None
+    assert active['check_count']==2 and active['check_amount']==200.5 and active['error_code']=='P0001', active
+    assert 'check_intent' not in active and 'owner_id' not in active and 'error_message' not in active
+    assert not recovery_rows(owner='00000000-0000-4000-8000-000000000999')
+    assert not recovery_rows(environment='production')
     db.sql('select netunim_internal.retry_morning_check_registrations()')
     assert scalar("select checks_registration_attempts from public.morning_document_operations where operation_id="+quote(failed_operation))=='5'
     assert len(rows())==count
@@ -208,6 +220,8 @@ def run(db):
     assert retry(failed_operation)=='t'
     assert len(rows())==count+2
     assert scalar("select checks_registered_at is not null and checks_registration_error is null from public.morning_document_operations where operation_id="+quote(failed_operation))=='t'
+    resolved = next(row for row in recovery_rows() if row['operation_id']==failed_operation)
+    assert resolved['stage']=='registered' and resolved['resolved_at'] and resolved['error_code'] is None
     # Regression for the production failure: an enrolled owner's verified
     # server-side continuation has no browser JWT. Both the trigger and cron
     # must finish while the public writer remains inaccessible at AAL1.
@@ -217,6 +231,7 @@ def run(db):
     for role in ('anon','authenticated','service_role'):
         assert scalar("select has_function_privilege("+quote(role)+",'netunim_internal.register_morning_checks(uuid)','EXECUTE')")=='f'
         assert scalar("select has_function_privilege("+quote(role)+",'public.retry_verified_morning_checks(uuid,text,uuid)','EXECUTE')")==('t' if role=='service_role' else 'f')
+        assert scalar("select has_function_privilege("+quote(role)+",'public.list_morning_recovery_operations(uuid,text)','EXECUTE')")==('t' if role=='service_role' else 'f')
     revision=scalar("select revision from public.shared_checks_documents where owner_id="+quote(OWNER))
     public_save="select revision from public.save_shared_checks_document_v6('main',"+revision+",'{\"version\":1,\"checks\":[],\"bankEvents\":[]}','mfa-denied-import','[]','{}')"
     try:

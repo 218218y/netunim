@@ -16,6 +16,7 @@ const REQUEST_TIMEOUT_MS=20_000;
 const SAFE_RATE_LIMIT_RETRIES=2;
 const MAX_RATE_LIMIT_DELAY_MS=5_000;
 const RECONCILE_MIN_AGE_MS=45_000;
+const RECONCILE_COOLDOWN_MS=30_000;
 const RESERVATION_STALE_MS=2*60_000;
 const RECONCILE_WINDOW_MS=5*60_000;
 const MAX_DOCUMENT_PDF_BYTES=20*1024*1024;
@@ -218,10 +219,21 @@ async function validateBankSource(ownerId:string,input:any){
   const reference=clean(data.bank_reference,80),serial=clean(data.bank_serial,80),paymentRef=clean(first.transactionId,80);if((reference||serial)&&paymentRef&&paymentRef!==reference&&paymentRef!==serial)throw Object.assign(new Error('bank_reference_mismatch'),{code:'bank_reference_mismatch'});
   return data;
 }
-async function persistVerifiedBankLink(ownerId:string,row:OperationRow){
+async function persistVerifiedBankLink(ownerId:string,row:OperationRow,{recover=true}={}){
   if(row.source_kind!=='bank')return {pending:false};
-  const {data,error}=await admin.rpc('record_verified_bank_morning_document',{p_owner_id:ownerId,p_operation_id:row.operation_id});if(error){console.error('Morning verified bank link persistence failed',row.operation_id,error);return {pending:true}}
-  const result=Array.isArray(data)?data[0]:data;return {pending:false,transactionId:Number(result?.transaction_id)||Number(row.source_bank_transaction_id)||null,handledAt:result?.handled_at||null,linkId:Number(result?.link_id)||null,operationId:row.operation_id,documentId:String(row.document_id||''),documentNumber:String(row.document_number||''),documentType:Number(row.document_type)||0,documentAmount:Number(row.amount)||0,verifiedAt:row.verified_at||null};
+  const {data:existing,error:readError}=await admin.from('bank_transaction_document_links').select('id,transaction_id').eq('owner_id',ownerId).eq('environment',MORNING_ENV).eq('operation_id',row.operation_id).maybeSingle();
+  if(readError||(!existing&&!recover))return {pending:true};
+  let result;
+  if(existing){
+    const {data:bank,error}=await admin.from('bank_transactions').select('handled_at').eq('owner_id',ownerId).eq('id',existing.transaction_id).maybeSingle();
+    if(error)return {pending:true};
+    result={link_id:existing.id,transaction_id:existing.transaction_id,handled_at:bank?.handled_at};
+  }else{
+    const {data,error}=await admin.rpc('record_verified_bank_morning_document',{p_owner_id:ownerId,p_operation_id:row.operation_id});
+    if(error){console.error('Morning verified bank link persistence failed',row.operation_id,error.code);return {pending:true}}
+    result=Array.isArray(data)?data[0]:data;
+  }
+  return {pending:!result,transactionId:Number(result?.transaction_id)||Number(row.source_bank_transaction_id)||null,handledAt:result?.handled_at||null,linkId:Number(result?.link_id)||null,operationId:row.operation_id,documentId:String(row.document_id||''),documentNumber:String(row.document_number||''),documentType:Number(row.document_type)||0,documentAmount:Number(row.amount)||0,verifiedAt:row.verified_at||null};
 }
 
 function candidateItems(data:any){if(Array.isArray(data?.items))return data.items;if(Array.isArray(data?.data?.items))return data.data.items;if(Array.isArray(data))return data;return[]}
@@ -251,13 +263,14 @@ function matchesCheckPayments(item:any,row:OperationRow){
 function checkRegistrationSummary(row:OperationRow){
   if(!row.check_intent?.length)return {checks_registration_pending:false};
   const attempts=Number(row.checks_registration_attempts||0),count=row.check_intent.length;
+  const checkAmount=row.check_intent.reduce((sum,payment)=>sum+Math.round(Number(payment.amount)*100),0)/100;
   const attention=row.checks_registration_failure_kind
     ?!row.checks_registration_next_retry_at
     :attempts>=5;
   return {checks_registration_pending:!row.checks_registered_at,
     checks_registration_state:row.checks_registered_at?'registered':row.check_payment_evidence!=='matched'?'evidence_pending':attention?'attention':'pending',
     checks_registration_attempts:attempts,checks_registration_count:count,
-    checks_registration_amount:row.check_intent.reduce((sum,payment)=>sum+Math.round(Number(payment.amount)*100),0)/100,
+    ...(Number.isFinite(checkAmount)&&checkAmount>0?{checks_registration_amount:checkAmount}:{}),
     checks_registration_evidence:row.check_payment_evidence??null,
     checks_registration_first_failed_at:row.checks_registration_first_failed_at??null,
     checks_registration_last_failed_at:row.checks_registration_last_failed_at??null,
@@ -313,27 +326,48 @@ async function refreshCreatedAllocation(ownerId:string,row:OperationRow){
   }
   const error=await updateOperation(ownerId,row.operation_id,patch);if(error)throw error;return {...row,...patch};
 }
-async function markVerifiedCreated(ownerId:string,row:OperationRow,detail:any){
-  const doc=documentSummary(detail,{type:row.document_type,amount:Number(row.amount),date:row.document_date}),verifiedAt=new Date().toISOString(),error=await updateOperation(ownerId,row.operation_id,{state:'created',document_id:doc.id,document_number:doc.number||null,allocation_number:doc.allocationNumber||null,allocation_checked_at:verifiedAt,verified_at:verifiedAt,check_payment_evidence:checkPaymentEvidence(detail,row),error_code:null,error_message:null,client_name:'',description:''});if(error)throw error;return {...row,state:'created',document_id:doc.id,document_number:doc.number,allocation_number:doc.allocationNumber||null,allocation_checked_at:verifiedAt,verified_at:verifiedAt,error_code:null,error_message:null,updated_at:verifiedAt} as OperationRow;
+function verifiedReconciliationPatch(row:OperationRow,detail:any){
+  const doc=documentSummary(detail,{type:row.document_type,amount:Number(row.amount),date:row.document_date});
+  const verifiedAt=new Date().toISOString();
+  return {state:'created',document_id:doc.id,document_number:doc.number||null,allocation_number:doc.allocationNumber||null,
+    allocation_checked_at:verifiedAt,verified_at:verifiedAt,check_payment_evidence:checkPaymentEvidence(detail,row),
+    error_code:null,error_message:null,client_name:'',description:''};
 }
 async function reconcileRow(ownerId:string,row:OperationRow){
+  const now=Date.now();
+  if(!row.document_id&&now-new Date(row.issuance_started_at||row.created_at).getTime()<RECONCILE_MIN_AGE_MS)return row;
+  if(row.last_reconciliation_at&&now-Date.parse(row.last_reconciliation_at)<RECONCILE_COOLDOWN_MS)return row;
+  const attempts=Number(row.reconciliation_attempts||0),attemptedAt=new Date(now).toISOString();
+  const scopedUpdate=(patch:JsonRecord,expected:number)=>admin.from('morning_document_operations').update({...patch,updated_at:new Date().toISOString()})
+    .eq('owner_id',ownerId).eq('environment',MORNING_ENV).eq('operation_id',row.operation_id).eq('state',row.state).eq('reconciliation_attempts',expected);
+  const {data:claimed,error:claimError}=await scopedUpdate({reconciliation_attempts:attempts+1,last_reconciliation_at:attemptedAt},attempts)
+    .select('operation_id').maybeSingle();
+  if(claimError){console.error('Morning reconciliation claim failed',row.operation_id,claimError.code);return row}
+  if(!claimed)return await readOperation(ownerId,row.operation_id)||row;
+  const finish=async(patch:JsonRecord)=>{
+    const {error}=await scopedUpdate(patch,attempts+1);
+    if(error)throw error;
+    return await readOperation(ownerId,row.operation_id)||row;
+  };
   try{
     if(row.document_id){
-      const attemptError=await updateOperation(ownerId,row.operation_id,{reconciliation_attempts:Number(row.reconciliation_attempts||0)+1,last_reconciliation_at:new Date().toISOString()});if(attemptError)throw attemptError;
-      try{return await markVerifiedCreated(ownerId,row,await verifyKnownDocument(row.document_id,row))}catch(error:any){console.warn('Morning known-document verification still pending',row.operation_id,error?.message);await updateOperation(ownerId,row.operation_id,{state:'created_unverified',error_code:'known_document_verification_pending',error_message:clean(error?.message,500)});return {...row,state:'created_unverified',error_code:'known_document_verification_pending'} as OperationRow}
+      const detail=await verifyKnownDocument(row.document_id,row);
+      return await finish(verifiedReconciliationPatch(row,detail));
     }
-    const age=Date.now()-new Date(row.issuance_started_at||row.created_at).getTime();if(age<RECONCILE_MIN_AGE_MS)return row;
-    const attemptError=await updateOperation(ownerId,row.operation_id,{reconciliation_attempts:Number(row.reconciliation_attempts||0)+1,last_reconciliation_at:new Date().toISOString()});if(attemptError)throw attemptError;
     const searchBody={fromDate:String(row.document_date),toDate:String(row.document_date),type:[Number(row.document_type)],clientName:String(row.client_name),page:1,pageSize:50,sort:'documentDate'};
     const data=await morningRequest('/documents/search',{method:'POST',body:JSON.stringify(searchBody)}),coarse=candidateItems(data).map(documentSource).filter((item:any)=>matchesCandidate(item,row,false));
-    if(candidateItems(data).length>=50||Number(data?.pages)>1||coarse.length>20){await updateOperation(ownerId,row.operation_id,{state:'needs_reconciliation',error_code:'too_many_candidates',error_message:'Morning returned too many possible documents'});return {...row,state:'needs_reconciliation'} as OperationRow}
+    if(candidateItems(data).length>=50||Number(data?.pages)>1||coarse.length>20)return await finish({state:'needs_reconciliation',error_code:'too_many_candidates',error_message:'Morning returned too many possible documents'});
     const verified:any[]=[];for(const item of coarse){const id=String(item?.id||'');if(!isUuid(id))continue;
       const {data:claimed,error:claimedError}=await businessOperationQuery().eq('document_id',id).neq('operation_id',row.operation_id).limit(1).maybeSingle();if(claimedError)throw claimedError;if(claimed)continue;
       const detail=documentSource(await morningRequest(`/documents/${encodeURIComponent(id)}`,{method:'GET'}));if(matchesCandidate(detail,row,true))verified.push(detail)}
-    if(verified.length===1)return await markVerifiedCreated(ownerId,row,verified[0]);
-    if(verified.length>1){await updateOperation(ownerId,row.operation_id,{state:'needs_reconciliation',error_code:'multiple_candidates',error_message:'Morning returned multiple verified documents'});return {...row,state:'needs_reconciliation'} as OperationRow}
-    await updateOperation(ownerId,row.operation_id,{state:'needs_reconciliation',error_code:'waiting_for_reconciliation',error_message:'Waiting before retrying Morning search'});return {...row,state:'needs_reconciliation'} as OperationRow;
-  }catch(error){console.error('morning reconciliation failed',row.operation_id,error);const fallback:OperationState=row.document_id?'created_unverified':'needs_reconciliation';await updateOperation(ownerId,row.operation_id,{state:fallback,error_code:'reconciliation_unavailable',error_message:'Morning reconciliation unavailable'});return {...row,state:fallback} as OperationRow}
+    if(verified.length===1)return await finish(verifiedReconciliationPatch(row,verified[0]));
+    if(verified.length>1)return await finish({state:'needs_reconciliation',error_code:'multiple_candidates',error_message:'Morning returned multiple verified documents'});
+    return await finish({state:'needs_reconciliation',error_code:'waiting_for_reconciliation',error_message:'Waiting before retrying Morning search'});
+  }catch(error:any){
+    console.warn('Morning reconciliation did not complete',row.operation_id,error?.status||error?.code||'unknown');
+    return await finish({state:row.document_id?'created_unverified':'needs_reconciliation',
+      error_code:row.document_id?'known_document_verification_pending':'reconciliation_unavailable',error_message:'Morning reconciliation unavailable'});
+  }
 }
 async function reserve(ownerId:string,body:any){
   if(!configured())return json({ok:false,code:MORNING_ENV_VALID?'morning_not_configured':'morning_invalid_environment',message:MORNING_ENV_VALID?'Morning אינו מוגדר ב-Supabase':'MORNING_ENV חייב להיות production או sandbox'},503);
@@ -361,8 +395,9 @@ async function abandonReservation(ownerId:string,body:any){
   }catch(error){return dbError(error,'morning_reservation_abandon_failed')}
 }
 async function status(ownerId:string,body:any){
-  if(!configured())return json({ok:true,configured:false,available:false,configuration_error:MORNING_ENV_VALID?null:'invalid_environment',operation:null,unresolved:false,environment:MORNING_ENV_RAW});
   const id=clean(body?.operation_id,80);if(id&&!isUuid(id))return json({ok:false,code:'invalid_operation_id',message:'מזהה פעולה אינו תקין'},400);
+  const providerConfigured=configured();
+  if(!MORNING_ENV_VALID||(!id&&!providerConfigured))return json({ok:true,configured:false,available:false,configuration_error:MORNING_ENV_VALID?null:'invalid_environment',operation:null,unresolved:false,environment:MORNING_ENV_RAW});
   try{
     let operation=id?await readOperation(ownerId,id):null,available=true,connectionError='';
     const matchedPending=!!operation?.verified_at&&operation.state==='created'&&!!operation.check_intent?.length
@@ -373,28 +408,33 @@ async function status(ownerId:string,body:any){
         if(error)throw error;
         operation=await readOperation(ownerId,operation.operation_id);
       }
-    }else{
+    }else if(providerConfigured){
       try{
         await verifyMorning();
         if(body?.reconcile===true&&operation){
           if(['pending','created_unverified','needs_reconciliation'].includes(operation.state)){
-            const reconciled=await reconcileRow(ownerId,operation);
-            operation=reconciled.state==='created'?await readOperation(ownerId,reconciled.operation_id)||reconciled:reconciled;
+            operation=await reconcileRow(ownerId,operation);
           }else if(operation.state==='created')operation=await refreshCreatedAllocation(ownerId,operation);
         }
       }catch(error:any){available=false;connectionError=clean(error?.message,250)}
-    }
+    }else available=false;
     let bankLink={pending:false} as any;
-    if(operation?.state==='created'&&operation.verified_at)bankLink=await persistVerifiedBankLink(ownerId,operation);
+    if(operation?.state==='created'&&operation.verified_at)bankLink=await persistVerifiedBankLink(ownerId,operation,{recover:body?.reconcile===true});
     const ledger=operation&&{operation_id:operation.operation_id,state:operation.state,document_id:operation.document_id,
       document_number:operation.document_number,document_type:operation.document_type,amount:operation.amount,
       verified_at:operation.verified_at,allocation_number:operation.allocation_number};
-    return json({ok:true,configured:true,available,connection_error:connectionError||null,operation:ledger,
+    return json({ok:true,configured:providerConfigured||matchedPending,available,connection_error:connectionError||null,operation:ledger,
       unresolved:!!operation&&['pending','created_unverified','needs_reconciliation'].includes(operation.state),
       retryable_reserved:operation?.state==='reserved',environment:MORNING_ENV,
       ...(operation?checkRegistrationSummary(operation):{checks_registration_pending:false}),
       bank_link_pending:bankLink.pending,bank_link:bankLink.pending?null:bankLink});
   }catch(error){return dbError(error,'morning_status_failed')}
+}
+async function listRecoveryOperations(ownerId:string){
+  if(!MORNING_ENV_VALID)return json({ok:false,code:'morning_environment_invalid'},503);
+  const {data,error}=await admin.rpc('list_morning_recovery_operations',{p_owner_id:ownerId,p_environment:MORNING_ENV});
+  if(error)return dbError(error,'morning_recovery_list_failed');
+  return json({ok:true,operations:data});
 }
 async function preview(ownerId:string,body:any){if(!configured())return json({ok:false,code:MORNING_ENV_VALID?'morning_not_configured':'morning_invalid_environment',message:MORNING_ENV_VALID?'Morning אינו מוגדר ב-Supabase':'MORNING_ENV חייב להיות production או sandbox'},503);let input;try{input=normalizeInput(body);await validateLinkedDocument(input);await validateBankSource(ownerId,input)}catch(error:any){const code=String(error?.code||error?.message||'invalid_document');return json({ok:false,code,message:code==='linked_document_not_linkable'?'החשבונית שנבחרה אינה פתוחה או אינה מתאימה לקישור':userMessage(code)},400)}try{const data=await morningRequest('/documents/preview',{method:'POST',body:JSON.stringify(input.payload)}),pdfBase64=findPdfBase64(data);if(!pdfBase64)return json({ok:false,code:'morning_preview_missing_pdf',message:'Morning לא החזירה PDF לתצוגה מקדימה'},502);return json({ok:true,pdfBase64:validatePreviewPdfBase64(pdfBase64)})}catch(error:any){return json({ok:false,code:'morning_preview_failed',message:String(error?.message||'תצוגה מקדימה נכשלה')},error?.status===413?413:error?.status>=400&&error.status<500?400:502)}}
 async function create(ownerId:string,body:any){
@@ -491,5 +531,6 @@ Deno.serve(withEdgeOrigins(async(req:Request)=>{
   if(['get_document','document_links','document_pdf'].includes(action)){
     try{if(!await mayReadDocument(user,body))return documentReadForbidden()}catch(error){return dbError(error,'morning_document_permission_failed')}
   }
+  if(action==='list_recovery')return listRecoveryOperations(user.id);
   if(action==='status')return status(user.id,body);if(action==='reserve')return reserve(user.id,body);if(action==='abandon_reservation')return abandonReservation(user.id,body);if(action==='preview')return preview(user.id,body);if(action==='create')return create(user.id,body);if(action==='search_documents')return searchDocuments(body);if(action==='get_document')return getDocument(body);if(action==='document_links')return getDocument(body,true);if(action==='document_pdf')return getDocumentPdf(body);return json({ok:false,code:'morning_unknown_action',message:'פעולת Morning אינה מוכרת'},400);
 },edgeOrigins(Deno.env.get('FINANCIAL_EDGE_ALLOWED_ORIGINS')||'')));

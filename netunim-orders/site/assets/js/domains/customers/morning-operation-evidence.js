@@ -3,7 +3,7 @@ import {evidenceTimestamp} from '../../shared/response-evidence.js';
 /** @typedef {'reserved'|'pending'|'created_unverified'|'needs_reconciliation'|'created'|'failed'} OperationState */
 /** @typedef {{operation_id:string,state:OperationState,document_type?:number,amount?:number,document_id?:string,document_number?:string|number,verified_at?:string,allocation_number?:string|number}} LedgerOperation */
 /** @typedef {{pending?:boolean,operationId?:string,documentId?:string,documentNumber?:string|number,documentType?:number,documentAmount?:number,transactionId?:number,linkId?:number,verifiedAt?:string,handledAt?:string}} BankLink */
-/** @typedef {{checks_registration_state?:'registered'|'pending'|'evidence_pending'|'attention',checks_registration_attempts?:number}} CheckRegistration */
+/** @typedef {{checks_registration_state?:'registered'|'pending'|'evidence_pending'|'attention',checks_registration_attempts?:number,checks_registration_count?:number,checks_registration_amount?:number,checks_registration_evidence?:'matched'|'missing'|'mismatch',checks_registration_last_failed_at?:string,checks_registration_next_retry_at?:string}} CheckRegistration */
 /** @typedef {CheckRegistration & {ok:true,operation:LedgerOperation|null,configured?:boolean,available?:boolean,unresolved?:boolean,retryable_reserved?:boolean,environment?:string,checks_registration_pending?:boolean,bank_link_pending?:boolean,bank_link?:BankLink|null}} OperationStatus */
 /** @typedef {{ok:true,reserved:boolean,operation:{operation_id:string,state:OperationState}}} Reservation */
 /** @typedef {{id:string,type:number,amount:number,number?:string|number,allocationNumber?:string|number}} OfficialDocument */
@@ -24,14 +24,33 @@ function checkRegistration(row){
     if(typeof value!=='number'||!Number.isSafeInteger(value)||value<0)throw invalid();
     result.checks_registration_attempts=value;
   }
+  if(row.checks_registration_count!==undefined){
+    const count=positiveId(row.checks_registration_count);if(count>12)throw invalid();result.checks_registration_count=count;
+  }
+  if(row.checks_registration_amount!==undefined)result.checks_registration_amount=amount(row.checks_registration_amount);
+  const evidence=row.checks_registration_evidence;
+  if(evidence==='matched'||evidence==='missing'||evidence==='mismatch')result.checks_registration_evidence=evidence;
+  if(row.checks_registration_last_failed_at!=null)result.checks_registration_last_failed_at=date(row.checks_registration_last_failed_at);
+  if(row.checks_registration_next_retry_at!=null)result.checks_registration_next_retry_at=date(row.checks_registration_next_retry_at);
   return result;
 }
 /** @param {CheckRegistration} data */
 export function morningCheckRegistrationMessage(data){
+  if(data.checks_registration_evidence==='mismatch'&&data.checks_registration_state==='evidence_pending')return 'המסמך אומת, אך פירוט התקבולים שונה מהנתונים שנשמרו לפני ההפקה. יש לבדוק את המסמך במורנינג לפני רישום הצ׳קים.';
   if(data.checks_registration_state==='evidence_pending')return 'המסמך הופק ואומת. Morning לא החזירה פירוט תקבולים מאומת; רישום הצ׳קים ממתין לאימות. לחץ „בדוק מצב הפקה”. אין להפיק שוב או להזין שוב את הצ׳קים.';
   if(data.checks_registration_state==='attention')return 'המסמך הופק ואומת, אך רישום הצ׳קים נכשל שוב ושוב ונדרשת בדיקה טכנית לפי מספר המסמך. '+
     'לחץ „בדוק מצב הפקה” לניסיון חוזר בטוח; אין להפיק שוב או להזין שוב את הצ׳קים.';
   return '';
+}
+/** @param {OperationStatus} data */
+export function morningCheckRegistrationDetails(data){
+  if(!data.checks_registration_count)return '';
+  const money=new Intl.NumberFormat('he-IL',{style:'currency',currency:'ILS'}),
+    time=new Intl.DateTimeFormat('he-IL',{dateStyle:'short',timeStyle:'short',timeZone:'Asia/Jerusalem'});
+  const {checks_registration_amount:sum,checks_registration_count:count,checks_registration_last_failed_at:last,
+    checks_registration_next_retry_at:next,operation}=data;
+  return [operation?.document_number&&`מסמך ${operation.document_number}`,`${count} צ׳קים ממתינים${sum?` בסך ${money.format(sum)}`:''}`,
+    last&&`ניסיון אחרון ${time.format(new Date(last))}`,next&&`ניסיון אוטומטי הבא ${time.format(new Date(next))}`].filter(Boolean).join(' · ');
 }
 function invalid(){return Object.assign(new Error('תשובת Morning אינה תואמת לפעולה המבוקשת. נקודת ההתאוששות נשמרת עד לאימות תקין.'),{code:'morning_operation_response_invalid'})}
 /** @param {unknown} value @returns {Record<string,unknown>} */

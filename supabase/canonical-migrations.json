@@ -283,6 +283,10 @@
     {
       "version": "20261124160000",
       "name": "morning_check_recovery_policy"
+    },
+    {
+      "version": "20261124170000",
+      "name": "morning_operation_center"
     }
   ]
 }

@@ -1,21 +1,22 @@
 import {syncIncidentDescription} from './sync-incident-model.js';
 const escape=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-export function createSyncIncidentUi({document=globalThis.document,container=document.body,inline=false,clientId,label,saveLabel,refresh,review,confirmReview=async()=>false}){
+export function createSyncIncidentUi({document=globalThis.document,container=document.body,inline=false,clientId,label,saveLabel,refresh,review,financial,confirmReview=async()=>false}){
   const root=document.createElement('section');root.className='sync-incidents';root.dir='rtl';root.hidden=true;root.setAttribute('aria-label','התראות סנכרון בין מחשבים');
   root.dataset.inline=String(inline);container.append(root);
   let state={status:'signed_out',incidents:[],localError:false},opened=inline,last='',error='',renderedLabel='';
   function render(){
-    const count=state.incidents.length;
-    const savedLabel=String(label()||'').trim(),warning=count>0||state.status==='unavailable'||state.localError;
+    const count=state.incidents.length,financialCount=financial?.count||0;
+    const savedLabel=String(label()||'').trim(),warning=count>0||financialCount>0||state.status==='unavailable'||state.localError;
     root.hidden=!inline&&(state.status==='signed_out'||!!savedLabel&&!warning);
     if(root.hidden){opened=false;root.replaceChildren();return}
     const input=root.querySelector('[data-incident-label]'),focused=input&&document.activeElement===input;
-    root.dataset.quiet=String(!opened&&state.status==='no_reported_incidents'&&!state.localError);
+    root.dataset.quiet=String(!opened&&!warning&&state.status==='no_reported_incidents');
     root.dataset.warning=String(warning);
     const title=count?`אזהרת סנכרון: ${count} ${count===1?'תקלה מדווחת':'תקלות מדווחות'}`:state.status==='unavailable'?'לא ניתן לבדוק התראות סנכרון כרגע':state.localError?'דיווח תקלות הסנכרון לא הושלם':state.status==='signed_out'?'יש להתחבר לענן כדי לבדוק תקלות מדווחות':'לא נמצאו תקלות סנכרון מדווחות';
     root.innerHTML=`${inline?`<h3>התראות סנכרון ושם עמדה</h3><p role="status">${escape(title)}</p>`:`<button type="button" class="sync-incidents-toggle" aria-expanded="${opened}" data-incident-action="toggle">
-      <span role="status">${escape(!warning&&!savedLabel?'הגדרת שם מחשב להתראות סנכרון':title)}</span><span>${opened?'סגירה':'פרטים'}</span></button>`}
+      <span role="status">${escape(financialCount?`${financialCount>50?'50+':financialCount} פעולות מורנינג ממתינות${count?` · ${count} תקלות סנכרון`:''}`:!warning&&!savedLabel?'הגדרת שם מחשב להתראות סנכרון':title)}</span><span>${opened?'סגירה':'פרטים'}</span></button>`}
       <div class="sync-incidents-panel" ${opened?'':'hidden'}>
+        ${opened&&financial?financial.markup(escape):''}
         <p>התראות על שינויים שלא סונכרנו ותקלות בעמדות. היעדר דיווח אינו הוכחה שכל המחשבים מסונכרנים.</p>
         ${state.status==='unavailable'?'<p role="status">רשימת התקלות אינה מעודכנת כרגע. כדאי לבדוק את החיבור ולרענן.</p>':''}
         ${state.localError?'<p role="status">דיווח התקלות ממחשב זה לא הושלם. השמירה העסקית ממשיכה לפי מצב הסנכרון שלה.</p>':''}
@@ -41,6 +42,10 @@ export function createSyncIncidentUi({document=globalThis.document,container=doc
         if(!inline)opened=false;render();await refresh();
       }
       if(action==='refresh')await refresh();
+      if(action.startsWith('morning-')){
+        await financial?.action(action,button.dataset.incidentId);
+        if(action==='morning-ack'&&!inline&&!financial?.unread)opened=false;
+      }
       if(action==='review'){
         const row=state.incidents.find(item=>item.incident_id===button.dataset.incidentId);
         if(row&&await confirmReview('יש לבדוק תחילה את השינויים בעמדה המדווחת. הפעולה מיועדת לעמדה שאינה זמינה או לאירוע שלא ניתן לאמת את דור האחסון שלו. היא מסירה את ההתראה בלי לאמת סנכרון. להמשיך?'))await review(row);
@@ -49,5 +54,5 @@ export function createSyncIncidentUi({document=globalThis.document,container=doc
     render();
   }
   root.addEventListener('click',click);
-  return {update(value){state=value;const signature=JSON.stringify([value,label()]);if(last!==signature){last=signature;render()}},open(){opened=true;render()},dispose(){root.removeEventListener('click',click);root.remove()}};
+  return {update(value,force=false){state=value;const signature=JSON.stringify([value,label()]);if(force||last!==signature){last=signature;render()}},open(){opened=true;render()},dispose(){root.removeEventListener('click',click);root.remove()}};
 }

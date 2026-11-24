@@ -107,7 +107,8 @@ const pendingRow=rows.find(r=>r.operation_id===readbackPending.operation_id);ass
 assert.equal((await decode(await api.create(owner,readbackPending))).status,409);assert.equal(postCount,3,'known-but-unverified document is never POSTed again');
 const pendingOther=await decode(await api.create(owner,body(110)));assert.equal(pendingOther.operation_id,readbackPending.operation_id);assert.equal(postCount,3,'known-but-unverified fingerprint blocks a fresh operation ID');
 const pendingForeign=await decode(await api.create(otherOwner,body(110)));assert.equal(pendingForeign.status,409);assert.equal(pendingForeign.operation_id,undefined,'foreign owner operation IDs are not exposed');assert.equal(postCount,3,'unresolved fingerprint blocks across app users');
-failure='';const foreignGuard=await decode(await api.create(otherOwner,body(110)));assert.equal(foreignGuard.status,409);assert.equal(foreignGuard.code,'morning_similar_operation_verified');assert.equal(foreignGuard.prevent_retry,true);assert.equal(foreignGuard.operation_id,undefined,'cross-user guard does not expose the other owner operation ID');assert.equal(postCount,3,'a blocked user can safely trigger server-side GET reconciliation without issuing another document');
+failure='';pendingRow.last_reconciliation_at=new Date(Date.now()-31_000).toISOString();
+const foreignGuard=await decode(await api.create(otherOwner,body(110)));assert.equal(foreignGuard.status,409);assert.equal(foreignGuard.code,'morning_similar_operation_verified');assert.equal(foreignGuard.prevent_retry,true);assert.equal(foreignGuard.operation_id,undefined,'cross-user guard does not expose the other owner operation ID');assert.equal(postCount,3,'a blocked user can safely trigger server-side GET reconciliation without issuing another document');
 const verifiedLater=await decode(await api.status(owner,{operation_id:readbackPending.operation_id}));assert.equal(verifiedLater.operation.state,'created');assert.ok(verifiedLater.operation.verified_at);assert.equal(postCount,3,'global duplicate-guard reconciliation uses GET only');
 
 // A mismatching canonical read-back also stays blocked instead of becoming a false success.
@@ -123,8 +124,13 @@ await api.status(owner,{operation_id:uncertain.operation_id,reconcile:true});
 assert.equal(row.state,'needs_reconciliation','absence never releases an ambiguous POST for retry');assert.equal(row.reconciliation_attempts,1);
 // A document already assigned to another operation cannot resolve this one, even across owners.
 const claimedCandidate={...sample,amount:130,description:'Timeout reconciliation',creationDate:new Date(new Date(row.created_at).getTime()+30_000).toISOString()};lookupItems=[claimedCandidate];morningDocs.set(documentId,claimedCandidate);
+const beforeCooldown=requests.filter(r=>r.url.endsWith('/documents/search')).length;
+await api.status(owner,{operation_id:uncertain.operation_id,reconcile:true});
+assert.equal(requests.filter(r=>r.url.endsWith('/documents/search')).length,beforeCooldown,'a second caller cannot bypass the provider reconciliation cooldown');
+row.last_reconciliation_at=new Date(Date.now()-31_000).toISOString();
 await api.status(owner,{operation_id:uncertain.operation_id,reconcile:true});assert.equal(row.state,'needs_reconciliation');
 const reconciledId='00000000-0000-4000-8000-000000000077',unclaimedCandidate={...claimedCandidate,id:reconciledId};lookupItems=[unclaimedCandidate];morningDocs.set(reconciledId,unclaimedCandidate);
+row.last_reconciliation_at=new Date(Date.now()-31_000).toISOString();
 await api.status(owner,{operation_id:uncertain.operation_id,reconcile:true});assert.equal(row.state,'created');assert.ok(row.verified_at);assert.equal(postCount,5);assert.equal(row.document_id,reconciledId,'ISO creationDate is accepted during strict reconciliation');
 const foreign=await decode(await api.status(otherOwner,{operation_id:uncertain.operation_id}));assert.equal(foreign.operation,null);
 failure='status-down';const outageStatus=await decode(await api.status(owner,{operation_id:uncertain.operation_id}));assert.equal(outageStatus.status,200);assert.equal(outageStatus.available,false);assert.equal(outageStatus.operation.operation_id,uncertain.operation_id,'Morning outage must not hide durable ledger state');failure='';
