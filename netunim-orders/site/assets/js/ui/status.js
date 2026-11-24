@@ -1,7 +1,6 @@
 import {$} from '../state/constants.js';
 import {formatCloudSyncTime, latestCloudUpdatedAt} from '../core/dates.js';
 import {hasFailedLocalMutation} from '../shared/local-mutation-admission.js';
-import {createStatusNotices} from '../shared/status-notices.js';
 
 const STARTUP_DOMAIN_ORDER=['orders','checks','finance'];
 const HEADER_DOMAIN_ORDER=['orders','checks'];
@@ -11,7 +10,19 @@ const STARTUP_LOADING_TEXT={orders:'ענן: מאמת נתוני הזמנות…'
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createUiStatus({session, checksSession, tab, storageRecovery}){
 if(typeof storageRecovery?.isReady!=='function')throw new TypeError('ui_storage_recovery_required');
-const {toast,clearNotice,clearNotices}=createStatusNotices({getToast:()=>$('#toast'),duration:2600});
+let noticeModule,noticeEpoch=0,timer;
+function toast(message,notice){
+  if(notice?.id){
+    const epoch=noticeEpoch;
+    noticeModule??=import('../shared/status-notices.js').then(({createStatusNotices})=>createStatusNotices({getToast:()=>$('#toast'),duration:2600}));
+    void noticeModule.then(status=>{if(epoch===noticeEpoch)status.toast(message,notice)}).catch(()=>{if(epoch===noticeEpoch)toast(message)});
+    return;
+  }
+  const element=$('#toast');if(!element)return;
+  element.textContent=message;element.classList.add('show');clearTimeout(timer);timer=setTimeout(()=>element.classList.remove('show'),2600);
+}
+function clearNotice(id){void noticeModule?.then(status=>status.clearNotice(id)).catch(()=>{})}
+function clearNotices(){noticeEpoch++;void noticeModule?.then(status=>status.clearNotices()).catch(()=>{})}
 
 function setSave(text,cls='',title=''){const e=$('#savePill');if(e){const failed=hasFailedLocalMutation(session);e.textContent=failed?'שינוי לא נשמר — אין לסגור את החלון; ייצא JSON לשמירת הטיוטה':text;e.className='save-pill '+(failed?'error':cls);e.title=[e.textContent,title].filter(Boolean).join('\n')}}
 

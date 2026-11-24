@@ -2,7 +2,6 @@ import {supabaseConfig as SUPA_CONFIG} from '../../../supabase/config.js';
 import {formatCloudSyncTime, latestCloudUpdatedAt} from '../core/dates.js';
 import {SECONDARY_READ_ONLY_ACTIONS} from './secondary-read-only-actions.js';
 import {hasFailedLocalMutation} from '../shared/local-mutation-admission.js';
-import {createStatusNotices} from '../shared/status-notices.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createUiStatus({session, checksSession, tab, storageRecovery}){
@@ -53,7 +52,18 @@ function setCloudHeaderStatus(mode='off',text='ענן: לא מחובר',source='
 
 function refreshCloudHeaderTimestamp(){renderCloudHeader()}
 
-const {toast,clearNotices}=createStatusNotices({getToast:()=>document.getElementById('toast'),duration:1800});
+let noticeModule,noticeEpoch=0,timer;
+function toast(message,notice){
+  if(notice?.id){
+    const epoch=noticeEpoch;
+    noticeModule??=import('../shared/status-notices.js').then(({createStatusNotices})=>createStatusNotices({getToast:()=>document.getElementById('toast'),duration:1800}));
+    void noticeModule.then(status=>{if(epoch===noticeEpoch)status.toast(message,notice)}).catch(()=>{if(epoch===noticeEpoch)toast(message)});
+    return;
+  }
+  const element=document.getElementById('toast');if(!element)return;
+  element.textContent=message;element.classList.add('show');clearTimeout(timer);timer=setTimeout(()=>element.classList.remove('show'),1800);
+}
+function clearNotices(){noticeEpoch++;void noticeModule?.then(status=>status.clearNotices()).catch(()=>{})}
 
 
 function canRunInteractiveAction(name=''){
