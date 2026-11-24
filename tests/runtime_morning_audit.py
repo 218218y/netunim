@@ -132,16 +132,16 @@ def document_matrix():
         }
         passed.push('prior-ack-isolated-case');
         const before=JSON.stringify(window.auditDebt());let saves=0,renders=0;
-        const originalSave=storagePersistence.scheduleSave,originalRender=domainsCustomers.view.renderCustomers;
-        storagePersistence.scheduleSave=(...args)=>{saves++;return originalSave(...args)};
+        const originalSave=storagePersistence.commitSave,originalRender=domainsCustomers.view.renderCustomers;
+        storagePersistence.commitSave=(...args)=>{saves++;return originalSave(...args)};
         domainsCustomers.view.renderCustomers=(...args)=>{renders++;return originalRender(...args)};
         await reconcileMorningDocument();await reconcileMorningDocument();
         window.auditAssert(JSON.stringify(window.auditDebt())===before&&saves===0&&renders===0,'create/reconciliation duplicate saved or rendered');
         const op=window.auditServer.operation;
-        domainsCustomers.editor.applyVerifiedMorningDocument({debtId:window.auditDebtId,operationId:op.operation_id,type:320,amount:30,applyInvoice:false});
+        await domainsCustomers.editor.applyVerifiedMorningDocument({debtId:window.auditDebtId,operationId:op.operation_id,type:320,amount:30,applyInvoice:false});
         window.auditAssert(saves===0&&renders===0,'durable direct duplicate saved or rendered');
         setCustomerFlag(window.auditDebtId,'paid',false);const resetBefore=JSON.stringify(window.auditDebt().debtProgress);
-        domainsCustomers.editor.applyVerifiedMorningDocument({debtId:window.auditDebtId,operationId:op.operation_id,type:320,amount:30,applyInvoice:false});
+        await domainsCustomers.editor.applyVerifiedMorningDocument({debtId:window.auditDebtId,operationId:op.operation_id,type:320,amount:30,applyInvoice:false});
         window.auditAssert((await window.auditProgress()).paymentApplied===0&&JSON.stringify(window.auditDebt().debtProgress)===resetBefore,'reset event resurrected');
         passed.push('idempotent-save-render','reset-replay');return passed;
         """)
@@ -205,11 +205,11 @@ def cleanup_and_persistence():
     with BrowserSession(ROOT/'netunim-orders/site', 'morning-persistence') as browser:
         seed(browser)
         js(browser, r"""
-        window.auditRealSave=storagePersistence.scheduleSave;
-        storagePersistence.scheduleSave=()=>false;
+        window.auditRealSave=storagePersistence.commitSave;
+        storagePersistence.commitSave=async()=>false;
         await window.auditIssue(320,30);
         window.auditAssert(window.auditDebt().debtProgress.length===2&&!!localStorage.getItem('orders.morning.pending-issuance.v1'),'failed persistence lost recovery');
-        storagePersistence.scheduleSave=window.auditRealSave;
+        storagePersistence.commitSave=window.auditRealSave;
         const sameSession=await recoverPendingMorningOperation();
         window.auditAssert(!sameSession.ok&&!!localStorage.getItem('orders.morning.pending-issuance.v1'),'V2 uploaded an undurable in-memory edit');
         return true;
