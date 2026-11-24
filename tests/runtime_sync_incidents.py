@@ -110,6 +110,7 @@ def check_visibility_and_settings(browser, app):
     assert browser.evaluate("""(async()=>{
       await (await import('./assets/js/main.js')).appReady;
       const {createSyncIncidentUi}=await import('./assets/js/shared/sync-incident-ui.js');
+      const {createStatusNotices}=await import('./assets/js/shared/status-notices.js');
       let name='Office',refreshes=0;
       const healthy={status:'no_reported_incidents',incidents:[],localError:false};
       const ui=createSyncIncidentUi({clientId:'test',label:()=>name,saveLabel:value=>{name=value},refresh:async()=>{refreshes++}});
@@ -126,6 +127,23 @@ def check_visibility_and_settings(browser, app):
         ui.update({...healthy,status:'signed_out'});check(root.hidden,'signed out floating control stays hidden');
         check(refreshes===1,'naming must not duplicate refresh requests');
       }finally{ui.dispose()}
+      const important=createStatusNotices({getToast:()=>document.getElementById('toast'),duration:1});
+      try{
+        important.toast('עדכון החוב ממתין לאישור',{id:'synthetic-recovery'});
+        await new Promise(resolve=>setTimeout(resolve,30));
+        const alert=document.querySelector('.status-notices section');
+        check(alert&&!alert.hidden,'an important notice must outlive the ordinary toast timer');
+        alert.querySelector('button').click();
+        important.toast('עדכון החוב ממתין לאישור',{id:'synthetic-recovery'});
+        check(alert.hidden&&document.querySelector('.status-notices section')===alert,'acknowledging must suppress duplicate presentation');
+      }finally{important.clearNotices()}
+      const unavailable=createSyncIncidentUi({clientId:'test',label:()=>name,saveLabel:()=>{},refresh:async()=>{},
+        financial:{count:0,cloudStatusLabel:'לא ניתן לאמת את מצב פעולות מורנינג בענן'}});
+      try{
+        unavailable.update(healthy);
+        const root=document.querySelector('.sync-incidents:last-child');
+        check(!root.hidden&&root.textContent.includes('לא ניתן לאמת'),'an empty failed financial feed must be visible outside settings');
+      }finally{unavailable.dispose()}
       const container=document.createElement('div');document.body.append(container);
       const settings=createSyncIncidentUi({container,inline:true,clientId:'test',label:()=>name,saveLabel:value=>{name=value},refresh:async()=>{}});
       try{

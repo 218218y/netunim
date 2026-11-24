@@ -32,7 +32,7 @@ function setBusy(button,busy,label=''){if(!button)return;button.ariaBusy=String(
 export function debtMorningPrefill(debt={}){const clearingApproval=String(debt?.clearingApproval||'').replace(/\D/g,'').slice(0,20),customerId=String(debt?.customerId||'').replace(/\D/g,'').slice(0,9),amount=Number(debt?.amount),payment=clearingApproval?{type:3,date:todayLocal(),price:Number.isFinite(amount)&&amount>0?amount:'',currency:'ILS',cardType:1,cardNum:'****'}:undefined;return {customerName:debt?.customerName||'',amount:debt?.amount,orderNumber:'',phone:debt?.phone||'',email:debt?.email||'',taxId:customerId,remarks:clearingApproval?`אשראי נסלק באתר ת.ב.י רהיטים. אישור סליקה באתר - ${clearingApproval}`:'',...(payment?{payment}:{})}}
 
 export function createDomainsCustomersDocuments({
-  operationScope,subscribeAccountScope=()=>()=>{},model,modal,toast,confirmDialog,markModalDraftSaved,request,
+  operationScope,subscribeAccountScope=()=>()=>{},model,modal,toast,clearRecoveryNotice=()=>{},confirmDialog,markModalDraftSaved,request,
   dateEditorMarkup,setDateValue=()=>{},documentsBrowser,applyVerifiedDebtDocument,rejectSecondaryIssuance,
   rejectSecondaryMutation,refreshForMorningRecovery,getBusinessBankTransactions=()=>[],
   ensureBusinessBankTransactions=async()=>false,onBankDocumentVerified=()=>{},
@@ -136,6 +136,11 @@ const recoveryFlow=createMorningRecovery({
     isBusy:()=>createBusy,
     state:(nextBlocked,nextCompleted)=>{blocked=nextBlocked;if(nextCompleted!==undefined)completed=nextCompleted},
     notify:notifyBankVerified,toast,
+    notice(context,text){
+      const assertCurrent=captureScope();
+      toast(text,{id:'morning:'+context.operationId,severity:'important',
+        ...(context.debtId?{actionLabel:'פתח חוב',action:()=>{assertCurrent();return openMorningDocument(context.debtId)}}:{})});
+    },
   },
 });
 const statusFlow=createMorningStatus({
@@ -259,7 +264,7 @@ function persistRecoveryContext(context){
 }
 function clearRecoveryContext(operationId=''){
   const target=operationId||pendingRecovery?.operationId||issuanceContext?.operationId||'';
-  const cleared=clearMorningDebtRecoveryContext(target);if(cleared&&(!pendingRecovery||!target||pendingRecovery.operationId===target)){pendingRecovery=null;recoveryDecision.clear()}return cleared;
+  const cleared=clearMorningDebtRecoveryContext(target);if(cleared&&(!pendingRecovery||!target||pendingRecovery.operationId===target)){pendingRecovery=null;recoveryDecision.clear();clearRecoveryNotice('morning:'+target)}return cleared;
 }
 function adoptRecoveryOperationId(operationId){
   const id=String(operationId||'').trim();if(!id||!issuanceContext||issuanceContext.operationId===id)return issuanceContext;

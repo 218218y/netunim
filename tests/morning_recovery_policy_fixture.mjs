@@ -4,7 +4,10 @@ export function originalMorningRecoveryPolicy(source){
   source=source.replaceAll('morningCheckRegistrationMessage(data)||','').replaceAll('!!(data.bank_link_pending||data.checks_registration_pending)','!!data.bank_link_pending')
     .replace(',retryChecks=false,expectedOperationId','')
     .replace("if(expectedOperationId&&context.operationId!==expectedOperationId)return {ok:false,state:'scope-changed'};",'')
-    .replace('commands.status(context.operationId,true,assertCurrent,retryChecks)','commands.status(context.operationId,true,assertCurrent)');
+    .replace('commands.status(context.operationId,true,assertCurrent,retryChecks)','commands.status(context.operationId,true,assertCurrent)')
+    .replace(/^\s*if\(result\.reason==='decision-required'\)publish\.notice.*\r?\n/m,'\n')
+    .replace(/^\s*else if\(result\.persisted===false\)publish\.notice.*\r?\n/m,'\n')
+    .replaceAll(',result,status:data',',result');
   const node=declaration(source,'recoverPendingMorningOperation');
   return tokens(source.slice(node.start,node.end))
     .replaceAll('lifetime.capture()', 'captureScope()')

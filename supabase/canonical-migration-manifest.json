@@ -358,5 +358,10 @@
     "version": "20261124170000",
     "name": "morning_operation_center",
     "sha256": "0e68d72774a67086e21c6f9573c6c472e6aa5036eb40699d55ae559b1c12c87f"
+  },
+  {
+    "version": "20261124180000",
+    "name": "morning_recovery_controls",
+    "sha256": "f822f033cb3afe6116e3f2f78b935208c923eaf0a899994cad659f22c7f62768"
   }
 ]

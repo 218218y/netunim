@@ -12,6 +12,20 @@ const UUID=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const sameAccount=(a,b)=>a?.owner===b?.owner&&a?.epoch===b?.epoch;
 const dateFormat=new Intl.DateTimeFormat('he-IL',{dateStyle:'short',timeStyle:'short',timeZone:'Asia/Jerusalem'});
 const moneyFormat=new Intl.NumberFormat('he-IL',{style:'currency',currency:'ILS'});
+const FILTERS={active:'כל הפעולות הממתינות',attention:'דורשות טיפול',waiting:'ממתינות להתאוששות',verification:'ממתינות לאימות',resolved:'הושלמו לאחרונה'};
+const CLOUD_STATUS={idle:'טרם אומת מצב פעולות מורנינג.',stale:'מצב פעולות מורנינג אינו מעודכן כרגע.',
+  unavailable:'לא ניתן לאמת את מצב פעולות מורנינג בענן.',auth:'יש להתחבר מחדש או להשלים אימות לצפייה בפעולות מורנינג.',
+  offline:'אין חיבור לענן. מוצג מצב פעולות מורנינג האחרון שהתקבל.'};
+const RESULT_MESSAGES={created:'ההתאוששות הושלמה.',already_registered:'הצ׳קים כבר נרשמו. מצב יתר השלבים מופיע ברשימה.',
+  registered:'רישום הצ׳קים הושלם.',busy:'מתבצע ניסיון התאוששות במקביל. אפשר לבדוק את המצב שוב לאחר סיומו.',
+  failed:'ניסיון ההתאוששות נכשל. פרטי הכשל והשלב הבא מופיעים בפרטי הפעולה.',
+  verification:'אימות המסמך או התקבולים עדיין ממתין.',bank_link:'קישור המסמך לתנועת הבנק עדיין ממתין.',
+  'decision-required':'נדרשת הכרעה לגבי זקיפת החוב. יש לפתוח את החוב להמשך טיפול.',
+  'local-pending':'עדכון החוב עדיין ממתין לאישור כתיבה עמידה.',
+  'cleanup-pending':'נקודת ההתאוששות עדיין ממתינה לניקוי בטוח.',
+  'scope-changed':'הרשאת ההתאוששות השתנתה. יש לבדוק מחדש מהחשבון הפעיל.',
+  unavailable:'מצב הפעולה אינו זמין כרגע. אפשר לבדוק שוב לאחר שהחיבור חוזר.',auth:CLOUD_STATUS.auth};
+const dateLabel=value=>value!=null&&Number.isFinite(new Date(value).getTime())?dateFormat.format(new Date(value)):'';
 
 function decodeOperations(value){
   if(!Array.isArray(value)||value.length>71)throw new Error('morning_recovery_list_invalid');
@@ -35,13 +49,29 @@ function severity(row){
   return 'ממתין';
 }
 
-export function createMorningOperationCenter({request,accountScope,publish,recoverLocal,debtAction,now=Date.now}){
-  let observed=null,operations=[],available=false,nextRead=0,flight=null,closed=false;
-  const acknowledged=new Set(),recovering=new Map();
+function receiptMessage(result){
+  if(result.state==='cooldown')return `הניסיון מוגבל עד ${dateLabel(result.retry_at)||'תום ההמתנה'}.`;
+  return RESULT_MESSAGES[result.state]||RESULT_MESSAGES.verification;
+}
+
+function serverOutcome(status){
+  if(status.check_retry&&['busy','cooldown','failed'].includes(status.check_retry.state))return status.check_retry;
+  if(status.unresolved||status.retryable_reserved||status.checks_registration_pending)return {state:'verification'};
+  if(status.bank_link_pending)return {state:'bank_link'};
+  if(status.available===false)return {state:'unavailable'};
+  return status.check_retry||{state:status.operation?.state||'unavailable'};
+}
+
+export function createMorningOperationCenter({request,accountScope,publish,recoverLocal,debtAction,now=Date.now,isOnline=()=>globalThis.navigator?.onLine!==false}){
+  let observed=null,operations=[],availability='idle',lastSuccess=null,nextRead=0,flight=null,closed=false;
+  let filter='active',query='',page={rows:[],next:null},activeNext=null,pageStack=[null],viewSequence=0,activeSequence=0,viewLoading=false,viewError=false;
+  const acknowledged=new Set(),recovering=new Map(),results=new Map();
   function syncScope(){
     const scope=accountScope();
     if(!sameAccount(scope,observed)){
-      observed=scope;operations=[];available=false;nextRead=0;acknowledged.clear();recovering.clear();publish();
+      observed=scope;operations=[];availability=scope.owner?'idle':'signed_out';lastSuccess=null;nextRead=0;
+      filter='active';query='';page={rows:[],next:null};activeNext=null;pageStack=[null];viewSequence++;viewLoading=false;viewError=false;
+      acknowledged.clear();recovering.clear();results.clear();publish();
     }
     return scope;
   }
@@ -51,28 +81,44 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
     assertRequestScope();
     const response=await request(PATH,{method:'POST',body:JSON.stringify({action,...body}),dataPriority:priority,networkRetry:false,assertRequestScope});
     assertRequestScope();
+    if(response.status===401)throw Object.assign(new Error('morning_cloud_auth_required'),{code:'morning_cloud_auth_required'});
     const value=await response.json();assertRequestScope();
     if(!response.ok||value?.ok!==true)throw new Error('morning_recovery_request_failed');
     return value;
   }
+  async function readPage(scope,filter,query,after){
+    const reply=await call('list_recovery',{page:true,filter,query,after},scope);
+    const rows=decodeOperations(reply.operations),next=reply.next??null;
+    if(next!==null&&(![0,1,2].includes(next.priority)||!dateLabel(next.sort_at)||next.operation_id!==rows.at(-1)?.operation_id))throw new Error('morning_recovery_page_invalid');
+    return {rows,next};
+  }
+  const onFirstActivePage=()=>filter==='active'&&query===''&&pageStack.length===1;
   function refresh({force=false}={}){
     const scope=syncScope();
     if(closed||!scope.owner)return Promise.resolve();
+    if(!isOnline()){
+      if(availability!=='offline'){availability='offline';publish()}
+      return Promise.resolve();
+    }
     if(flight&&sameAccount(scope,flight.scope))return flight.promise;
     if(!force&&now()<nextRead)return Promise.resolve();
     nextRead=now()+45_000;
-    const job={scope,promise:null};
+    const job={scope,promise:null},sequence=++activeSequence;
     flight=job;
     job.promise=(async()=>{
       try{
-        const reply=await call('list_recovery',{},scope);
-        const rows=decodeOperations(reply.operations);assertScope(scope);
-        operations=rows;available=true;
-        const keys=new Set(rows.filter(row=>!row.resolved_at).map(ackKey));
-        for(const key of acknowledged)if(!keys.has(key))acknowledged.delete(key);
-      }catch{
-        if(closed||!sameAccount(accountScope(),scope))return;
-        available=false;nextRead=now()+90_000;
+        const current=await readPage(scope,'active','',null);assertScope(scope);
+        if(sequence!==activeSequence)return;
+        if(!isOnline())throw new Error('morning_recovery_offline');
+        operations=current.rows;activeNext=current.next;availability='fresh';lastSuccess=now();
+        if(!activeNext&&operations.length<=50){
+          const keys=new Set(operations.filter(row=>!row.resolved_at).map(ackKey));
+          for(const key of acknowledged)if(!keys.has(key))acknowledged.delete(key);
+        }
+      }catch(error){
+        if(closed||sequence!==activeSequence||!sameAccount(accountScope(),scope))return;
+        availability=error?.code==='morning_cloud_auth_required'?'auth':!isOnline()?'offline':lastSuccess!==null?'stale':'unavailable';
+        nextRead=now()+90_000;
       }finally{
         if(flight===job){flight=null;publish()}
       }
@@ -80,11 +126,31 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
     return job.promise;
   }
   const active=()=>operations.filter(row=>!row.resolved_at);
-  const ackKey=row=>`${row.operation_id}:${row.stage}:${severity(row)}`;
+  const ackKey=row=>`${row.operation_id}:${row.stage}:${severity(row)}:${row.failure_kind||''}`;
+  const shown=()=>onFirstActivePage()?operations:page.rows;
+  const nextPage=()=>onFirstActivePage()?activeNext:page.next;
+  const urgent=()=>active().find(row=>severity(row)==='דורש טיפול'&&!acknowledged.has(ackKey(row)));
+
+  async function view(nextFilter,nextQuery,stack){
+    const scope=syncScope(),sequence=++viewSequence;
+    const activeRead=nextFilter==='active'&&nextQuery===''&&stack.length===1?++activeSequence:null;
+    assertScope(scope);viewLoading=true;viewError=false;publish();
+    try{
+      const response=await readPage(scope,nextFilter,nextQuery,stack.at(-1));assertScope(scope);
+      if(sequence!==viewSequence)return;
+      filter=nextFilter;query=nextQuery;pageStack=stack;page=response;
+      if(activeRead===activeSequence){operations=page.rows;activeNext=page.next;availability='fresh';lastSuccess=now();nextRead=now()+45_000}
+    }catch{
+      if(sequence===viewSequence)viewError=true;
+    }finally{if(sequence===viewSequence){viewLoading=false;publish()}}
+  }
+  const search=(mode,term)=>view(Object.hasOwn(FILTERS,mode)?mode:'active',String(term||'').trim().slice(0,80),[null]);
 
   async function action(name,id){
-    const scope=syncScope(),row=operations.find(item=>item.operation_id===id);
+    const scope=syncScope(),row=shown().find(item=>item.operation_id===id)||operations.find(item=>item.operation_id===id);
     assertScope(scope);
+    if(name==='morning-next'){const next=nextPage();if(next)await view(filter,query,[...pageStack,next]);return}
+    if(name==='morning-previous'){if(pageStack.length>1)await view(filter,query,pageStack.slice(0,-1));return}
     if(!row)return;
     if(name==='morning-ack'){acknowledged.add(ackKey(row));publish();return}
     if(name==='morning-copy'){
@@ -110,46 +176,66 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
     if(name!=='morning-retry'||row.resolved_at||recovering.has(id))return;
     const token={};recovering.set(id,token);publish();
     try{
-      const handled=await recoverLocal?.(id);assertScope(scope);
-      if(!handled){
+      const local=await recoverLocal?.(id);assertScope(scope);
+      let outcome=local;
+      if(!local){
         const result=await call('status',{operation_id:id,reconcile:true,retry_checks:true},scope,'high');
         if(result.operation?.operation_id!==id)throw new Error('morning_recovery_receipt_mismatch');
+        outcome=serverOutcome(result);
       }
+      results.set(id,receiptMessage(outcome));
       // If a list was already in flight, its snapshot may predate this attempt.
       await flight?.promise;assertScope(scope);await refresh({force:true});
+      if(!onFirstActivePage())await view(filter,query,pageStack);
+    }catch(error){
+      if(sameAccount(accountScope(),scope)&&!closed)results.set(id,receiptMessage({state:error?.code==='morning_cloud_auth_required'?'auth':'unavailable'}));
     }finally{if(recovering.get(id)===token){recovering.delete(id);publish()}}
   }
 
   function markup(escape){
-    const date=value=>Number.isFinite(Date.parse(value))?dateFormat.format(new Date(value)):'';
     const button=(name,caption,id,disabled=false)=>`<button type="button" data-incident-action="morning-${name}" data-incident-id="${escape(id)}" ${disabled?'disabled':''}>${caption}</button>`;
     const card=row=>{
       const id=row.operation_id,busy=recovering.has(id),stage=STAGES[row.stage];
-      const fields=[['תאריך פעולה',date(row.verified_at||row.created_at)],['סכום המסמך',moneyFormat.format(Number(row.amount))],
-        ['צ׳קים לרישום',!row.resolved_at&&row.check_count?`${row.check_count} · ${moneyFormat.format(Number(row.check_amount))}`:''],
-        ['כשל ראשון',date(row.first_failed_at)],['ניסיון אחרון',date(row.last_attempt_at)],['ניסיון אוטומטי הבא',date(row.next_retry_at)],
-        ['ניסיונות שנכשלו או דרשו אימות',row.attempts||''],['הושלם',date(row.resolved_at)]];
-      return `<li><strong>${stage[0]}</strong><span class="morning-operation-state">${busy?'מתבצעת בדיקה':severity(row)}</span>
+      const registered=!!row.checks_registered_at||row.stage==='bank_link'||row.stage==='registered';
+      const fields=[['תאריך פעולה',dateLabel(row.verified_at||row.created_at)],['סכום המסמך',moneyFormat.format(Number(row.amount))],
+        ['אימות המסמך',row.verified_at?'הושלם':'ממתין'],
+        ['אימות התקבולים',row.check_count?(row.payment_evidence==='matched'||registered?'הושלם':row.stage==='payment_mismatch'?'אי התאמה':'ממתין'):''],
+        ['רישום צ׳קים בקופה',row.check_count?(registered?`${row.check_count} נרשמו`:`${row.check_count} ממתינים · ${moneyFormat.format(Number(row.check_amount))}`):''],
+        ['קישור לבנק',row.source_kind==='bank'?(row.bank_linked?'הושלם':'ממתין'):''],
+        ['כשל ראשון',dateLabel(row.first_failed_at)],['ניסיון אחרון',dateLabel(row.last_attempt_at)],['ניסיון אוטומטי הבא',dateLabel(row.next_retry_at)],
+        ['ניסיונות שנכשלו או דרשו אימות',row.attempts||''],['הושלם',dateLabel(row.resolved_at)]];
+      const title=row.stage==='registered'&&!row.check_count?'קישור המסמך לבנק הושלם':stage[0];
+      return `<li><strong>${title}</strong><span class="morning-operation-state">${busy?'מתבצעת בדיקה':severity(row)}</span>
         <p>${TYPES[row.document_type]} ${escape(row.document_number||'')}</p>
         <dl>${fields.filter(([,value])=>value).map(([label,value])=>`<div><dt>${label}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl>
-        ${stage[1]?`<p>${stage[1]} יש להימנע מהפקה נוספת או מהזנה חוזרת של הצ׳קים.</p>`:''}
+        ${stage[1]?`<p>${stage[1]} ${registered?'':'יש להימנע מהפקה נוספת או מהזנה חוזרת של הצ׳קים.'}</p>`:''}
+        ${results.has(id)?`<p role="status">${escape(results.get(id))}</p>`:''}
         <div class="sync-incidents-actions">
           ${row.resolved_at?'':button('retry','בדוק מצב הפקה',id,busy)}
           ${row.verified_at&&UUID.test(row.document_id||'')?button('document','פתח מסמך',id):''}
           ${debtAction?.(row)?button('debt','פתח חוב',id):''}
           ${row.resolved_at||acknowledged.has(ackKey(row))?'':button('ack','קראתי',id)}
         </div>
-        <details><summary>פרטי אבחון</summary><p dir="ltr">${escape(id)}${row.error_code?' · '+escape(row.error_code):''}</p>${button('copy','העתק אבחון',id)}</details>
+        <details data-incident-details="${escape(id)}"><summary>פרטי אבחון</summary><p dir="ltr">${escape(id)}${row.error_code?' · '+escape(row.error_code):''}</p>${button('copy','העתק אבחון',id)}</details>
       </li>`;
     };
-    const pending=active(),history=operations.filter(row=>row.resolved_at);
+    const rows=shown(),legacyHistory=onFirstActivePage()?rows.filter(row=>row.resolved_at):[];
+    const visible=onFirstActivePage()?rows.filter(row=>!row.resolved_at).slice(0,50):rows;
     return `<section class="morning-operation-center" aria-label="פעולות ממתינות ותקלות מערכת">
       <h3>פעולות ממתינות ותקלות מערכת</h3>
-      ${!observed?.owner?'<p>יש להתחבר לענן לצפייה בפעולות.</p>':!available?'<p role="status">מצב פעולות מורנינג אינו מעודכן כרגע.</p>':''}
-      ${pending.length?`<ul>${pending.slice(0,50).map(card).join('')}</ul>${pending.length>50?'<p>מוצגות 50 פעולות ממתינות.</p>':''}`:available?'<p>אין פעולות מורנינג ממתינות לטיפול.</p>':''}
-      ${history.length?`<details><summary>רישומי צ׳קים שהושלמו לאחרונה</summary><ul>${history.map(card).join('')}</ul></details>`:''}
+      ${!observed?.owner?'<p>יש להתחבר לענן לצפייה בפעולות.</p>':CLOUD_STATUS[availability]?`<p role="status">${CLOUD_STATUS[availability]}</p>`:''}
+      ${lastSuccess!==null?`<p>אימות ענן אחרון ${dateLabel(lastSuccess)}${availability!=='fresh'&&nextRead?' · בדיקה חוזרת אחרי '+dateLabel(nextRead):''}</p>`:''}
+      ${observed?.owner?`<form data-morning-search><label>סינון <select name="filter">${Object.entries(FILTERS).map(([value,label])=>`<option value="${value}" ${filter===value?'selected':''}>${label}</option>`).join('')}</select></label>
+        <label>מספר מסמך או מזהה פעולה <input name="query" maxlength="80" value="${escape(query)}"></label><button ${viewLoading?'disabled':''}>חפש</button></form>`:''}
+      ${viewError?'<p role="status">לא ניתן לטעון את העמוד המבוקש. הרשימה הקודמת נשמרה.</p>':''}
+      ${visible.length?`<ul>${visible.map(card).join('')}</ul>`:availability==='fresh'?'<p>אין פעולות להצגה.</p>':''}
+      ${nextPage()||pageStack.length>1?`<div class="sync-incidents-actions">${button('previous','הקודם','',viewLoading||pageStack.length===1)}<span>עמוד ${pageStack.length}</span>${button('next','הבא','',viewLoading||!nextPage())}</div>`:''}
+      ${legacyHistory.length?`<details data-incident-details="legacy-history"><summary>רישומי צ׳קים שהושלמו לאחרונה</summary><ul>${legacyHistory.map(card).join('')}</ul></details>`:''}
+      ${[...results].filter(([id])=>!rows.some(row=>row.operation_id===id)).slice(-1).map(([,message])=>`<p role="status">${escape(message)}</p>`).join('')}
     </section>`;
   }
-  return {refresh,action,markup,syncScope,dispose:()=>{closed=true},
-    get count(){return active().length},get unread(){return active().filter(row=>!acknowledged.has(ackKey(row))).length}};
+  return {refresh,action,search,markup,syncScope,dispose:()=>{closed=true},get availability(){return availability},
+    get cloudStatusLabel(){return observed?.owner?CLOUD_STATUS[availability]||'':''},
+    get count(){return active().length},get more(){return !!activeNext||active().length>50},get urgent(){return urgent()},
+    get unread(){return active().filter(row=>!acknowledged.has(ackKey(row))).length}};
 }

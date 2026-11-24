@@ -287,6 +287,10 @@
     {
       "version": "20261124170000",
       "name": "morning_operation_center"
+    },
+    {
+      "version": "20261124180000",
+      "name": "morning_recovery_controls"
     }
   ]
 }

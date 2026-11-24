@@ -2,6 +2,7 @@ import {supabaseConfig as SUPA_CONFIG} from '../../../supabase/config.js';
 import {formatCloudSyncTime, latestCloudUpdatedAt} from '../core/dates.js';
 import {SECONDARY_READ_ONLY_ACTIONS} from './secondary-read-only-actions.js';
 import {hasFailedLocalMutation} from '../shared/local-mutation-admission.js';
+import {createStatusNotices} from '../shared/status-notices.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createUiStatus({session, checksSession, tab, storageRecovery}){
@@ -52,7 +53,7 @@ function setCloudHeaderStatus(mode='off',text='ענן: לא מחובר',source='
 
 function refreshCloudHeaderTimestamp(){renderCloudHeader()}
 
-function toast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1800)}
+const {toast,clearNotices}=createStatusNotices({getToast:()=>document.getElementById('toast'),duration:1800});
 
 
 function canRunInteractiveAction(name=''){
@@ -69,5 +70,5 @@ function canRunInteractiveAction(name=''){
 function reportError(message){alert(message)}
 function hideConnectScreen(){document.getElementById('connectScreen').style.display='none'}
 
-return { reportError, hideConnectScreen, setSaveStatus, setConnectedStatus, supaProjectRef, setCloudHeaderStatus, refreshCloudHeaderTimestamp, toast, canRunInteractiveAction };
+return { reportError, hideConnectScreen, setSaveStatus, setConnectedStatus, supaProjectRef, setCloudHeaderStatus, refreshCloudHeaderTimestamp, toast,clearNotices, canRunInteractiveAction };
 }

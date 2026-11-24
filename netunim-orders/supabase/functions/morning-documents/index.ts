@@ -399,14 +399,17 @@ async function status(ownerId:string,body:any){
   const providerConfigured=configured();
   if(!MORNING_ENV_VALID||(!id&&!providerConfigured))return json({ok:true,configured:false,available:false,configuration_error:MORNING_ENV_VALID?null:'invalid_environment',operation:null,unresolved:false,environment:MORNING_ENV_RAW});
   try{
-    let operation=id?await readOperation(ownerId,id):null,available=true,connectionError='';
+    let operation=id?await readOperation(ownerId,id):null,available=true,connectionError='',checkRetry=null;
+    const manual=body?.reconcile===true&&body?.retry_checks===true;
     const matchedPending=!!operation?.verified_at&&operation.state==='created'&&!!operation.check_intent?.length
       &&!operation.checks_registered_at&&operation.check_payment_evidence==='matched';
     if(matchedPending&&operation){
-      if(body?.reconcile===true&&body?.retry_checks===true){
-        const {error}=await admin.rpc('retry_verified_morning_checks',{p_owner_id:ownerId,p_environment:MORNING_ENV,p_operation_id:operation.operation_id});
+      if(manual){
+        const {data,error}=await admin.rpc('retry_verified_morning_checks_v2',{p_owner_id:ownerId,p_environment:MORNING_ENV,p_operation_id:operation.operation_id});
         if(error)throw error;
+        checkRetry=data;
         operation=await readOperation(ownerId,operation.operation_id);
+        if(operation?.checks_registered_at&&!['registered','already_registered'].includes(checkRetry?.state))checkRetry={state:'already_registered'};
       }
     }else if(providerConfigured){
       try{
@@ -420,6 +423,7 @@ async function status(ownerId:string,body:any){
     }else available=false;
     let bankLink={pending:false} as any;
     if(operation?.state==='created'&&operation.verified_at)bankLink=await persistVerifiedBankLink(ownerId,operation,{recover:body?.reconcile===true});
+    if(manual&&operation?.checks_registered_at&&!checkRetry)checkRetry={state:'already_registered'};
     const ledger=operation&&{operation_id:operation.operation_id,state:operation.state,document_id:operation.document_id,
       document_number:operation.document_number,document_type:operation.document_type,amount:operation.amount,
       verified_at:operation.verified_at,allocation_number:operation.allocation_number};
@@ -427,14 +431,26 @@ async function status(ownerId:string,body:any){
       unresolved:!!operation&&['pending','created_unverified','needs_reconciliation'].includes(operation.state),
       retryable_reserved:operation?.state==='reserved',environment:MORNING_ENV,
       ...(operation?checkRegistrationSummary(operation):{checks_registration_pending:false}),
-      bank_link_pending:bankLink.pending,bank_link:bankLink.pending?null:bankLink});
+      bank_link_pending:bankLink.pending,bank_link:bankLink.pending?null:bankLink,...(checkRetry?{check_retry:checkRetry}:{})});
   }catch(error){return dbError(error,'morning_status_failed')}
 }
-async function listRecoveryOperations(ownerId:string){
+async function listRecoveryOperations(ownerId:string,body:any){
   if(!MORNING_ENV_VALID)return json({ok:false,code:'morning_environment_invalid'},503);
-  const {data,error}=await admin.rpc('list_morning_recovery_operations',{p_owner_id:ownerId,p_environment:MORNING_ENV});
+  const scope={p_owner_id:ownerId,p_environment:MORNING_ENV};
+  if(body?.page!==true){
+    const {data,error}=await admin.rpc('list_morning_recovery_operations',scope);
+    if(error)return dbError(error,'morning_recovery_list_failed');
+    return json({ok:true,operations:data});
+  }
+  const filter=body.filter??'active',query=typeof body.query==='string'?body.query.trim().slice(0,80):'',after=body.after??null;
+  if(!['active','attention','waiting','verification','resolved'].includes(filter)||after!==null&&(
+    ![0,1,2].includes(after.priority)||typeof after.sort_at!=='string'||!Number.isFinite(Date.parse(after.sort_at))||!isUuid(after.operation_id)))
+    return json({ok:false,code:'morning_recovery_page_invalid'},400);
+  const {data,error}=await admin.rpc('list_morning_recovery_operations_v2',{...scope,p_filter:filter,p_query:isUuid(query)?query.toLowerCase():query,
+    p_after_priority:after?.priority??null,p_after_created:after?.sort_at??null,p_after_id:after?.operation_id??null});
   if(error)return dbError(error,'morning_recovery_list_failed');
-  return json({ok:true,operations:data});
+  const rows=data.slice(0,50),last=rows.at(-1);
+  return json({ok:true,operations:rows,next:data.length>50?{priority:last.priority,sort_at:last.sort_at,operation_id:last.operation_id}:null});
 }
 async function preview(ownerId:string,body:any){if(!configured())return json({ok:false,code:MORNING_ENV_VALID?'morning_not_configured':'morning_invalid_environment',message:MORNING_ENV_VALID?'Morning אינו מוגדר ב-Supabase':'MORNING_ENV חייב להיות production או sandbox'},503);let input;try{input=normalizeInput(body);await validateLinkedDocument(input);await validateBankSource(ownerId,input)}catch(error:any){const code=String(error?.code||error?.message||'invalid_document');return json({ok:false,code,message:code==='linked_document_not_linkable'?'החשבונית שנבחרה אינה פתוחה או אינה מתאימה לקישור':userMessage(code)},400)}try{const data=await morningRequest('/documents/preview',{method:'POST',body:JSON.stringify(input.payload)}),pdfBase64=findPdfBase64(data);if(!pdfBase64)return json({ok:false,code:'morning_preview_missing_pdf',message:'Morning לא החזירה PDF לתצוגה מקדימה'},502);return json({ok:true,pdfBase64:validatePreviewPdfBase64(pdfBase64)})}catch(error:any){return json({ok:false,code:'morning_preview_failed',message:String(error?.message||'תצוגה מקדימה נכשלה')},error?.status===413?413:error?.status>=400&&error.status<500?400:502)}}
 async function create(ownerId:string,body:any){
@@ -531,6 +547,6 @@ Deno.serve(withEdgeOrigins(async(req:Request)=>{
   if(['get_document','document_links','document_pdf'].includes(action)){
     try{if(!await mayReadDocument(user,body))return documentReadForbidden()}catch(error){return dbError(error,'morning_document_permission_failed')}
   }
-  if(action==='list_recovery')return listRecoveryOperations(user.id);
+  if(action==='list_recovery')return listRecoveryOperations(user.id,body);
   if(action==='status')return status(user.id,body);if(action==='reserve')return reserve(user.id,body);if(action==='abandon_reservation')return abandonReservation(user.id,body);if(action==='preview')return preview(user.id,body);if(action==='create')return create(user.id,body);if(action==='search_documents')return searchDocuments(body);if(action==='get_document')return getDocument(body);if(action==='document_links')return getDocument(body,true);if(action==='document_pdf')return getDocumentPdf(body);return json({ok:false,code:'morning_unknown_action',message:'פעולת Morning אינה מוכרת'},400);
 },edgeOrigins(Deno.env.get('FINANCIAL_EDGE_ALLOWED_ORIGINS')||'')));

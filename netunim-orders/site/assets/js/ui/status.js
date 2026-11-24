@@ -1,6 +1,7 @@
 import {$} from '../state/constants.js';
 import {formatCloudSyncTime, latestCloudUpdatedAt} from '../core/dates.js';
 import {hasFailedLocalMutation} from '../shared/local-mutation-admission.js';
+import {createStatusNotices} from '../shared/status-notices.js';
 
 const STARTUP_DOMAIN_ORDER=['orders','checks','finance'];
 const HEADER_DOMAIN_ORDER=['orders','checks'];
@@ -10,7 +11,7 @@ const STARTUP_LOADING_TEXT={orders:'ענן: מאמת נתוני הזמנות…'
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createUiStatus({session, checksSession, tab, storageRecovery}){
 if(typeof storageRecovery?.isReady!=='function')throw new TypeError('ui_storage_recovery_required');
-function toast(msg){const el=$('#toast');el.textContent=msg;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),2600)}
+const {toast,clearNotice,clearNotices}=createStatusNotices({getToast:()=>$('#toast'),duration:2600});
 
 function setSave(text,cls='',title=''){const e=$('#savePill');if(e){const failed=hasFailedLocalMutation(session);e.textContent=failed?'שינוי לא נשמר — אין לסגור את החלון; ייצא JSON לשמירת הטיוטה':text;e.className='save-pill '+(failed?'error':cls);e.title=[e.textContent,title].filter(Boolean).join('\n')}}
 
@@ -101,5 +102,5 @@ function guardStartupMutation(domain='orders'){
 function reportError(message){alert(message)}
 function hideConnectScreen(){document.getElementById('connectScreen').style.display='none'}
 
-return { reportError, hideConnectScreen, toast, setSave, setCloud, setChecksCloud, refreshCloudTimestamp, beginStartupSync, setStartupDomain, startupDomainLocked, guardStartupMutation };
+return { reportError, hideConnectScreen, toast,clearNotice,clearNotices, setSave, setCloud, setChecksCloud, refreshCloudTimestamp, beginStartupSync, setStartupDomain, startupDomainLocked, guardStartupMutation };
 }

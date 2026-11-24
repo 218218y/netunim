@@ -27,14 +27,16 @@ export function createSyncIncidentFeature({site,accountScope,subscribeAccountSco
   const wake=()=>{void monitor.wake()},visibility=()=>{if(document.visibilityState!=='hidden')wake()};
   const unsubscribe=subscribeAccountScope(()=>{financial.syncScope();void monitor.accountChanged()});
   const online=()=>{void financial.refresh({force:true});wake()};
+  const offline=()=>{void financial.refresh()};
   globalThis.addEventListener('online',online);globalThis.addEventListener('focus',wake);globalThis.addEventListener('pageshow',wake);
+  globalThis.addEventListener('offline',offline);
   document.addEventListener('visibilitychange',visibility);
   const labelChanged=event=>{if(event.storageArea===localStorage&&(event.key===labelKey||event.key===null)){publish(monitor.view);wake()}};
   globalThis.addEventListener('storage',labelChanged);
   void monitor.start();
   return {open:ui.open,get alerts(){return monitor.view.incidents.map(row=>({id:'sync:'+row.incident_id,kind:'sync_incident',...row,description:syncIncidentDescription(row,clientId)}))},
     mountSettings(container){settingsUi?.dispose();container.replaceChildren();settingsUi=createSyncIncidentUi({...uiOptions,container,inline:true});settingsUi.update(monitor.view)},
-    dispose(){unsubscribe();financial.dispose();monitor.stop();ui.dispose();settingsUi?.dispose();globalThis.removeEventListener('storage',labelChanged);globalThis.removeEventListener('online',online);globalThis.removeEventListener('focus',wake);globalThis.removeEventListener('pageshow',wake);document.removeEventListener('visibilitychange',visibility)}};
+    dispose(){unsubscribe();financial.dispose();monitor.stop();ui.dispose();settingsUi?.dispose();globalThis.removeEventListener('storage',labelChanged);globalThis.removeEventListener('online',online);globalThis.removeEventListener('offline',offline);globalThis.removeEventListener('focus',wake);globalThis.removeEventListener('pageshow',wake);document.removeEventListener('visibilitychange',visibility)}};
   }catch{
     ui?.update({status:'unavailable',incidents:[],localError:true});
     return {open(){ui?.open()},mountSettings(container){container.textContent='לא ניתן לטעון התראות סנכרון. יש לרענן את האתר.'},alerts:[],dispose(){ui?.dispose();settingsUi?.dispose()}};

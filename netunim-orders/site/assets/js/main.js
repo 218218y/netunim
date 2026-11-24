@@ -153,6 +153,7 @@ const uiStatus=createUiStatus({
   checksSession,
   tab,
 });
+cloudAuth.subscribeAccountScope(uiStatus.clearNotices);
 
 const uiFolderStatus=createUiFolderStatus({
   files,

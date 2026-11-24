@@ -48,6 +48,7 @@ export function createDomainsCustomers({
     toast:(...args)=>uiStatus.toast(...args),
     confirmDialog:(...args)=>uiModal.confirmDialog(...args),
     markModalDraftSaved:(...args)=>uiModal.markModalDraftSaved(...args),
+    clearRecoveryNotice:id=>uiStatus.clearNotice?.(id),
     debtNotes:{
       updateNote:(debt,note)=>updateDebtNote(debt,note,scheduleSave),
       updateUrgency:(debt,note)=>updateDebtUrgency(debt,note,scheduleSave),
@@ -106,10 +107,14 @@ export function createDomainsCustomers({
   const runtime={dispose,drain,cancelPending:()=>{documents.runtime.cancelPending();documentsBrowser.runtime.cancelPending()},isPending:()=>documents.runtime.isPending()||documentsBrowser.runtime.isPending()};
   const morningOperationCenter={
     async recoverLocal(operationId){
-      if(!storagePersistence.canMutate()||loadMorningDebtRecoveryContext()?.operationId!==operationId)return false;
+      if(!storagePersistence.canMutate()||loadMorningDebtRecoveryContext()?.operationId!==operationId)return null;
       const result=await documents.recoverPendingMorningOperation({expectedOperationId:operationId,retryChecks:true,quiet:false});
       if(result.state==='unavailable')throw result.error;
-      return true;
+      if(result.result?.reason==='decision-required')return {state:'decision-required'};
+      if(result.status?.check_retry&&['cooldown','busy','failed'].includes(result.status.check_retry.state))return result.status.check_retry;
+      if(result.status?.checks_registration_pending)return {state:'verification'};
+      if(result.status?.bank_link_pending)return {state:'bank_link'};
+      return {state:result.state};
     },
     debtAction(row){
       const context=loadMorningDebtRecoveryContext();

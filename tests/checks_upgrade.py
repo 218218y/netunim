@@ -25,6 +25,10 @@ def run(db):
         return json.loads(scalar('begin;alter role service_role bypassrls;set local role service_role;select coalesce(jsonb_agg(result),\'[]\') '
                                  'from public.list_morning_recovery_operations('+quote(owner)+','+quote(environment)+') result;rollback;'))
 
+    def retry_receipt(operation, owner=OWNER):
+        return json.loads(scalar('begin;set local role service_role;select public.retry_verified_morning_checks_v2('
+                                 +quote(owner)+",'sandbox',"+quote(operation)+');commit;'))
+
     def save(checks, precision=True, deleted=None):
         revision=scalar("select revision from public.shared_checks_documents where owner_id="+quote(OWNER)+" and document_name='main'") or '0'
         audit={'checkAmountPrecision':2} if precision else {}
@@ -216,12 +220,31 @@ def run(db):
     db.sql('select netunim_internal.retry_morning_check_registrations()')
     assert scalar("select checks_registration_attempts from public.morning_document_operations where operation_id="+quote(failed_operation))=='5'
     assert len(rows())==count
+    assert retry_receipt(failed_operation)['state']=='failed'
+    assert retry_receipt(failed_operation)['state']=='cooldown'
+    assert retry_receipt(failed_operation,'00000000-0000-4000-8000-000000000999')['state']=='unavailable'
     db.sql('drop trigger test_import_failure on netunim_internal.morning_check_registrations;drop function netunim_internal.test_import_failure()')
+    db.sql("update public.morning_document_operations set checks_registration_last_manual_at=clock_timestamp()-interval '1 minute' where operation_id="+quote(failed_operation))
     assert retry(failed_operation)=='t'
+    assert retry_receipt(failed_operation)['state']=='already_registered'
     assert len(rows())==count+2
     assert scalar("select checks_registered_at is not null and checks_registration_error is null from public.morning_document_operations where operation_id="+quote(failed_operation))=='t'
     resolved = next(row for row in recovery_rows() if row['operation_id']==failed_operation)
     assert resolved['stage']=='registered' and resolved['resolved_at'] and resolved['error_code'] is None
+    # A synthetic backlog reaches its final row through the keyset, independently of the newest update.
+    db.sql("insert into public.morning_document_operations(owner_id,environment,operation_id,request_fingerprint,state,document_type,amount,document_date,client_name,description,created_at,issuance_started_at) "
+           "select "+quote(OWNER)+",'sandbox',gen_random_uuid(),'page-test-'||i,'needs_reconciliation',320,1,current_date,'','',now()-i*interval '1 minute',now()-i*interval '1 minute' from generate_series(1,53) i")
+    def page(after=None, search=None):
+        args='null,null,null' if after is None else str(after['priority'])+','+quote(after['sort_at'])+','+quote(after['operation_id'])
+        term='null' if search is None else quote(search)
+        return json.loads(scalar("select coalesce(jsonb_agg(item),'[]') from public.list_morning_recovery_operations_v2("
+                                 +quote(OWNER)+",'sandbox','verification',"+term+','+args+') item'))
+    first=page()
+    assert len(first)==51
+    second=page(first[49])
+    assert len(second)>=3 and not {r['operation_id'] for r in first[:50]}.intersection(r['operation_id'] for r in second)
+    oldest=page(search=first[0]['operation_id'])
+    assert len(oldest)==1 and oldest[0]['operation_id']==first[0]['operation_id']
     # Regression for the production failure: an enrolled owner's verified
     # server-side continuation has no browser JWT. Both the trigger and cron
     # must finish while the public writer remains inaccessible at AAL1.

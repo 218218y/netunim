@@ -4,7 +4,8 @@ import {evidenceTimestamp} from '../../shared/response-evidence.js';
 /** @typedef {{operation_id:string,state:OperationState,document_type?:number,amount?:number,document_id?:string,document_number?:string|number,verified_at?:string,allocation_number?:string|number}} LedgerOperation */
 /** @typedef {{pending?:boolean,operationId?:string,documentId?:string,documentNumber?:string|number,documentType?:number,documentAmount?:number,transactionId?:number,linkId?:number,verifiedAt?:string,handledAt?:string}} BankLink */
 /** @typedef {{checks_registration_state?:'registered'|'pending'|'evidence_pending'|'attention',checks_registration_attempts?:number,checks_registration_count?:number,checks_registration_amount?:number,checks_registration_evidence?:'matched'|'missing'|'mismatch',checks_registration_last_failed_at?:string,checks_registration_next_retry_at?:string}} CheckRegistration */
-/** @typedef {CheckRegistration & {ok:true,operation:LedgerOperation|null,configured?:boolean,available?:boolean,unresolved?:boolean,retryable_reserved?:boolean,environment?:string,checks_registration_pending?:boolean,bank_link_pending?:boolean,bank_link?:BankLink|null}} OperationStatus */
+/** @typedef {{state:string,retry_at?:string}} CheckRetry */
+/** @typedef {CheckRegistration & {ok:true,operation:LedgerOperation|null,configured?:boolean,available?:boolean,unresolved?:boolean,retryable_reserved?:boolean,environment?:string,checks_registration_pending?:boolean,bank_link_pending?:boolean,bank_link?:BankLink|null,check_retry?:CheckRetry}} OperationStatus */
 /** @typedef {{ok:true,reserved:boolean,operation:{operation_id:string,state:OperationState}}} Reservation */
 /** @typedef {{id:string,type:number,amount:number,number?:string|number,allocationNumber?:string|number}} OfficialDocument */
 /** @typedef {CheckRegistration & {ok:true,verified:true,document:OfficialDocument,local_link_pending?:boolean,checks_registration_pending?:boolean,bank_link_pending?:boolean,bank_link?:BankLink|null}} CreatedDocument */
@@ -130,6 +131,11 @@ export function decodeMorningOperationStatus(value,expectedId){
   for(const name of /** @type {const} */ (['configured','available','unresolved','retryable_reserved','checks_registration_pending','bank_link_pending']))if(row[name]!==undefined)result[name]=flag(row[name]);
   if(row.environment!==undefined){if(typeof row.environment!=='string'||row.environment.length>40||(result.configured!==false&&!['production','sandbox'].includes(row.environment)))throw invalid();result.environment=row.environment}
   if(row.bank_link!==undefined)result.bank_link=bankLink(row.bank_link,expectedId);
+  if(row.check_retry!==undefined){
+    const retry=record(row.check_retry);
+    if(typeof retry.state!=='string'||!['registered','already_registered','busy','cooldown','failed','unavailable'].includes(retry.state))throw invalid();
+    result.check_retry={state:retry.state,...(retry.state==='cooldown'?{retry_at:date(retry.retry_at)}:{})};
+  }
   const ledger=result.operation;
   linkedDocument(result.bank_link,{id:ledger?.document_id,type:ledger?.document_type,amount:ledger?.amount},result.bank_link_pending);
   if(result.retryable_reserved===true&&ledger?.state!=='reserved')throw invalid();

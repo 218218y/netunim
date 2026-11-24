@@ -49,10 +49,10 @@ const mockFetch=async(url,init={})=>{
   throw new Error('Unexpected request '+url);
 };
 const context=vm.createContext({getMfaAssuredUser,edgeOrigins,withEdgeOrigins,console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch:mockFetch,createClient:()=>({from:()=>new Query(),rpc:async(name,args)=>{
-  assert.equal(name,'retry_verified_morning_checks');checkRetries.push({...args});
+  assert.equal(name,'retry_verified_morning_checks_v2');checkRetries.push({...args});
   const row=rows.find(item=>item.owner_id===args.p_owner_id&&item.environment===args.p_environment&&item.operation_id===args.p_operation_id);
   Object.assign(row,{checks_registered_at:new Date().toISOString(),checks_registration_error:null,checks_registration_next_retry_at:null});
-  return {data:true,error:null};
+  return {data:{state:'registered',attempted:true},error:null};
 },auth:{getUser:async()=>({data:{user:{id:owner,factors:[]}}})}}),Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'test',SUPABASE_SERVICE_ROLE_KEY:'test',MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test',MORNING_ENV:'sandbox'})[key]},serve:handler=>{servedHandler=handler}}});
 context.createMorningReportsHandler=createMorningReportsHandler;
 Object.assign(context,{readJsonBodyBounded,JsonBodyError});

@@ -18,7 +18,8 @@ test('structural diagnostics remove named and unknown personal/financial leaves 
   assert.equal(Object.hasOwn(sanitized,'maskedDecoy'),false,'unreviewed field labels are structural placeholders');
 });
 
-test('dynamic dictionary keys and unexpected diagnostic labels cannot export personal information',()=>{
+test('dynamic dictionary keys and unexpected diagnostic labels cannot export personal information',t=>{
+  t.mock.timers.enable({apis:['Date'],now:new Date('2026-08-06T12:00:00.000Z')});
   const run=createBankDiagnosticRun();
   const keyed=JSON.parse('{"105012322":{"private beneficiary":{"checkNumber":"4463454"}},"משה כהן":{"branchNumber":183},"__proto__":{"polluted":true},"referenceNumber":123456789}');
   recordBankTransactionDiagnostic(run,{role:'business',chequeKind:'private cheque holder',transaction:keyed,

@@ -291,6 +291,7 @@ const cloudAuth=createCloudAuth({
 });
 
 const domainsDocumentBridge=composeDocumentSearch({supaFetch:(...args)=>cloudAuth.supaRest(...args),accountScope:()=>cloudAuth.getAccountScope(),subscribeAccountScope:cloudAuth.subscribeAccountScope});
+cloudAuth.subscribeAccountScope(uiStatus.clearNotices);
 
 const cloudTransport=createCloudTransport({
   session,

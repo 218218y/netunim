@@ -5,16 +5,23 @@ export function createSyncIncidentUi({document=globalThis.document,container=doc
   root.dataset.inline=String(inline);container.append(root);
   let state={status:'signed_out',incidents:[],localError:false},opened=inline,last='',error='',renderedLabel='';
   function render(){
-    const count=state.incidents.length,financialCount=financial?.count||0;
-    const savedLabel=String(label()||'').trim(),warning=count>0||financialCount>0||state.status==='unavailable'||state.localError;
+    const count=state.incidents.length,financialCount=financial?.count||0,cloudNotice=financial?.cloudStatusLabel||'',urgent=financial?.urgent;
+    const savedLabel=String(label()||'').trim(),warning=count>0||financialCount>0||!!cloudNotice||state.status==='unavailable'||state.localError;
     root.hidden=!inline&&(state.status==='signed_out'||!!savedLabel&&!warning);
     if(root.hidden){opened=false;root.replaceChildren();return}
     const input=root.querySelector('[data-incident-label]'),focused=input&&document.activeElement===input;
+    const search=root.querySelector('[data-morning-search]'),active=document.activeElement;
+    const focusName=search?.contains(active)?active.name:null;
+    const focusAction=root.contains(active)?active?.dataset?.incidentAction:null,focusId=active?.dataset?.incidentId;
+    const openDetailIds=new Set([...root.querySelectorAll('[data-incident-details][open]')].map(detail=>detail.dataset.incidentDetails));
+    const scrollTop=root.querySelector('.sync-incidents-panel')?.scrollTop||0;
     root.dataset.quiet=String(!opened&&!warning&&state.status==='no_reported_incidents');
     root.dataset.warning=String(warning);
     const title=count?`אזהרת סנכרון: ${count} ${count===1?'תקלה מדווחת':'תקלות מדווחות'}`:state.status==='unavailable'?'לא ניתן לבדוק התראות סנכרון כרגע':state.localError?'דיווח תקלות הסנכרון לא הושלם':state.status==='signed_out'?'יש להתחבר לענן כדי לבדוק תקלות מדווחות':'לא נמצאו תקלות סנכרון מדווחות';
     root.innerHTML=`${inline?`<h3>התראות סנכרון ושם עמדה</h3><p role="status">${escape(title)}</p>`:`<button type="button" class="sync-incidents-toggle" aria-expanded="${opened}" data-incident-action="toggle">
-      <span role="status">${escape(financialCount?`${financialCount>50?'50+':financialCount} פעולות מורנינג ממתינות${count?` · ${count} תקלות סנכרון`:''}`:!warning&&!savedLabel?'הגדרת שם מחשב להתראות סנכרון':title)}</span><span>${opened?'סגירה':'פרטים'}</span></button>`}
+      <span role="status">${escape(cloudNotice|| (financialCount?`${financial?.more?'50+':financialCount} פעולות מורנינג ממתינות${count?` · ${count} תקלות סנכרון`:''}`:!warning&&!savedLabel?'הגדרת שם מחשב להתראות סנכרון':title))}</span><span>${opened?'סגירה':'פרטים'}</span></button>`}
+      ${!inline&&urgent?`<div class="morning-urgent-notice"><p role="alert">פעולה פיננסית דורשת טיפול${urgent.document_number?` · מסמך ${escape(urgent.document_number)}`:''}</p>
+        <button type="button" data-incident-action="morning-open-urgent" data-incident-id="${escape(urgent.operation_id)}">פרטים ואישור קריאה</button></div>`:''}
       <div class="sync-incidents-panel" ${opened?'':'hidden'}>
         ${opened&&financial?financial.markup(escape):''}
         <p>התראות על שינויים שלא סונכרנו ותקלות בעמדות. היעדר דיווח אינו הוכחה שכל המחשבים מסונכרנים.</p>
@@ -28,6 +35,14 @@ export function createSyncIncidentUi({document=globalThis.document,container=doc
         <p role="status" class="sync-incidents-error">${escape(error)}</p>
       </div>`;
     if(input){if(!focused&&input.value===renderedLabel)input.value=savedLabel;root.querySelector('[data-incident-label]').replaceWith(input);if(focused)input.focus()}
+    if(search&&focusName){
+      const next=root.querySelector('[data-morning-search]');
+      if(next){for(const key of ['query','filter'])next.elements[key].value=search.elements[key].value;next.elements[focusName]?.focus({preventScroll:true})}
+    }else if(focusAction){
+      [...root.querySelectorAll('[data-incident-action]')].find(button=>button.dataset.incidentAction===focusAction&&button.dataset.incidentId===focusId)?.focus({preventScroll:true});
+    }
+    for(const details of root.querySelectorAll('[data-incident-details]'))if(openDetailIds.has(details.dataset.incidentDetails))details.open=true;
+    const panel=root.querySelector('.sync-incidents-panel');if(panel)panel.scrollTop=scrollTop;
     renderedLabel=savedLabel;
   }
   async function click(event){
@@ -35,6 +50,11 @@ export function createSyncIncidentUi({document=globalThis.document,container=doc
     error='';
     const action=button.dataset.incidentAction;
     if(action==='toggle'){opened=!opened;render();return}
+    if(action==='morning-open-urgent'){
+      const id=button.dataset.incidentId;opened=true;await financial.search('active','');render();
+      [...root.querySelectorAll('[data-incident-action="morning-ack"]')].find(candidate=>candidate.dataset.incidentId===id)?.focus();
+      return;
+    }
     button.disabled=true;
     try{
       if(action==='label'){
@@ -53,6 +73,11 @@ export function createSyncIncidentUi({document=globalThis.document,container=doc
     }catch{error='הפעולה לא הושלמה. יש לרענן ולנסות שוב.'}
     render();
   }
+  function submit(event){
+    const form=event.target.closest?.('[data-morning-search]');if(!form||!root.contains(form))return;
+    event.preventDefault();void financial?.search(form.elements.filter.value,form.elements.query.value);
+  }
   root.addEventListener('click',click);
-  return {update(value,force=false){state=value;const signature=JSON.stringify([value,label()]);if(force||last!==signature){last=signature;render()}},open(){opened=true;render()},dispose(){root.removeEventListener('click',click);root.remove()}};
+  root.addEventListener('submit',submit);
+  return {update(value,force=false){state=value;const signature=JSON.stringify([value,label()]);if(force||last!==signature){last=signature;render()}},open(){opened=true;render()},dispose(){root.removeEventListener('click',click);root.removeEventListener('submit',submit);root.remove()}};
 }

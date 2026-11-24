@@ -23,7 +23,7 @@ createMorningIssuance({commands:{...commands,create:async()=>({ok:true,verified:
 // @ts-expect-error The retired unvalidated backend port is not an issuance input.
 createMorningIssuance({backend:async()=>null,recovery:persistence});
 /** @type {Parameters<typeof createMorningRecovery>[0]} */
-const recoveryPorts={lifetime:{capture:()=>assertCurrent,join:async(_key,_assert,work)=>work(),scheduleRecovery:()=>false},commands,recovery:{read:()=>null,abandon:async()=>({abandoned:false,operation:null}),reset:()=>false},application:{apply:async()=>({changed:false}),settle:()=>({durable:false,recoveryCleared:false,blocked:true})},publish:{isBusy:()=>false,state(){},notify(){},toast(){}}};
+const recoveryPorts={lifetime:{capture:()=>assertCurrent,join:async(_key,_assert,work)=>work(),pending:()=>false,scheduleRecovery:()=>false},commands,recovery:{read:()=>null,abandon:async()=>({abandoned:false,operation:null}),reset:()=>false},application:{apply:async()=>({changed:false}),settle:()=>({durable:false,recoveryCleared:false,blocked:true})},publish:{isBusy:()=>false,state(){},notify(){},toast(){}}};
 const recovery=createMorningRecovery(recoveryPorts);
 void recovery.recover({quiet:true,assertCurrent});
 // @ts-expect-error Truthy status strings cannot claim completed reconciliation.
