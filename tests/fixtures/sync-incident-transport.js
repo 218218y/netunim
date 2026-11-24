@@ -1,8 +1,9 @@
 // Injected into disposable browser copies only; never shipped as an app asset.
 // Keep the real registry codec/lifecycle, replacing only unrelated service I/O.
 const fixtureIncidents=new Map();
-const registry=createSyncIncidentRegistry({accountScope,request:async(path,options)=>{
+const fixtureIncidentRequest=async(path,options)=>{
   const name=path.split('/').at(-1),body=JSON.parse(options.body),at=new Date().toISOString();
+  if(name==='morning-documents'&&body.action==='list_recovery')return Response.json({ok:true,operations:[]});
   if(name==='list_active_sync_incidents_v1')return new Response(JSON.stringify([...fixtureIncidents.values()].filter(row=>row.owner_id===accountScope().owner&&row.resolved_at===null)));
   if(name==='mark_sync_incident_reviewed_v1'){
     const row=fixtureIncidents.get(accountScope().owner+':'+body.p_incident_id);
@@ -17,4 +18,5 @@ const registry=createSyncIncidentRegistry({accountScope,request:async(path,optio
     fixtureIncidents.set(key,row);
   }
   return new Response(JSON.stringify(row));
-}});
+};
+const registry=createSyncIncidentRegistry({accountScope,request:fixtureIncidentRequest});

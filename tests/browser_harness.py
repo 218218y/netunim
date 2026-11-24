@@ -597,17 +597,18 @@ class BrowserSession:
                 raise RuntimeError('the test copy has no unique connect-src directive')
             headers.write_text(updated, encoding='utf8')
         # Unrelated screen/ownership fixtures mock their own backend endpoints.
-        # Supply the new background service with its own transport fixture so it
-        # cannot consume those mocks or escape to example.invalid. The dedicated
-        # incident suite opts into the original HTTP transport and registry code.
+        # Isolate both background incident feeds from feature-specific mocks and
+        # synthetic backend hosts. The incident suite exercises their real HTTP.
         incident_feature=prepared / 'assets/js/shared/sync-incident-feature.js'
         if incident_feature.exists() and not self.native_incidents and not self.service_worker:
             source=incident_feature.read_text(encoding='utf-8')
             needle='const registry=createSyncIncidentRegistry({request,accountScope});'
-            if source.count(needle)!=1:
+            morning='createMorningOperationCenter({request,accountScope,'
+            if source.count(needle)!=1 or source.count(morning)!=1:
                 raise RuntimeError('incident transport fixture composition changed')
             fixture=(ROOT / 'tests/fixtures/sync-incident-transport.js').read_text(encoding='utf-8')
-            incident_feature.write_text(source.replace(needle,fixture),encoding='utf-8')
+            source=source.replace(needle,fixture).replace(morning,'createMorningOperationCenter({request:fixtureIncidentRequest,accountScope,')
+            incident_feature.write_text(source,encoding='utf-8')
         # Service Worker behavior has its own contract tests. Runtime tests disable
         # registration inside JavaScript assets so an old worker from a previous local
         # run cannot affect results after the browser code was externalized from HTML.
