@@ -275,6 +275,10 @@
     {
       "version": "20261122100000",
       "name": "google_contacts_reconnect_state"
+    },
+    {
+      "version": "20261124150000",
+      "name": "morning_check_internal_writer"
     }
   ]
 }

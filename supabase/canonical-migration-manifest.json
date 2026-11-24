@@ -343,5 +343,10 @@
     "version": "20261122100000",
     "name": "google_contacts_reconnect_state",
     "sha256": "b6cdaa10d153c8c6209d19bd055e05ca0de6e92df6ab95053bcfd25c026be3e0"
+  },
+  {
+    "version": "20261124150000",
+    "name": "morning_check_internal_writer",
+    "sha256": "be5866d774bebe93407f463425283b095619c764059230be8fc802c89ecc4241"
   }
 ]

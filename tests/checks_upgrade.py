@@ -73,8 +73,8 @@ def run(db):
     intent=[{'paymentIndex':i,'name':'Client','amount':100.25,'dueDate':'2026-09-01','checkNumber':'111',
              'bankName':'Test','bankNumber':'12','branchNumber':'123','accountNumber':'000456'} for i in (0,2)]
     operation='00000000-0000-4000-8000-000000000901'
-    def insert(op, payload):
-        db.sql("insert into public.morning_document_operations(owner_id,environment,operation_id,request_fingerprint,state,document_type,amount,document_date,client_name,description,check_intent) values("+quote(OWNER)+",'sandbox',"+quote(op)+","+quote(op)+",'reserved',400,200.5,'2026-08-02','Client','Test',"+quote(json.dumps(payload))+"::jsonb)")
+    def insert(op, payload, amount=200.5):
+        db.sql("insert into public.morning_document_operations(owner_id,environment,operation_id,request_fingerprint,state,document_type,amount,document_date,client_name,description,check_intent) values("+quote(OWNER)+",'sandbox',"+quote(op)+","+quote(op)+",'reserved',400,"+str(amount)+",'2026-08-02','Client','Test',"+quote(json.dumps(payload))+"::jsonb)")
     insert(operation,intent)
     count=len(rows())
     db.sql("update public.morning_document_operations set state='pending',issuance_started_at=now() where operation_id="+quote(operation))
@@ -202,4 +202,51 @@ def run(db):
     db.sql("update public.morning_document_operations set verified_at=verified_at where operation_id="+quote(failed_operation))
     assert len(rows())==count+2
     assert scalar("select checks_registered_at is not null and checks_registration_error is null from public.morning_document_operations where operation_id="+quote(failed_operation))=='t'
+    # Regression for the production failure: an enrolled owner's verified
+    # server-side continuation has no browser JWT. Both the trigger and cron
+    # must finish while the public writer remains inaccessible at AAL1.
+    db.sql("insert into auth.mfa_factors(user_id,status) values("+quote(OWNER)+",'verified')")
+    assert scalar("select entrypoint from netunim_internal.storage_writer_operations where operation='morning-check-import'")=='netunim_internal.register_morning_checks'
+    assert scalar("select domain from netunim_internal.storage_writer_operation_domains where operation='morning-check-import'")=='shared-checks'
+    for role in ('anon','authenticated','service_role'):
+        assert scalar("select has_function_privilege("+quote(role)+",'netunim_internal.register_morning_checks(uuid)','EXECUTE')")=='f'
+    revision=scalar("select revision from public.shared_checks_documents where owner_id="+quote(OWNER))
+    public_save="select revision from public.save_shared_checks_document_v6('main',"+revision+",'{\"version\":1,\"checks\":[],\"bankEvents\":[]}','mfa-denied-import','[]','{}')"
+    try:
+        db.auth_sql(public_save)
+        raise AssertionError('AAL1 gained access to public cheque writer')
+    except RuntimeError as error:
+        assert 'mfa_required' in str(error),str(error)
+    # No authenticated role or JWT is present in the server continuation.
+    new_operation='00000000-0000-4000-8000-000000000907'
+    ten=[{**intent[0],'paymentIndex':i,'checkNumber':str(80000000+i),
+          'amount':1000 if i<9 else 300,'dueDate':f'2027-{i+1:02d}-10'} for i in range(10)]
+    count=len(rows());insert(new_operation,ten,9300)
+    db.sql("update public.morning_document_operations set state='created',check_payment_evidence='matched',issuance_started_at=now(),document_id='verified-907',document_number='907',verified_at=now() where operation_id="+quote(new_operation))
+    assert scalar("select checks_registered_at is not null and checks_registration_error is null from public.morning_document_operations where operation_id="+quote(new_operation))=='t'
+    imported=[c for c in rows() if c.get('morningSource',{}).get('documentId')=='verified-907']
+    assert len(rows())==count+10 and len(imported)==10
+    assert sum(c['amount'] for c in imported)==9300
+    assert sorted(c['morningSource']['paymentIndex'] for c in imported)==list(range(10))
+    # Model a previously failed verified operation, with the same durable
+    # mfa_required error and exhausted retry count as the deployed incident.
+    retry_operation='00000000-0000-4000-8000-000000000908'
+    insert(retry_operation,intent);count=len(rows())
+    db.sql("alter table public.morning_document_operations disable trigger morning_complete_checks;"
+           "update public.morning_document_operations set state='created',check_payment_evidence='matched',issuance_started_at=now(),document_id='verified-908',verified_at=now(),checks_registration_error='mfa_required',checks_registration_attempts=62,checks_registration_next_retry_at=clock_timestamp()-interval '1 minute' where operation_id="+quote(retry_operation)+";"
+           "alter table public.morning_document_operations enable trigger morning_complete_checks;")
+    db.sql('select netunim_internal.retry_morning_check_registrations()')
+    assert len(rows())==count+2
+    assert scalar("select checks_registered_at is not null and checks_registration_error is null and checks_registration_next_retry_at is null and checks_registration_attempts=62 from public.morning_document_operations where operation_id="+quote(retry_operation))=='t'
+    assert scalar("select count(*) from netunim_internal.morning_check_registrations where operation_id="+quote(retry_operation))=='2'
+    revision=scalar("select revision from public.shared_checks_documents where owner_id="+quote(OWNER))
+    for _ in range(3):
+        db.sql('select netunim_internal.retry_morning_check_registrations();select netunim_internal.register_morning_checks('+quote(retry_operation)+')')
+    assert len(rows())==count+2
+    assert scalar("select revision from public.shared_checks_documents where owner_id="+quote(OWNER))==revision
+    # A genuine AAL2 session still sees the canonical document; no client
+    # privilege or fake JWT was needed for the background writes.
+    claims=quote(json.dumps({'sub':OWNER,'role':'authenticated','aal':'aal2'}))
+    assert scalar('begin;set local role authenticated;set local request.jwt.claim.sub='+quote(OWNER)+';set local request.jwt.claims='+claims+";select revision from public.shared_checks_documents where document_name='main';commit;")==revision
+    print('PASS Morning MFA continuation: fenced server trigger and cron, AAL1 denial, AAL2 access, ten checks and idempotent recovery')
     print('PASS cheque upgrade: stored evidence replay, cents, V2 scope, no-op revisions, verified-only import, atomic failure, durable retry and payment-index idempotency')
