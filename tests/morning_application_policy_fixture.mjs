@@ -13,6 +13,6 @@ export function originalMorningApplicationPolicy(source){
     .replaceAll('policy.snapshot(', 'morningFinancialSnapshot(').replaceAll('policy.changes(', 'morningFinancialChanges(')
     .replaceAll('selected', 'policy')
     .replace('policy={...context,applyPayment:resolution.applyPayment,applyInvoice:resolution.applyInvoice};', 'policy=resolution;')
-    .replace('const result=debts.apply(', 'const result=applyVerifiedDebtDocument?.(')
-    .replace('applyInvoice:policy.applyInvoice});',"applyInvoice:policy.applyInvoice})||{changed:false,reason:'no-handler'};");
+    .replace('const result=await debts.apply(', 'const result=applyVerifiedDebtDocument?.(')
+    .replace('applyInvoice:policy.applyInvoice});assertCurrent();',"applyInvoice:policy.applyInvoice})||{changed:false,reason:'no-handler'};");
 }

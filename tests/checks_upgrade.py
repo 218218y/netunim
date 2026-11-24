@@ -15,6 +15,10 @@ def run(db):
     def rows():
         return json.loads(scalar("select state->'checks' from public.shared_checks_documents where owner_id="+quote(OWNER)+" and document_name='main'"))
 
+    def retry(operation, owner=OWNER, environment='sandbox'):
+        return scalar('begin;set local role service_role;select public.retry_verified_morning_checks('
+                      +quote(owner)+','+quote(environment)+','+quote(operation)+');commit;')
+
     def save(checks, precision=True, deleted=None):
         revision=scalar("select revision from public.shared_checks_documents where owner_id="+quote(OWNER)+" and document_name='main'") or '0'
         audit={'checkAmountPrecision':2} if precision else {}
@@ -73,8 +77,8 @@ def run(db):
     intent=[{'paymentIndex':i,'name':'Client','amount':100.25,'dueDate':'2026-09-01','checkNumber':'111',
              'bankName':'Test','bankNumber':'12','branchNumber':'123','accountNumber':'000456'} for i in (0,2)]
     operation='00000000-0000-4000-8000-000000000901'
-    def insert(op, payload, amount=200.5):
-        db.sql("insert into public.morning_document_operations(owner_id,environment,operation_id,request_fingerprint,state,document_type,amount,document_date,client_name,description,check_intent) values("+quote(OWNER)+",'sandbox',"+quote(op)+","+quote(op)+",'reserved',400,"+str(amount)+",'2026-08-02','Client','Test',"+quote(json.dumps(payload))+"::jsonb)")
+    def insert(op, payload, amount=200.5, document_type=400):
+        db.sql("insert into public.morning_document_operations(owner_id,environment,operation_id,request_fingerprint,state,document_type,amount,document_date,client_name,description,check_intent) values("+quote(OWNER)+",'sandbox',"+quote(op)+","+quote(op)+",'reserved',"+str(document_type)+","+str(amount)+",'2026-08-02','Client','Test',"+quote(json.dumps(payload))+"::jsonb)")
     insert(operation,intent)
     count=len(rows())
     db.sql("update public.morning_document_operations set state='pending',issuance_started_at=now() where operation_id="+quote(operation))
@@ -82,7 +86,7 @@ def run(db):
     # Force the follow-up to fail while preserving official-document success.
     db.sql("create function netunim_internal.test_import_failure() returns trigger language plpgsql as $$begin raise exception 'test_import_failure';end$$;create trigger test_import_failure before insert on netunim_internal.morning_check_registrations for each row execute function netunim_internal.test_import_failure()")
     db.sql("update public.morning_document_operations set check_payment_evidence='matched',state='created',document_id='verified-901',document_number='901',verified_at=now() where operation_id="+quote(operation))
-    assert scalar("select state||':'||checks_registration_error from public.morning_document_operations where operation_id="+quote(operation))=='created:test_import_failure'
+    assert scalar("select state||':'||checks_registration_error from public.morning_document_operations where operation_id="+quote(operation))=='created:P0001'
     assert scalar("select checks_registration_attempts from public.morning_document_operations where operation_id="+quote(operation))=='1'
     assert len(rows())==count and scalar('select count(*) from netunim_internal.morning_check_registrations')=='0'
     db.sql('drop trigger test_import_failure on netunim_internal.morning_check_registrations;drop function netunim_internal.test_import_failure()')
@@ -183,7 +187,9 @@ def run(db):
     assert len(rows())==count,'Busy work obeys its retry delay'
     assert scalar("select checks_registration_attempts from public.morning_document_operations where operation_id="+quote(busy_operation))=='0'
     db.sql("update public.morning_document_operations set verified_at=verified_at where operation_id="+quote(busy_operation))
-    assert len(rows())==count+2,'The existing status recheck safely retries the verified follow-up'
+    assert len(rows())==count,'Rewriting verification metadata cannot bypass the retry policy'
+    assert retry(busy_operation)=='t'
+    assert len(rows())==count+2,'An explicit status recheck safely retries before the scheduled time'
     db.sql("update netunim_internal.check_bank_refresh_state set requested_at=clock_timestamp()-interval '5 seconds';select netunim_internal.run_check_bank_refresh_queue()")
     assert scalar("select requested_at is null and error is null from netunim_internal.check_bank_refresh_state where owner_id="+quote(OWNER))=='t'
     # Persistent failures remain diagnosable and retryable; no intent/document loss.
@@ -194,12 +200,12 @@ def run(db):
     for _ in range(4):
         db.sql("update public.morning_document_operations set checks_registration_next_retry_at=clock_timestamp()-interval '1 second' where operation_id="+quote(failed_operation)+";select netunim_internal.retry_morning_check_registrations()")
     assert scalar("select state||':'||checks_registration_attempts from public.morning_document_operations where operation_id="+quote(failed_operation))=='created:5'
-    assert scalar("select checks_registration_next_retry_at>clock_timestamp()+interval '14 minutes' from public.morning_document_operations where operation_id="+quote(failed_operation))=='t'
+    assert scalar("select checks_registration_next_retry_at is null and checks_registration_failure_kind='unexpected' and checks_registration_first_failed_at<checks_registration_last_failed_at from public.morning_document_operations where operation_id="+quote(failed_operation))=='t'
     db.sql('select netunim_internal.retry_morning_check_registrations()')
     assert scalar("select checks_registration_attempts from public.morning_document_operations where operation_id="+quote(failed_operation))=='5'
     assert len(rows())==count
     db.sql('drop trigger test_import_failure on netunim_internal.morning_check_registrations;drop function netunim_internal.test_import_failure()')
-    db.sql("update public.morning_document_operations set verified_at=verified_at where operation_id="+quote(failed_operation))
+    assert retry(failed_operation)=='t'
     assert len(rows())==count+2
     assert scalar("select checks_registered_at is not null and checks_registration_error is null from public.morning_document_operations where operation_id="+quote(failed_operation))=='t'
     # Regression for the production failure: an enrolled owner's verified
@@ -210,6 +216,7 @@ def run(db):
     assert scalar("select domain from netunim_internal.storage_writer_operation_domains where operation='morning-check-import'")=='shared-checks'
     for role in ('anon','authenticated','service_role'):
         assert scalar("select has_function_privilege("+quote(role)+",'netunim_internal.register_morning_checks(uuid)','EXECUTE')")=='f'
+        assert scalar("select has_function_privilege("+quote(role)+",'public.retry_verified_morning_checks(uuid,text,uuid)','EXECUTE')")==('t' if role=='service_role' else 'f')
     revision=scalar("select revision from public.shared_checks_documents where owner_id="+quote(OWNER))
     public_save="select revision from public.save_shared_checks_document_v6('main',"+revision+",'{\"version\":1,\"checks\":[],\"bankEvents\":[]}','mfa-denied-import','[]','{}')"
     try:
@@ -231,18 +238,21 @@ def run(db):
     # Model a previously failed verified operation, with the same durable
     # mfa_required error and exhausted retry count as the deployed incident.
     retry_operation='00000000-0000-4000-8000-000000000908'
-    insert(retry_operation,intent);count=len(rows())
+    insert(retry_operation,ten,9300,320);count=len(rows())
     db.sql("alter table public.morning_document_operations disable trigger morning_complete_checks;"
-           "update public.morning_document_operations set state='created',check_payment_evidence='matched',issuance_started_at=now(),document_id='verified-908',verified_at=now(),checks_registration_error='mfa_required',checks_registration_attempts=62,checks_registration_next_retry_at=clock_timestamp()-interval '1 minute' where operation_id="+quote(retry_operation)+";"
+           "update public.morning_document_operations set state='created',check_payment_evidence='matched',issuance_started_at=now(),document_id='verified-908',verified_at=now(),checks_registration_error='mfa_required',checks_registration_attempts=64,checks_registration_next_retry_at=clock_timestamp()+interval '15 minutes' where operation_id="+quote(retry_operation)+";"
            "alter table public.morning_document_operations enable trigger morning_complete_checks;")
+    assert retry(retry_operation,owner='00000000-0000-4000-8000-000000000999')=='f'
+    assert retry(retry_operation,environment='production')=='f'
     db.sql('select netunim_internal.retry_morning_check_registrations()')
-    assert len(rows())==count+2
-    assert scalar("select checks_registered_at is not null and checks_registration_error is null and checks_registration_next_retry_at is null and checks_registration_attempts=62 from public.morning_document_operations where operation_id="+quote(retry_operation))=='t'
-    assert scalar("select count(*) from netunim_internal.morning_check_registrations where operation_id="+quote(retry_operation))=='2'
+    assert len(rows())==count+10
+    assert sum(check['amount'] for check in rows() if check.get('morningSource',{}).get('operationId')==retry_operation)==9300
+    assert scalar("select checks_registered_at is not null and checks_registration_error is null and checks_registration_next_retry_at is null and checks_registration_attempts=64 from public.morning_document_operations where operation_id="+quote(retry_operation))=='t'
+    assert scalar("select count(*) from netunim_internal.morning_check_registrations where operation_id="+quote(retry_operation))=='10'
     revision=scalar("select revision from public.shared_checks_documents where owner_id="+quote(OWNER))
     for _ in range(3):
         db.sql('select netunim_internal.retry_morning_check_registrations();select netunim_internal.register_morning_checks('+quote(retry_operation)+')')
-    assert len(rows())==count+2
+    assert len(rows())==count+10
     assert scalar("select revision from public.shared_checks_documents where owner_id="+quote(OWNER))==revision
     # A genuine AAL2 session still sees the canonical document; no client
     # privilege or fake JWT was needed for the background writes.

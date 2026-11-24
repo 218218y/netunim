@@ -348,5 +348,10 @@
     "version": "20261124150000",
     "name": "morning_check_internal_writer",
     "sha256": "be5866d774bebe93407f463425283b095619c764059230be8fc802c89ecc4241"
+  },
+  {
+    "version": "20261124160000",
+    "name": "morning_check_recovery_policy",
+    "sha256": "84ec387135a94a42abcb67b89bc96b3eeb5e6fe3f8a26e215ed6e7aeae14de4c"
   }
 ]

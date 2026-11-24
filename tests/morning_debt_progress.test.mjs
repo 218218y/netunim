@@ -85,23 +85,25 @@ test('invoice-receipt can update invoice while deliberately not re-recording an 
  assert.equal(row.debtProgress.filter(item=>item.kind==='payment').length,1);assert.equal(row.debtProgress.filter(item=>item.kind==='invoice'&&item.source==='morning').length,1);
 });
 
-test('customer editor renders a verified Morning mutation once but re-persists an idempotent replay for crash recovery',()=>{
+test('Morning debt recovery awaits the journal, retries a failed commit, and accepts an authoritative replay',async()=>{
  const row=debt(),model={state:{customerDebts:[row]}},saves=[],renders=[],persistResults=[false,true];
- const editor=createDomainsCustomersEditor({model,customerUi:{},modal:()=>{},toast:()=>{},scheduleSave:(message,meta)=>{saves.push({message,meta});return persistResults.shift()},closeModal:()=>{},renderCustomers:()=>renders.push(true),confirmDialog:async()=>true});
+ const editor=createDomainsCustomersEditor({model,customerUi:{},modal:()=>{},toast:()=>{},commitSave:async(message,meta)=>{saves.push({message,meta});return persistResults.shift()},closeModal:()=>{},renderCustomers:()=>renders.push(true),confirmDialog:async()=>true});
  const input={debtId:row.id,operationId:op(9),type:400,amount:250,verifiedAt:'2026-09-09T14:00:00.000Z'};
- const first=editor.applyVerifiedMorningDocument(input);assert.equal(first.changed,true);assert.equal(first.persisted,false);assert.equal(saves.length,1);assert.equal(renders.length,1);assert.equal(saves[0].meta.surface,'orders.morning.customerDebt');
- const replay=editor.applyVerifiedMorningDocument(input);assert.equal(replay.changed,false);assert.equal(replay.reason,'already-applied');assert.equal(replay.persisted,true);assert.equal(saves.length,2);assert.equal(renders.length,1);assert.equal(saves[1].meta.surface,'orders.morning.customerDebt');
- const duplicate=editor.applyVerifiedMorningDocument(input);assert.equal(duplicate.persisted,true);assert.equal(saves.length,2,'durable duplicate does not save again');assert.equal(renders.length,1);
- const missing=editor.applyVerifiedMorningDocument({...input,debtId:'missing',operationId:op(10)});assert.equal(missing.changed,false);assert.equal(missing.reason,'missing-debt');assert.equal(saves.length,2);
+ const first=await editor.applyVerifiedMorningDocument(input);assert.equal(first.changed,true);assert.equal(first.persisted,false);assert.equal(saves.length,1);assert.equal(renders.length,1);assert.equal(saves[0].meta.surface,'orders.morning.customerDebt');
+ const replay=await editor.applyVerifiedMorningDocument(input);assert.equal(replay.changed,false);assert.equal(replay.reason,'already-applied');assert.equal(replay.persisted,true);assert.equal(saves.length,2);assert.equal(renders.length,1);assert.equal(saves[1].message,'');
+ model.state.customerDebts=[structuredClone(row)];
+ const duplicate=await editor.applyVerifiedMorningDocument(input);assert.equal(duplicate.persisted,true);assert.equal(saves.length,2,'a durable remote copy does not need another write');assert.equal(renders.length,1);
+ const missing=await editor.applyVerifiedMorningDocument({...input,debtId:'missing',operationId:op(10)});assert.equal(missing.changed,false);assert.equal(missing.reason,'missing-debt');assert.equal(saves.length,2);
 });
 
 test('a debt may be deleted after a verified Morning application once no recovery lock remains',async()=>{
  const row=debt(),model={state:{customerDebts:[row]}},saves=[];let details='';
+ const save=(message,meta)=>{saves.push({message,meta});return true};
  const editor=createDomainsCustomersEditor({
-  model,customerUi:{},modal:(_title,body)=>{details=body},toast:()=>{},scheduleSave:(message,meta)=>{saves.push({message,meta});return true},closeModal:()=>{},renderCustomers:()=>{},confirmDialog:async()=>true,
+  model,customerUi:{},modal:(_title,body)=>{details=body},toast:()=>{},scheduleSave:save,commitSave:save,closeModal:()=>{},renderCustomers:()=>{},confirmDialog:async()=>true,
   rejectDebtRecoveryMutation:()=>false,
  });
- const applied=editor.applyVerifiedMorningDocument({debtId:row.id,operationId:op(13),documentId:'morning-doc-13',documentNumber:'1013',type:320,amount:1000,verifiedAt:'2026-09-09T16:00:00.000Z'});assert.equal(applied.changed,true);assert.equal(applied.persisted,true);
+ const applied=await editor.applyVerifiedMorningDocument({debtId:row.id,operationId:op(13),documentId:'morning-doc-13',documentNumber:'1013',type:320,amount:1000,verifiedAt:'2026-09-09T16:00:00.000Z'});assert.equal(applied.changed,true);assert.equal(applied.persisted,true);
  const debtDocumentMarkup=morningDebtLinksMarkup(row);assert.match(debtDocumentMarkup,/morning-doc-13/);assert.match(debtDocumentMarkup,/חשבונית מס \/ קבלה 1013/);
  editor.openDebtProgressDetails(row.id);assert.match(details,/data-action="morning-open-document"/);assert.match(details,/data-click-arg0="morning-doc-13"/);assert.match(details,/חשבונית מס \/ קבלה 1013/);
  await editor.deleteDebt(row.id);
@@ -110,14 +112,14 @@ test('a debt may be deleted after a verified Morning application once no recover
  const deletion=saves.at(-1);assert.equal(deletion.meta.mutationType,'delete');assert.deepEqual(deletion.meta.deleteIntents,{customerDebts:[row.id]});
 });
 
-test('a verified document is visible on its debt even when automatic balance allocation was declined',()=>{
+test('a verified document is visible on its debt even when automatic balance allocation was declined',async()=>{
  const row=debt(),model={state:{customerDebts:[row]}},saves=[];
- const editor=createDomainsCustomersEditor({model,customerUi:{},modal:()=>{},toast:()=>{},scheduleSave:(_message,meta)=>{saves.push(meta);return true},closeModal:()=>{},renderCustomers:()=>{},confirmDialog:async()=>true});
+ const editor=createDomainsCustomersEditor({model,customerUi:{},modal:()=>{},toast:()=>{},commitSave:(_message,meta)=>{saves.push(meta);return true},closeModal:()=>{},renderCustomers:()=>{},confirmDialog:async()=>true});
  const input={debtId:row.id,operationId:op(14),documentId:'morning-doc-14',documentNumber:'1014',type:400,amount:200,verifiedAt:'2026-09-09T17:00:00.000Z',applyPayment:false};
- const first=editor.applyVerifiedMorningDocument(input);assert.equal(first.changed,true);assert.equal(first.persisted,true);
+ const first=await editor.applyVerifiedMorningDocument(input);assert.equal(first.changed,true);assert.equal(first.persisted,true);
  assert.equal(row.debtProgress.length,0);assert.equal(row.morningDocuments.length,1);
  assert.match(morningDebtLinksMarkup(row),/morning-open-document/);
- assert.equal(editor.applyVerifiedMorningDocument(input).persisted,true);assert.equal(saves.length,1,'recovery replay does not duplicate a verified link');
+ assert.equal((await editor.applyVerifiedMorningDocument(input)).persisted,true);assert.equal(saves.length,1,'recovery replay does not duplicate a verified link');
 });
 
 test('concurrent verified document links merge independently on the same debt',()=>{

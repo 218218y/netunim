@@ -279,6 +279,10 @@
     {
       "version": "20261124150000",
       "name": "morning_check_internal_writer"
+    },
+    {
+      "version": "20261124160000",
+      "name": "morning_check_recovery_policy"
     }
   ]
 }

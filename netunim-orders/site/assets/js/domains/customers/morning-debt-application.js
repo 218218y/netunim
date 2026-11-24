@@ -21,7 +21,7 @@
  * @param {{
  * lifetime:Pick<ReturnType<typeof import('./morning-lifetime.js').createMorningLifetime>,'capture'|'join'|'pending'>,
  * recovery:{read:()=>ApplicationContext|null},
- * debts:{read:(id:string)=>unknown,refresh:()=>Promise<unknown>,isBlocked:()=>boolean,apply:(command:DebtApplication)=>ApplicationResult},
+ * debts:{read:(id:string)=>unknown,refresh:()=>Promise<unknown>,isBlocked:()=>boolean,apply:(command:DebtApplication)=>ApplicationResult|Promise<ApplicationResult>},
  * policy:{
  *   matches:(context:ApplicationContext,verified:VerifiedDocument)=>boolean,
  *   snapshot:(debt:unknown,operationId:string)=>FinancialSnapshot|null,
@@ -68,7 +68,8 @@ export function createMorningDebtApplication({lifetime,recovery,debts,policy,fee
       if(!reviewed||!resolution.confirmedAt){if(isCurrent()===true)feedback.decide(context,current);return {changed:false,reason:'decision-required'}}
       selected={...context,applyPayment:resolution.applyPayment,applyInvoice:resolution.applyInvoice};
     }
-    const result=debts.apply({debtId:context.debtId,operationId,documentId,documentNumber,type,amount,verifiedAt,applyPayment:selected.applyPayment,applyInvoice:selected.applyInvoice});
+    const result=await debts.apply({debtId:context.debtId,operationId,documentId,documentNumber,type,amount,verifiedAt,applyPayment:selected.applyPayment,applyInvoice:selected.applyInvoice});
+    assertCurrent();
     if(result.reason==='missing-debt')feedback.toast('המסמך אומת ב-Morning, אך שורת החוב כבר אינה קיימת ולכן לא עודכנה. נקודת ההתאוששות נשמרה וההפקה נשארת נעולה עד לשחזור החוב ובדיקת המצב מחדש.');
     else if(result.reason==='write-blocked')feedback.toast('המסמך אומת ב-Morning, אך עדכון החוב נעצר כי אין כרגע הרשאת כתיבה מקומית. נקודת ההתאוששות נשמרה וינוסה שוב מהלשונית הראשית.');
     else if(result.persisted===false)feedback.toast('המסמך אומת והחוב עודכן בזיכרון, אך השמירה המקומית נכשלה. נקודת ההתאוששות נשמרה; אין לסגור את החלון עד שהשמירה המקומית חוזרת לפעול.');

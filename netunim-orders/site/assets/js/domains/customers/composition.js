@@ -90,6 +90,11 @@ export function createDomainsCustomers({
     modal:(...args)=>uiModal.modal(...args),
     toast:(...args)=>uiStatus.toast(...args),
     scheduleSave,
+    commitSave:async(message,options)=>{
+      const saved=await storagePersistence.commitSave(message,options);
+      if(saved)refreshAlertCenter();
+      return saved;
+    },
     closeModal:(...args)=>uiModal.closeModal(...args),
     renderCustomers:(...args)=>view.renderCustomers(...args),
     confirmDialog:(...args)=>uiModal.confirmDialog(...args),

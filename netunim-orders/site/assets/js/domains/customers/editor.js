@@ -32,9 +32,9 @@ export function updateDebtUrgency(debt,note,scheduleSave,reminderDate=normalizeN
 }
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsCustomersEditor({model, customerUi, modal, toast, scheduleSave, closeModal, renderCustomers, confirmDialog,reminderPicker,rejectMutation=()=>false,hydrateMorningDebtDocuments=()=>{},isDebtRecoveryPending=()=>false,rejectDebtRecoveryMutation=()=>false,morningMetadataState=()=> ''}){
+export function createDomainsCustomersEditor({model, customerUi, modal, toast, scheduleSave, commitSave, closeModal, renderCustomers, confirmDialog,reminderPicker,rejectMutation=()=>false,hydrateMorningDebtDocuments=()=>{},isDebtRecoveryPending=()=>false,rejectDebtRecoveryMutation=()=>false,morningMetadataState=()=> ''}){
 
-const persistedMorningDebts=new WeakMap();
+const uncommittedMorningDebts=new WeakSet();
 
 const CUSTOMER_ORDER_FIELDS=new Set(['orderNumber','customerName','mark1','mark2','mark3','mattresses','note','urgent']);
 const DEBT_SCALAR_FIELDS=['customerName','amount','phone','email','customerId','clearingApproval','paid','supplied','invoiceIssued','note'];
@@ -276,20 +276,21 @@ async function removeDebtProgressEntry(id,kind,entryId){
   return true;
 }
 
-function applyVerifiedMorningDocument({debtId,operationId,documentId,documentNumber,type,amount,verifiedAt,applyPayment=true,applyInvoice=true}={}){
+async function applyVerifiedMorningDocument({debtId,operationId,documentId,documentNumber,type,amount,verifiedAt,applyPayment=true,applyInvoice=true}={}){
   const d=(model.state.customerDebts||[]).find(row=>row.id===debtId);if(!d)return {changed:false,reason:'missing-debt'};
   const result=applyVerifiedMorningDocumentToDebt(d,{operationId,type,amount,verifiedAt,applyPayment,applyInvoice});
   const linkChanged=addVerifiedMorningDebtDocument(d,{operationId,documentId,documentNumber,type,verifiedAt});
   const linked=Array.isArray(d.morningDocuments)&&d.morningDocuments.some(link=>link.operationId===String(operationId||'').trim());
-  if(result.changed||linkChanged||linked||result.reason==='already-applied'){
-    if(!result.changed&&!linkChanged&&persistedMorningDebts.get(d)===JSON.stringify(d))return {...result,persisted:true};
-    // A replay can mean the first verified application changed memory but localSnapshot failed.
-    // Re-attempt durable persistence before recovery is allowed to clear its operation binding.
-    const persisted=scheduleSave(result.changed?'חוב הלקוח עודכן לפי מסמך Morning מאומת':'עדכון החוב מ-Morning נשמר מחדש לאחר התאוששות',{surface:'orders.morning.customerDebt',domains:['customerDebts'],operations:[{type:'put',collection:'customerDebts',id:d.id,mode:'replace',record:d}]});
-    if(persisted!==false)persistedMorningDebts.set(d,JSON.stringify(d));
-    if(result.changed||linkChanged)renderCustomers({resultsOnly:true});return {...result,changed:result.changed||linkChanged,persisted:persisted!==false};
-  }
-  return result;
+  const changed=result.changed||linkChanged;
+  if(!changed&&!uncommittedMorningDebts.has(d))return linked||result.reason==='already-applied'?{...result,persisted:true}:result;
+  // Recovery refreshes from the authoritative head before applying. Stable IDs
+  // on that head already prove durability. Only a mutation in memory needs a receipt.
+  uncommittedMorningDebts.add(d);
+  const commit=commitSave(changed?'חוב הלקוח עודכן לפי מסמך Morning מאומת':'',{surface:'orders.morning.customerDebt',domains:['customerDebts'],operations:[{type:'put',collection:'customerDebts',id:d.id,mode:'replace',record:d}]});
+  if(changed)renderCustomers({resultsOnly:true});
+  const persisted=await commit===true;
+  if(persisted)uncommittedMorningDebts.delete(d);
+  return {...result,changed,persisted};
 }
 
 async function deleteDebt(id){const d=model.state.customerDebts.find(x=>x.id===id);if(!d||rejectDebtRecoveryMutation(id))return;if(!await confirmDialog('מחיקת חוב',`למחוק את החוב של ${d.customerName}?`,{confirmText:'מחק חוב'}))return;if(rejectDebtRecoveryMutation(id))return;model.state.customerDebts=model.state.customerDebts.filter(x=>x.id!==id);closeModal();scheduleSave('חוב הלקוח נמחק',{deleteIntents:{customerDebts:[id]},mutationType:'delete',surface:'orders.delete.customerDebts',domains:['customerDebts'],operations:[{type:'delete',collection:'customerDebts',id}]});renderCustomers({resultsOnly:true})}

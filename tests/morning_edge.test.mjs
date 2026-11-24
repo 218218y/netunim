@@ -8,7 +8,7 @@ import vm from 'node:vm';
 import {readJsonBodyBounded, JsonBodyError} from '../netunim-orders/supabase/functions/_shared/http-input.js';
 import {createMorningReportsHandler} from '../netunim-orders/supabase/functions/morning-documents/reports.js';
 
-const rows=[],requests=[];
+const rows=[],requests=[],checkRetries=[];
 let failure='',postCount=0,tokenCount=0,linkCount=0,rateLimitHits=0,lookupItems=[],lastSearch,servedHandler=null;
 let stalledCreateStarted;
 const owner='00000000-0000-4000-8000-000000000001',otherOwner='00000000-0000-4000-8000-000000000009',documentId='00000000-0000-4000-8000-000000000002';
@@ -48,7 +48,12 @@ const mockFetch=async(url,init={})=>{
   if(url.includes('/documents/')){if(failure==='readback')return Response.json({message:'read-back unavailable'},{status:503});if(failure==='read429'&&rateLimitHits++===0)return Response.json({message:'rate limited'},{status:429,headers:{'Retry-After':'0'}});const id=decodeURIComponent(url.split('/documents/')[1].split('/')[0]),doc=morningDocs.get(id)||sample;if(failure==='mismatch')return Response.json({...doc,amount:999});if(failure==='wrapped-read')return Response.json({data:doc});return Response.json(doc)};
   throw new Error('Unexpected request '+url);
 };
-const context=vm.createContext({getMfaAssuredUser,edgeOrigins,withEdgeOrigins,console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch:mockFetch,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user:{id:owner,factors:[]}}})}}),Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'test',SUPABASE_SERVICE_ROLE_KEY:'test',MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test',MORNING_ENV:'sandbox'})[key]},serve:handler=>{servedHandler=handler}}});
+const context=vm.createContext({getMfaAssuredUser,edgeOrigins,withEdgeOrigins,console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch:mockFetch,createClient:()=>({from:()=>new Query(),rpc:async(name,args)=>{
+  assert.equal(name,'retry_verified_morning_checks');checkRetries.push({...args});
+  const row=rows.find(item=>item.owner_id===args.p_owner_id&&item.environment===args.p_environment&&item.operation_id===args.p_operation_id);
+  Object.assign(row,{checks_registered_at:new Date().toISOString(),checks_registration_error:null,checks_registration_next_retry_at:null});
+  return {data:true,error:null};
+},auth:{getUser:async()=>({data:{user:{id:owner,factors:[]}}})}}),Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'test',SUPABASE_SERVICE_ROLE_KEY:'test',MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test',MORNING_ENV:'sandbox'})[key]},serve:handler=>{servedHandler=handler}}});
 context.createMorningReportsHandler=createMorningReportsHandler;
 Object.assign(context,{readJsonBodyBounded,JsonBodyError});
 const source=readFileSync(new URL('../netunim-orders/supabase/functions/morning-documents/index.ts',import.meta.url),'utf8').replace(/^import .*?;\r?\n/gm,'');
@@ -234,6 +239,14 @@ assert.equal(noPaymentsRow.verified_at,heldVerifiedAt);
 const preservedEvidence=noPaymentsRow.check_payment_evidence;noPaymentsRow.check_payment_evidence='missing';
 await api.status(owner,{operation_id:noPayments.operation_id,reconcile:true,retry_checks:true});
 assert.equal(noPaymentsRow.check_payment_evidence,preservedEvidence);
+await api.status(otherOwner,{operation_id:noPayments.operation_id,reconcile:true,retry_checks:true});
+assert.equal(checkRetries.length,0,'a foreign operation cannot be retried');
+const beforeOwnRetry=requests.length;
+const manuallyRecovered=await decode(await api.status(owner,{operation_id:noPayments.operation_id,reconcile:true,retry_checks:true,owner_id:otherOwner}));
+assert.equal(manuallyRecovered.checks_registration_state,'registered');
+assert.equal(requests.length,beforeOwnRetry,'verified persisted evidence can be recovered without the provider');
+assert.deepEqual(checkRetries,[{p_owner_id:owner,p_environment:'sandbox',p_operation_id:noPayments.operation_id}]);
+assert.equal(manuallyRecovered.operation.check_intent,undefined,'ledger responses omit the raw payment intent');
 assert.equal(postCount,beforeEvidence,'missing evidence and manual retry never issue another document');
 console.log('PASS exact cents, optional cheque evidence, recovery and observable follow-up failures');
 
