@@ -14,6 +14,13 @@ const sameAccount=(a,b)=>a?.owner===b?.owner&&a?.epoch===b?.epoch;
 const dateFormat=new Intl.DateTimeFormat('he-IL',{dateStyle:'short',timeStyle:'short',timeZone:'Asia/Jerusalem'});
 const moneyFormat=new Intl.NumberFormat('he-IL',{style:'currency',currency:'ILS'});
 const FILTERS={active:'כל הפעולות הממתינות',attention:'דורשות טיפול',waiting:'ממתינות להתאוששות',verification:'ממתינות לאימות',resolved:'הושלמו לאחרונה'};
+const JOBS={bank:'התאמת צ׳קים לתנועות בנק',morning:'רישום צ׳קים ממורנינג'};
+const JOB_STATES={healthy:'משימת הרקע פעילה',checking:'ממתין לאימות ריצה ראשונה',
+  retrying:'הבדיקה תתחדש אוטומטית',delayed:'העבודה ממתינה מעבר לזמן הצפוי',
+  stopped:'ההתאוששות האוטומטית נעצרה',job_unavailable:'לא התקבל אישור שמשימת הרקע פועלת'};
+const JOB_FAILURES={authorization:'נדרשת בדיקת הרשאות',invalid_data:'נדרשת בדיקת הנתונים',
+  transient:'חיבור או כתיבה התעכבו',unexpected:'נדרשת בדיקה של השגיאה שנרשמה'};
+const jobNeedsAttention=job=>['delayed','stopped','job_unavailable'].includes(job.state);
 const CLOUD_STATUS={idle:'טרם אומת מצב פעולות מורנינג.',stale:'מצב פעולות מורנינג אינו מעודכן כרגע.',
   unavailable:'לא ניתן לאמת את מצב פעולות מורנינג בענן.',auth:'יש להתחבר מחדש או להשלים אימות לצפייה בפעולות מורנינג.',
   offline:'אין חיבור לענן. מוצג מצב פעולות מורנינג האחרון שהתקבל.'};
@@ -47,6 +54,20 @@ function decodeOperations(value){
   });
 }
 
+function decodeBackground(value){
+  if(value===undefined)return undefined;
+  if(!value||typeof value!=='object')return null;
+  const jobs=Object.entries(JOBS).map(([kind,label])=>{
+    const row=value[kind];
+    if(!row||!Object.hasOwn(JOB_STATES,row.state)||!Number.isSafeInteger(row.pending)||row.pending<0)return null;
+    return {kind,label,state:row.state,pending:row.pending,lastRun:dateLabel(row.last_run_at),progress:dateLabel(row.progressed_at),
+      oldest:dateLabel(row.oldest_at),retry:dateLabel(row.next_retry_at),firstFailure:dateLabel(row.first_failed_at),
+      lastFailure:dateLabel(row.last_failed_at),attempts:Number.isSafeInteger(row.attempts)&&row.attempts>0?row.attempts:0,
+      failure:Object.hasOwn(JOB_FAILURES,row.failure_kind)?JOB_FAILURES[row.failure_kind]:''};
+  });
+  return jobs.every(Boolean)?jobs:null;
+}
+
 function severity(row){
   if(row.stage==='registered')return 'הושלם';
   if(row.stage==='verification'||row.stage==='payment_mismatch')return 'דורש בדיקה';
@@ -70,13 +91,13 @@ function serverOutcome(status){
 }
 
 export function createMorningOperationCenter({request,accountScope,publish,recoverLocal,debtAction,ordersRecoveryUrl='',now=Date.now,isOnline=()=>globalThis.navigator?.onLine!==false}){
-  let observed=null,operations=[],availability='idle',lastSuccess=null,nextRead=0,flight=null,closed=false;
+  let observed=null,operations=[],background,availability='idle',lastSuccess=null,nextRead=0,flight=null,closed=false;
   let filter='active',query='',page={rows:[],next:null},activeNext=null,pageStack=[null],viewSequence=0,activeSequence=0,viewLoading=false,viewError=false;
   const acknowledged=new Set(),recovering=new Map(),results=new Map();
   function syncScope(){
     const scope=accountScope();
     if(!sameAccount(scope,observed)){
-      observed=scope;operations=[];availability=scope.owner?'idle':'signed_out';lastSuccess=null;nextRead=0;
+      observed=scope;operations=[];background=undefined;availability=scope.owner?'idle':'signed_out';lastSuccess=null;nextRead=0;
       filter='active';query='';page={rows:[],next:null};activeNext=null;pageStack=[null];viewSequence++;viewLoading=false;viewError=false;
       acknowledged.clear();recovering.clear();results.clear();publish();
     }
@@ -94,10 +115,11 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
     return value;
   }
   async function readPage(scope,filter,query,after){
-    const reply=await call('list_recovery',{page:true,debt_recovery:true,filter,query,after},scope);
+    const ops={page:true,debt_recovery:true,filter,query,after};
+    const reply=await call('list_recovery',filter==='active'&&!query&&!after?{...ops,background_health:true}:ops,scope);
     const rows=decodeOperations(reply.operations),next=reply.next??null;
     if(next!==null&&(![0,1,2].includes(next.priority)||!dateLabel(next.sort_at)||next.operation_id!==rows.at(-1)?.operation_id))throw new Error('morning_recovery_page_invalid');
-    return {rows,next};
+    return {rows,next,background:decodeBackground(reply.background_health)};
   }
   const onFirstActivePage=()=>filter==='active'&&query===''&&pageStack.length===1;
   function refresh({force=false}={}){
@@ -117,7 +139,7 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
         const current=await readPage(scope,'active','',null);assertScope(scope);
         if(sequence!==activeSequence)return;
         if(!isOnline())throw new Error('morning_recovery_offline');
-        operations=current.rows;activeNext=current.next;availability='fresh';lastSuccess=now();
+        operations=current.rows;activeNext=current.next;background=current.background;availability='fresh';lastSuccess=now();
         if(!activeNext&&operations.length<=50){
           const keys=new Set(operations.filter(row=>!row.resolved_at).map(ackKey));
           for(const key of acknowledged)if(!keys.has(key))acknowledged.delete(key);
@@ -146,7 +168,7 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
       const response=await readPage(scope,nextFilter,nextQuery,stack.at(-1));assertScope(scope);
       if(sequence!==viewSequence)return;
       filter=nextFilter;query=nextQuery;pageStack=stack;page=response;
-      if(activeRead===activeSequence){operations=page.rows;activeNext=page.next;availability='fresh';lastSuccess=now();nextRead=now()+45_000}
+      if(activeRead===activeSequence){operations=page.rows;activeNext=page.next;background=page.background;availability='fresh';lastSuccess=now();nextRead=now()+45_000}
     }catch{
       if(sequence===viewSequence)viewError=true;
     }finally{if(sequence===viewSequence){viewLoading=false;publish()}}
@@ -161,9 +183,11 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
     if(!row)return;
     if(name==='morning-ack'){acknowledged.add(ackKey(row));publish();return}
     if(name==='morning-copy'){
-      const report={operationId:id,stage:row.stage,documentNumber:row.document_number,errorCode:row.error_code,
+      const report={operationId:id,documentType:row.document_type,source:row.source_kind,stage:row.stage,documentNumber:row.document_number,errorCode:row.error_code,
         failureKind:row.failure_kind,attempts:row.attempts,firstFailedAt:row.first_failed_at,
-        lastAttemptAt:row.last_attempt_at,nextRetryAt:row.next_retry_at};
+        lastAttemptAt:row.last_attempt_at,lastFailureAt:row.failure_kind?row.last_attempt_at:null,nextRetryAt:row.next_retry_at,
+        documentVerified:!!row.verified_at,paymentEvidence:row.payment_evidence,checksRegisteredAt:row.checks_registered_at,
+        bankLinked:row.bank_linked,debtState:row.debt_state,requiresUserAction:severity(row)!=='ממתין'&&!row.resolved_at};
       await navigator.clipboard.writeText(JSON.stringify(report,null,2));return;
     }
     if(name==='morning-debt'){await debtAction?.(row)?.();return}
@@ -200,6 +224,15 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
   }
 
   function markup(escape){
+    const jobCard=job=>{
+      const inputs=[['ריצה אחרונה',job.lastRun],['התקדמות אחרונה',job.progress],['הפעולה הוותיקה בתור',job.oldest],
+        ['כשל ראשון',job.firstFailure],['כשל אחרון',job.lastFailure],['ניסיון אוטומטי הבא',job.retry],['ניסיונות שנכשלו',job.attempts]];
+      return `<li><details data-incident-details="financial-job-${job.kind}" ${jobNeedsAttention(job)?'data-job-warning':''}>
+        <summary>${job.label} · ${JOB_STATES[job.state]}</summary>
+        <p>${job.pending?`${job.pending} ממתינות בתור לחשבון זה`:'אין עבודות ממתינות בחשבון זה'}${job.failure?' · '+job.failure:''}</p>
+        <dl>${inputs.filter(([,value])=>value).map(([label,value])=>`<div><dt>${label}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl>
+        </details></li>`;
+    };
     const button=(name,caption,id,disabled=false)=>`<button type="button" data-incident-action="morning-${name}" data-incident-id="${escape(id)}" ${disabled?'disabled':''}>${caption}</button>`;
     const card=row=>{
       const id=row.operation_id,busy=recovering.has(id),stage=STAGES[row.stage];
@@ -234,6 +267,7 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
       <h3>פעולות ממתינות ותקלות מערכת</h3>
       ${!observed?.owner?'<p>יש להתחבר לענן לצפייה בפעולות.</p>':CLOUD_STATUS[availability]?`<p role="status">${CLOUD_STATUS[availability]}</p>`:''}
       ${lastSuccess!==null?`<p>אימות ענן אחרון ${dateLabel(lastSuccess)}${availability!=='fresh'&&nextRead?' · בדיקה חוזרת אחרי '+dateLabel(nextRead):''}</p>`:''}
+      ${background===null?'<p role="status">לא ניתן לאמת את תהליכי הרקע הפיננסיים.</p>':background?`<h4>תהליכי רקע פיננסיים</h4><ul>${background.map(jobCard).join('')}</ul>`:''}
       ${observed?.owner?`<form data-morning-search><label>סינון <select name="filter">${Object.entries(FILTERS).map(([value,label])=>`<option value="${value}" ${filter===value?'selected':''}>${label}</option>`).join('')}</select></label>
         <label>מספר מסמך או מזהה פעולה <input name="query" maxlength="80" value="${escape(query)}"></label><button ${viewLoading?'disabled':''}>חפש</button></form>`:''}
       ${viewError?'<p role="status">לא ניתן לטעון את העמוד המבוקש. הרשימה הקודמת נשמרה.</p>':''}
@@ -244,7 +278,8 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
     </section>`;
   }
   return {refresh,action,search,markup,syncScope,dispose:()=>{closed=true},get availability(){return availability},
-    get cloudStatusLabel(){return observed?.owner?CLOUD_STATUS[availability]||'':''},
+    get cloudStatusLabel(){return observed?.owner?CLOUD_STATUS[availability]||(background===null?'לא ניתן לאמת את תהליכי הרקע הפיננסיים.':
+      background?.some(jobNeedsAttention)?'תהליך רקע פיננסי דורש בדיקה.':''):''},
     get count(){return active().length},get more(){return !!activeNext||active().length>50},get urgent(){return urgent()},
     get unread(){return active().filter(row=>!acknowledged.has(ackKey(row))).length}};
 }

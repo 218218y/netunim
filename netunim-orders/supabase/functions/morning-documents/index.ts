@@ -472,11 +472,16 @@ async function listRecoveryOperations(ownerId:string,body:any){
     ![0,1,2].includes(after.priority)||typeof after.sort_at!=='string'||!Number.isFinite(Date.parse(after.sort_at))||!isUuid(after.operation_id)))
     return json({ok:false,code:'morning_recovery_page_invalid'},400);
   const rpc=body.debt_recovery===true?'list_morning_recovery_operations_v3':'list_morning_recovery_operations_v2';
-  const {data,error}=await admin.rpc(rpc,{...scope,p_filter:filter,p_query:isUuid(query)?query.toLowerCase():query,
-    p_after_priority:after?.priority??null,p_after_created:after?.sort_at??null,p_after_id:after?.operation_id??null});
+  const includeHealth=body.background_health===true&&filter==='active'&&!query&&!after;
+  const [{data,error},health]=await Promise.all([
+    admin.rpc(rpc,{...scope,p_filter:filter,p_query:isUuid(query)?query.toLowerCase():query,
+      p_after_priority:after?.priority??null,p_after_created:after?.sort_at??null,p_after_id:after?.operation_id??null}),
+    includeHealth?admin.rpc('financial_background_health_v1',{p_owner:ownerId,p_morning_environment:MORNING_ENV}):null,
+  ]);
   if(error)return dbError(error,'morning_recovery_list_failed');
   const rows=data.slice(0,50),last=rows.at(-1);
-  return json({ok:true,operations:rows,next:data.length>50?{priority:last.priority,sort_at:last.sort_at,operation_id:last.operation_id}:null});
+  return json({ok:true,operations:rows,next:data.length>50?{priority:last.priority,sort_at:last.sort_at,operation_id:last.operation_id}:null,
+    ...(includeHealth?{background_health:health?.error?null:health?.data??null}:{})});
 }
 async function ordersDebtRecovery(ownerId:string,body:any){
   const id=clean(body?.operation_id,80);

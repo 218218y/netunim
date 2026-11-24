@@ -368,5 +368,10 @@
     "version": "20261124190000",
     "name": "orders_morning_shared_recovery",
     "sha256": "180d6e34913bc1fe41ab54dbfbdeb40e27c2daecf6887df7ac041ce118949c73"
+  },
+  {
+    "version": "20261124200000",
+    "name": "financial_background_health",
+    "sha256": "33fcd0f501d6c6aad32673900a3a7bff2036bb023f517200ac5632524076a929"
   }
 ]

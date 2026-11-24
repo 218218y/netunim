@@ -19,12 +19,14 @@ class Registry:
                           document_number='3972',amount=9300,check_count=10,check_amount=9300,attempts=64,
                           error_code='mfa_required',resolved_at=None)
         self.morning_retries=0
+        self.background={'bank':{'state':'healthy','pending':0},'morning':{'state':'healthy','pending':0}}
 
     def call(self, name, body):
         with self.lock:
             if name=='morning-documents':
                 if body['action']=='list_recovery':
-                    return {'ok':True,'operations':[self.morning]}
+                    return {'ok':True,'operations':[self.morning],
+                            **({'background_health':self.background} if body.get('background_health') else {})}
                 assert body=={'action':'status','operation_id':MORNING_OPERATION,'reconcile':True,'retry_checks':True}
                 self.morning_retries+=1
                 self.morning.update(stage='registered',resolved_at='2026-11-24T15:00:00Z',error_code=None)
@@ -191,6 +193,25 @@ def run():
           return incidentFixture.financial.count===0;
         })()""")
         assert registry.morning_retries==1
+        with registry.lock:
+            registry.background['bank']={'state':'job_unavailable','pending':0}
+        for browser in (orders,kupa):
+            assert browser.evaluate("""(async()=>{
+              const f=incidentFixture;
+              await f.financial.refresh({force:true});f.ui.open();
+              const root=document.querySelectorAll('.sync-incidents')[1];
+              const job=root.querySelector('[data-incident-details=financial-job-bank]');
+              job.open=true;await f.financial.refresh({force:true});
+              return f.financial.count===0&&root.querySelector('[data-incident-details=financial-job-bank]').open
+                &&root.textContent.includes('לא התקבל אישור שמשימת הרקע פועלת');
+            })()""")
+        with registry.lock:
+            registry.background['bank']={'state':'healthy','pending':0}
+        for browser in (orders,kupa):
+            assert browser.evaluate("""(async()=>{
+              const f=incidentFixture;await f.financial.refresh({force:true});
+              return !f.financial.cloudStatusLabel;
+            })()""")
         orders.evaluate('incidentFixture.monitor.stop();incidentFixture.ui.dispose();true')
         orders._navigate()
         restored=orders.evaluate(SETUP.replace('__APP__',json.dumps('orders')))

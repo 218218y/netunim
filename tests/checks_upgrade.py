@@ -282,10 +282,23 @@ def run(db):
            "alter table public.morning_document_operations enable trigger morning_complete_checks;")
     assert retry(retry_operation,owner='00000000-0000-4000-8000-000000000999')=='f'
     assert retry(retry_operation,environment='production')=='f'
+    db.sql("""create function netunim_internal.transient_morning_fixture()
+        returns trigger language plpgsql as $$begin
+          raise exception 'synthetic transient writer failure' using errcode='40001';
+        end$$;
+        create trigger transient_morning_fixture before insert on netunim_internal.morning_check_registrations
+          for each row execute function netunim_internal.transient_morning_fixture();
+        select netunim_internal.retry_morning_check_registrations();""")
+    assert len(rows())==count
+    assert scalar("select checks_registration_attempts=65 and checks_registration_failure_streak=1 and "
+                  "checks_registration_next_retry_at>now() from public.morning_document_operations where operation_id="+quote(retry_operation))=='t'
+    db.sql("drop trigger transient_morning_fixture on netunim_internal.morning_check_registrations;"
+           "update public.morning_document_operations set checks_registration_next_retry_at=clock_timestamp()-interval '1 second' "
+           "where operation_id="+quote(retry_operation))
     db.sql('select netunim_internal.retry_morning_check_registrations()')
     assert len(rows())==count+10
     assert sum(check['amount'] for check in rows() if check.get('morningSource',{}).get('operationId')==retry_operation)==9300
-    assert scalar("select checks_registered_at is not null and checks_registration_error is null and checks_registration_next_retry_at is null and checks_registration_attempts=64 from public.morning_document_operations where operation_id="+quote(retry_operation))=='t'
+    assert scalar("select checks_registered_at is not null and checks_registration_error is null and checks_registration_next_retry_at is null and checks_registration_attempts=65 from public.morning_document_operations where operation_id="+quote(retry_operation))=='t'
     assert scalar("select count(*) from netunim_internal.morning_check_registrations where operation_id="+quote(retry_operation))=='10'
     revision=scalar("select revision from public.shared_checks_documents where owner_id="+quote(OWNER))
     for _ in range(3):
@@ -327,5 +340,64 @@ def run(db):
     assert debt_list('active')=='' and debt_list('resolved')=='registered:preserved'
     save_orders_link('shared-debt-doc','shared-morning-debt-replay')
     assert scalar("select orders_debt_recovery_revision from public.morning_document_operations where operation_id="+quote(debt_op))==receipt
+    check_background_health(db, scalar)
     print('PASS Morning MFA continuation: fenced server trigger and cron, AAL1 denial, AAL2 access, ten checks and idempotent recovery')
     print('PASS cheque upgrade: stored evidence replay, cents, V2 scope, no-op revisions, verified-only import, atomic failure, durable retry and payment-index idempotency')
+
+
+def check_background_health(db, scalar):
+    def health(owner=OWNER, environment='sandbox'):
+        return json.loads(scalar('begin;set local role service_role;select public.financial_background_health_v1('
+                                 +quote(owner)+','+quote(environment)+');commit;'))
+
+    for signature in ('public.financial_background_health_v1(uuid,text)',
+                      'netunim_internal.run_check_bank_refresh_queue()',
+                      'netunim_internal.retry_morning_check_registrations()'):
+        for role in ('anon','authenticated'):
+            assert scalar('select has_function_privilege('+quote(role)+','+quote(signature)+",'EXECUTE')")=='f'
+    assert health()['morning']['last_run_at']
+    new_owner=scalar('select gen_random_uuid()')
+    db.sql("insert into auth.users(id) values("+quote(new_owner)+");"
+           "update netunim_internal.financial_job_health set enabled_at=now(),last_run_at=null where name='check-bank-refresh';")
+    assert health(new_owner)['bank']['state']=='checking'
+    db.sql("update netunim_internal.financial_job_health set enabled_at=now()-interval '6 minutes' where name='check-bank-refresh';")
+    assert health(new_owner)['bank']['state']=='job_unavailable'
+    db.sql('select netunim_internal.run_check_bank_refresh_queue()')
+    empty=health(new_owner)['bank']
+    assert empty['state']=='healthy' and empty['pending']==0 and empty['last_run_at'],empty
+    db.sql("update cron.job set active=false where jobname='morning-check-registration'")
+    assert health(new_owner)['morning']['state']=='job_unavailable'
+    db.sql("update cron.job set active=true where jobname='morning-check-registration'")
+
+    owner_filter=' where owner_id='+quote(OWNER)
+    db.sql('update netunim_internal.check_bank_refresh_state set requested_at=null'+owner_filter)
+    db.sql("""create function netunim_internal.break_check_progress_fixture()
+        returns trigger language plpgsql as $$begin
+          if new.checked_at is distinct from old.checked_at then
+            raise exception 'fixture private bank text' using errcode='42501';
+          end if;return new;
+        end$$;
+        create trigger break_check_progress_fixture before update of checked_at
+          on netunim_internal.check_bank_refresh_state
+          for each row execute function netunim_internal.break_check_progress_fixture();
+        update netunim_internal.check_bank_refresh_state
+          set requested_at=now()-interval '7 minutes',evaluated_key=null"""+owner_filter)
+    delayed=health()['bank']
+    assert delayed['state']=='delayed' and delayed['pending']==1,delayed
+    started=delayed['oldest_at']
+    db.sql('select netunim_internal.run_check_bank_refresh_queue()')
+    failed=health()['bank']
+    assert failed['state']=='stopped' and failed['pending']==1 and failed['last_run_at'],failed
+    assert failed['oldest_at']==started and failed['first_failed_at']==failed['last_failed_at']
+    assert failed['failure_kind']=='authorization' and failed['attempts']==1 and failed['next_retry_at'] is None,failed
+    assert 'fixture private bank text' not in json.dumps(failed)
+    assert health(new_owner)['bank']['pending']==0
+    assert health()['morning']['progressed_at'] and health(environment='production')['morning']['progressed_at'] is None
+    db.sql('select netunim_internal.run_check_bank_refresh_queue()')
+    assert health()['bank']['last_failed_at']==failed['last_failed_at'],'a terminal error must not retry on every tick'
+    db.sql('drop trigger break_check_progress_fixture on netunim_internal.check_bank_refresh_state;'
+           "update netunim_internal.check_bank_refresh_state set requested_at=now()-interval '5 seconds'"+owner_filter+
+           ';select netunim_internal.run_check_bank_refresh_queue()')
+    recovered=health()['bank']
+    assert recovered['state']=='healthy' and recovered['pending']==0 and recovered['progressed_at'],recovered
+    print('PASS financial background health: empty vs stale scheduler, owner isolation, bounded failures and real unauthenticated Cron continuation')

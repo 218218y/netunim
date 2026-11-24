@@ -295,6 +295,10 @@
     {
       "version": "20261124190000",
       "name": "orders_morning_shared_recovery"
+    },
+    {
+      "version": "20261124200000",
+      "name": "financial_background_health"
     }
   ]
 }

@@ -17,6 +17,28 @@ test('empty, first-read failures and auth failure have distinct cloud evidence',
   mode='auth';await center.refresh({force:true});assert.equal(center.availability,'auth');assert.match(center.cloudStatusLabel,/אימות/);
 });
 
+test('a failed background job remains visible with an empty operation list and clears on recovery',async()=>{
+  const healthy={state:'healthy',pending:0,last_run_at:'2026-11-24T14:59:00Z'};
+  let health={bank:{state:'job_unavailable',pending:1,sql_error:'private bank text'},morning:healthy};
+  const center=createMorningOperationCenter({accountScope:()=>({owner:'owner',epoch:1}),publish(){},
+    request:async(_path,options)=>{
+      const body=JSON.parse(options.body);
+      assert.equal(body.background_health,body.filter==='active'&&!body.query?true:undefined);
+      return reply({ok:true,operations:[],background_health:health});
+    }});
+  await center.refresh();
+  assert.equal(center.count,0);
+  assert.match(center.cloudStatusLabel,/רקע פיננסי דורש בדיקה/);
+  assert.match(center.markup(String),/לא התקבל אישור שמשימת הרקע פועלת/);
+  assert.doesNotMatch(center.markup(String),/private bank text/);
+  await center.search('resolved','');
+  assert.match(center.cloudStatusLabel,/דורש בדיקה/);
+  health=null;await center.refresh({force:true});
+  assert.match(center.cloudStatusLabel,/לא ניתן לאמת את תהליכי הרקע/);
+  health={bank:healthy,morning:healthy};await center.refresh({force:true});
+  assert.equal(center.cloudStatusLabel,'');
+});
+
 test('a 51st operation is reachable and registered checks are not presented as pending bank work',async()=>{
   const first=Array.from({length:50},(_,i)=>({...pending,operation_id:`00000000-0000-4000-8000-${String(100+i).padStart(12,'0')}`}));
   const cursor={priority:0,sort_at:'2026-11-24T15:00:00Z',operation_id:first.at(-1).operation_id};
