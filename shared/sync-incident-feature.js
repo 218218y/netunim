@@ -8,25 +8,31 @@ import {createMorningOperationCenter} from './morning-operation-center.js';
 
 // Browser resources are composed once per application. No business write waits
 // for this feature, and its RPCs retain the normal authenticated API scheduler.
-export function createSyncIncidentFeature({site,accountScope,subscribeAccountScope,primary,request,domains,morning={},confirmReview=async()=>false,onChange=()=>{}}){
-  let ui=null,settingsUi=null;
+export function createSyncIncidentFeature({site,accountScope,subscribeAccountScope,primary,request,domains,morning={},notices,confirmReview=async()=>false,onChange=()=>{}}){
+  let ui=null,settingsUi=null,accountChanging=false;
   try{
   const raw=String(clientInstanceId()),clientId=raw.length>0&&raw.length<=160&&!/[\u0000-\u001f]/.test(raw)?raw:crypto.randomUUID();
   const labelKey='netunim.sync.device-label.v1';
   const label=()=>{try{return (localStorage.getItem(labelKey)||'').slice(0,80)}catch{return ''}};
   const registry=createSyncIncidentRegistry({request,accountScope});
-  const publish=(state,force=false)=>{ui?.update(state,force);settingsUi?.update(state,force);onChange(state)};
+  const publish=(state,force=false)=>{if(!accountChanging){ui?.update(state,force);settingsUi?.update(state,force);onChange(state)}};
   const ordersRecoveryUrl=site==='kupa'&&['kupa.bargig-furniture.com','bargig-kupa.pages.dev'].includes(globalThis.location?.hostname)
     ?'https://orders.bargig-furniture.com/?morning-recovery=1':'';
-  const financial=createMorningOperationCenter({request,accountScope,ordersRecoveryUrl,...morning,publish:()=>publish(monitor.view,true)});
-  const uiOptions={clientId,label,financial,saveLabel:value=>{localStorage.setItem(labelKey,value.slice(0,80));publish(monitor.view)},
+  const financial=createMorningOperationCenter({request,accountScope,ordersRecoveryUrl,...morning,
+    isViewVisible:()=>ui?.isOpen()||settingsUi?.isOpen(),publish:()=>publish(monitor.view,true)});
+  const uiOptions={clientId,label,financial,notices,saveLabel:value=>{localStorage.setItem(labelKey,value.slice(0,80));publish(monitor.view)},
     refresh:()=>Promise.all([monitor.wake(),financial.refresh({force:true})]),review:row=>monitor.review(row),confirmReview};
   ui=createSyncIncidentUi(uiOptions);
   const monitor=createSyncIncidentMonitor({site,clientId,deviceLabel:label,accountScope,primary,domains,store:createSyncIncidentStore(),registry,
     visible:()=>document.visibilityState!=='hidden',publish});
   const wake=()=>{void financial.wake();void monitor.wake()};
   const visibility=()=>{if(document.visibilityState==='hidden')void financial.wake();else wake()};
-  const unsubscribe=subscribeAccountScope(()=>{void financial.wake();void monitor.accountChanged()});
+  const unsubscribe=subscribeAccountScope(()=>{
+    accountChanging=true;
+    try{ui.clearAttention();void financial.wake();void monitor.accountChanged()}
+    finally{accountChanging=false}
+    publish(monitor.view,true);
+  });
   const online=()=>{void financial.refresh({force:true});wake()};
   const offline=()=>{void financial.refresh()};
   globalThis.addEventListener('online',online);globalThis.addEventListener('focus',wake);globalThis.addEventListener('pageshow',wake);

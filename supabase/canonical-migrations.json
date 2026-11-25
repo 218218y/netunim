@@ -307,6 +307,10 @@
     {
       "version": "20261125101000",
       "name": "orders_morning_snapshot_precision"
+    },
+    {
+      "version": "20261125110000",
+      "name": "financial_source_health"
     }
   ]
 }

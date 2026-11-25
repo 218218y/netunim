@@ -1,5 +1,12 @@
 // @ts-check
 import {morningCheckRegistrationMessage} from './morning-operation-evidence.js';
+/** @type {Record<string,string|undefined>} */
+const RECOVERY_PROBLEMS={
+  'missing-debt':'החוב המקורי חסר בענן. יש לאתר ולשחזר אותו כדי להשלים את עדכון החוב.',
+  'verification-mismatch':'פרטי המסמך המאומת אינם תואמים לנקודת ההתאוששות. יש לבדוק את פרטי הפעולה.',
+  'conflicting-recovery':'הקישור או רישומי הזקיפה בחוב דורשים בדיקה לפני השלמה.',
+  'write-blocked':'עדכון החוב מחכה לעמדה הראשית של אתר ההזמנות.',
+};
 /** @typedef {import('../../core/morning-operation-scope.js').MorningAssertion} MorningAssertion */
 /** @typedef {import('./morning-debt-application.js').ApplicationContext} ApplicationContext */
 /** @typedef {import('./morning-debt-application.js').ApplicationResult} ApplicationResult */
@@ -47,7 +54,8 @@ async function recoverPendingMorningOperation({quiet=false,assertCurrent,retryCh
         const settlement=application.settle(context.operationId,result,{serverLinkPending:!!(data.bank_link_pending||data.checks_registration_pending)});if(settlement.recoveryCleared)publish.notify(context,data.bank_link);
         if(result.reason==='decision-required')publish.notice?.(context,'המסמך אומת. נדרשת הכרעה לעדכון החוב.');
         else if(result.persisted===false)publish.notice?.(context,'המסמך אומת. יש להשלים את השמירה העמידה של עדכון החוב.');
-        if(settlement.durable&&settlement.recoveryCleared){publish.state(false,true);publish.toast(context.debtId?'הפקת Morning הקודמת אומתה לאחר ההתאוששות והחוב עודכן לפי הבחירות שנשמרו.':'הפקת Morning הקודמת אומתה לאחר ההתאוששות.');return {ok:true,state:'created',result,status:data}}
+        else if(result.reason){const problem=RECOVERY_PROBLEMS[result.reason];if(problem)publish.notice?.(context,problem)}
+        if(settlement.durable&&settlement.recoveryCleared){publish.state(false,true);publish.toast(result.reason==='historical-receipt'?'המסמך אומת ונמצאה רשומת התאוששות היסטורית. פרטי החוב זמינים באתר ההזמנות.':context.debtId?'הפקת Morning הקודמת אומתה לאחר ההתאוששות והחוב עודכן לפי הבחירות שנשמרו.':'הפקת Morning הקודמת אומתה לאחר ההתאוששות.');return {ok:true,state:'created',result,status:data}}
         publish.state(true,settlement.durable);lifetime.scheduleRecovery(60_000,assertCurrent);if(settlement.durable&&!quiet)publish.toast(morningCheckRegistrationMessage(data)||'המסמך אומת והעדכון המקומי נשמר, אך נקודת ההתאוששות עדיין לא נמחקה בבטחה. ההפקה נשארת נעולה עד לניקוי מוצלח.');return {ok:false,state:settlement.durable?'cleanup-pending':'local-pending',result,status:data};
       }
       if(operation?.state==='failed'){if(!recovery.reset(context.operationId))return {ok:false,state:'cleanup-pending'};publish.toast('ניסיון Morning הקודם הסתיים ללא מסמך מאומת; החוב לא שונה.');return {ok:true,state:'failed'}}

@@ -25,7 +25,10 @@ class Registry:
         with self.lock:
             if name=='morning-documents':
                 if body['action']=='list_recovery':
-                    return {'ok':True,'operations':[self.morning],
+                    query=body.get('query')
+                    visible=not query or (query in ('3972',MORNING_OPERATION) and
+                                          (body.get('filter')=='resolved') == bool(self.morning['resolved_at']))
+                    return {'ok':True,'operations':[self.morning] if visible else [],
                             **({'background_health':self.background} if body.get('background_health') else {})}
                 assert body=={'action':'status','operation_id':MORNING_OPERATION,'reconcile':True,'retry_checks':True}
                 self.morning_retries+=1
@@ -133,11 +136,15 @@ def check_visibility_and_settings(browser, app):
       try{
         important.toast('עדכון החוב ממתין לאישור',{id:'synthetic-recovery'});
         await new Promise(resolve=>setTimeout(resolve,30));
-        const alert=document.querySelector('.status-notices section');
+        const find=()=>[...document.querySelectorAll('.status-notices section')].find(item=>item.textContent.includes('עדכון החוב ממתין לאישור'));
+        const alert=find();
         check(alert&&!alert.hidden,'an important notice must outlive the ordinary toast timer');
         alert.querySelector('button').click();
         important.toast('עדכון החוב ממתין לאישור',{id:'synthetic-recovery'});
-        check(alert.hidden&&document.querySelector('.status-notices section')===alert,'acknowledging must suppress duplicate presentation');
+        check(!alert.isConnected&&!find(),'acknowledging clears the mounted notice and suppresses duplicate presentation');
+        important.clearNotice('synthetic-recovery');
+        important.toast('עדכון החוב ממתין לאישור',{id:'synthetic-recovery'});
+        check(find(),'a resolved notice can recur as a new episode');
       }finally{important.clearNotices()}
       const unavailable=createSyncIncidentUi({clientId:'test',label:()=>name,saveLabel:()=>{},refresh:async()=>{},
         financial:{count:0,cloudStatusLabel:'לא ניתן לאמת את מצב פעולות מורנינג בענן'}});
@@ -223,6 +230,13 @@ def run():
             assert browser.evaluate("incidentFixture.ui.open(); document.querySelectorAll('.sync-incidents')[1].textContent.includes('3972')")
         assert orders.evaluate("document.querySelector('[data-incident-action=morning-ack]').click(); incidentFixture.ui.open(); !document.querySelector('[data-incident-action=morning-ack]') && incidentFixture.financial.count===1")
         assert kupa.evaluate("!!document.querySelector('[data-incident-action=morning-ack]')")
+        assert orders.evaluate("""(async()=>{
+          await incidentFixture.financial.search('attention','3972');
+          incidentFixture.ui.open();
+          const root=document.querySelectorAll('.sync-incidents')[1],query=root.querySelector('[name=query]');
+          query.focus();query.setSelectionRange(1,3);
+          return root.textContent.includes('10 ממתינים');
+        })()""")
         assert kupa.evaluate("""(async()=>{
           const retry=document.querySelector('[data-incident-action=morning-retry]');retry.click();retry.click();
           for(let n=0;n<100&&incidentFixture.financial.count;n++)await new Promise(resolve=>setTimeout(resolve,20));
@@ -231,7 +245,10 @@ def run():
         assert orders.evaluate("""(async()=>{
           if(incidentFixture.financial.count!==1)return false;
           await incidentFixture.financial.refresh({force:true});
-          return incidentFixture.financial.count===0;
+          const root=document.querySelectorAll('.sync-incidents')[1],query=root.querySelector('[name=query]');
+          return incidentFixture.financial.count===0&&!root.textContent.includes('10 ממתינים')&&query.value==='3972'
+            &&root.querySelector('[name=filter]').value==='attention'&&document.activeElement===query
+            &&query.selectionStart===1&&query.selectionEnd===3;
         })()""")
         assert registry.morning_retries==1
         with registry.lock:

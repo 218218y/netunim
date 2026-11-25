@@ -2,6 +2,7 @@ const PATH='/functions/v1/morning-documents';
 const REFRESH_INTERVAL=45_000;
 const RETRY_DELAYS=[4_000,12_000,30_000,60_000];
 const LIST_DEADLINE=12_000;
+const VERIFY_ATTENTION_AFTER=10*60_000;
 const STAGES={
   verification:['המסמך ממתין לאימות','בדיקת המצב תברר אם המסמך כבר הופק.'],
   payment_evidence:['חסר אימות תקבולים','רישום הצ׳קים יוכל להמשיך לאחר שמורנינג תחזיר את פירוט התקבולים.'],
@@ -22,8 +23,13 @@ const JOB_STATES={healthy:'משימת הרקע פעילה',checking:'ממתין 
   retrying:'הבדיקה תתחדש אוטומטית',delayed:'העבודה ממתינה מעבר לזמן הצפוי',
   stopped:'ההתאוששות האוטומטית נעצרה',job_unavailable:'לא התקבל אישור שמשימת הרקע פועלת'};
 const JOB_FAILURES={authorization:'נדרשת בדיקת הרשאות',invalid_data:'נדרשת בדיקת הנתונים',
-  transient:'חיבור או כתיבה התעכבו',unexpected:'נדרשת בדיקה של השגיאה שנרשמה'};
-const jobNeedsAttention=job=>['delayed','stopped','job_unavailable'].includes(job.state);
+  transient:'חיבור או כתיבה התעכבו',unexpected:'נדרשת בדיקה של השגיאה שנרשמה',contention:'הכתיבה מתעכבת עקב עבודה מקבילה'};
+const SOURCE_STATES={no_history:'טרם התקבלו נתוני בנק',unknown:'זמינות נתוני הבנק טרם אומתה',
+  missing:'נתוני בנק צפויים חסרים',stale:'נתוני הבנק אינם עדכניים',fresh:'נתוני הבנק עדכניים'};
+const BANK_OUTCOMES={no_checks:'אין צ׳קים לבדיקה',no_bank_data:'בדיקת התאמות ממתינה לנתוני בנק',
+  unchanged:'תוצאת ההתאמה נשארה בעינה',checked:'בוצעה בדיקת התאמות'};
+const RUN_STATES={healthy:'פעילה',checking:'ממתינה לריצה ראשונה',job_unavailable:'הריצה לא אומתה'};
+const jobNeedsAttention=job=>['delayed','stopped','job_unavailable'].includes(job.state)||['missing','stale'].includes(job.sourceState);
 const CLOUD_STATUS={idle:'טרם אומת מצב פעולות מורנינג.',stale:'מצב פעולות מורנינג אינו מעודכן כרגע.',
   unavailable:'לא ניתן לאמת את מצב פעולות מורנינג בענן.',auth:'יש להתחבר מחדש או להשלים אימות לצפייה בפעולות מורנינג.',
   offline:'אין חיבור לענן. מוצג מצב פעולות מורנינג האחרון שהתקבל.'};
@@ -75,7 +81,13 @@ function decodeBackground(value){
   const jobs=Object.entries(JOBS).map(([kind,label])=>{
     const row=value[kind];
     if(!row||!Object.hasOwn(JOB_STATES,row.state)||!Number.isSafeInteger(row.pending)||row.pending<0)return null;
-    return {kind,label,state:row.state,pending:row.pending,lastRun:dateLabel(row.last_run_at),progress:dateLabel(row.progressed_at),
+    return {kind,label,state:row.state,pending:row.pending,lastRun:dateLabel(row.last_run_at),
+      progress:dateLabel(row.business_progressed_at??(kind==='morning'?row.progressed_at:null)),
+      evaluated:kind==='bank'?dateLabel(row.progressed_at):'',
+      runState:Object.hasOwn(RUN_STATES,row.run_state)?row.run_state:row.state,
+      sourceState:Object.hasOwn(SOURCE_STATES,row.source_state)?row.source_state:null,sourceAt:dateLabel(row.source_at),
+      lastOutcome:Object.hasOwn(BANK_OUTCOMES,row.last_outcome)?BANK_OUTCOMES[row.last_outcome]:'',
+      missingEvidence:Number.isSafeInteger(row.missing_payment_evidence)&&row.missing_payment_evidence>0?row.missing_payment_evidence:0,
       oldest:dateLabel(row.oldest_at),retry:dateLabel(row.next_retry_at),firstFailure:dateLabel(row.first_failed_at),
       lastFailure:dateLabel(row.last_failed_at),attempts:Number.isSafeInteger(row.attempts)&&row.attempts>0?row.attempts:0,
       failure:Object.hasOwn(JOB_FAILURES,row.failure_kind)?JOB_FAILURES[row.failure_kind]:''};
@@ -83,12 +95,17 @@ function decodeBackground(value){
   return jobs.every(Boolean)?jobs:null;
 }
 
-function severity(row){
-  if(row.stage==='registered')return 'הושלם';
-  if(row.stage==='verification'||row.stage==='payment_mismatch')return 'דורש בדיקה';
-  if(row.stage==='debt_update')return 'דורש טיפול';
-  if(row.stage==='check_registration'&&row.error_code&&!row.next_retry_at)return 'דורש טיפול';
-  return 'ממתין';
+const OPERATION_LABELS={complete:'הושלם',critical:'דורש טיפול',error:'דורש טיפול',warning:'דורש בדיקה',info:'ממתין'};
+const SEVERITY_ORDER={critical:0,error:1,warning:2,info:3,complete:4};
+function severity(row,now){
+  if(row.stage==='registered')return 'complete';
+  if(row.stage==='payment_mismatch')return 'critical';
+  if(row.stage==='debt_update'||(row.stage==='check_registration'&&row.error_code&&!row.next_retry_at))return 'error';
+  if(['verification','payment_evidence'].includes(row.stage)){
+    const since=Date.parse(row.first_failed_at||row.created_at);
+    return now-since>=VERIFY_ATTENTION_AFTER?'error':'warning';
+  }
+  return 'info';
 }
 
 function receiptMessage(result){
@@ -106,11 +123,20 @@ function serverOutcome(status){
 }
 
 export function createMorningOperationCenter({request,accountScope,publish,recoverLocal,debtAction,ordersRecoveryUrl='',
-  now=Date.now,isOnline=()=>globalThis.navigator?.onLine!==false,isVisible=()=>globalThis.document?.visibilityState!=='hidden',timers=globalThis}){
+  now=Date.now,isOnline=()=>globalThis.navigator?.onLine!==false,isVisible=()=>globalThis.document?.visibilityState!=='hidden',
+  isViewVisible=()=>true,timers=globalThis}){
   let observed=null,operations=[],background,availability='idle',lastSuccess=null,nextRead=0,flight=null,closed=false;
   let filter='active',query='',page={rows:[],next:null},activeNext=null,pageStack=[null],viewSequence=0,viewRead=null,viewLoading=false,viewError=false;
-  let polling=false,timer=null,failures=0,serverRetryAt=0;
-  const acknowledged=new Set(),recovering=new Map(),results=new Map();
+  let polling=false,timer=null,failures=0,backgroundFailures=0,serverRetryAt=0;
+  const acknowledged=new Set(),acknowledgedSignals=new Set(),recovering=new Map(),results=new Map();
+  function rememberAcknowledgement(key){
+    acknowledged.add(key);
+    if(acknowledged.size>200)acknowledged.delete(acknowledged.values().next().value);
+  }
+  function showResult(id,outcome){
+    results.delete(id);results.set(id,receiptMessage(outcome));
+    if(results.size>50)results.delete(results.keys().next().value);
+  }
   function clearTimer(){if(timer!==null)timers.clearTimeout(timer);timer=null}
   function cancelReads(){
     const current=flight;flight=null;current?.controller.abort();
@@ -119,10 +145,10 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
   function syncScope(){
     const scope=accountScope();
     if(!sameAccount(scope,observed)){
-      clearTimer();cancelReads();failures=0;serverRetryAt=0;
+      clearTimer();cancelReads();failures=0;backgroundFailures=0;serverRetryAt=0;
       observed=scope;operations=[];background=undefined;availability=scope.owner?'idle':'signed_out';lastSuccess=null;nextRead=0;
       filter='active';query='';page={rows:[],next:null};activeNext=null;pageStack=[null];viewSequence++;viewLoading=false;viewError=false;
-      acknowledged.clear();recovering.clear();results.clear();publish();
+      acknowledged.clear();acknowledgedSignals.clear();recovering.clear();results.clear();publish();
     }
     return scope;
   }
@@ -138,27 +164,31 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
     if(value?.ok!==true)throw new Error('morning_recovery_request_failed');
     return value;
   }
-  async function readPage(scope,filter,query,after,controller){
+  async function boundedCall(action,body,scope,controller,priority='low'){
     const signal=controller.signal;signal.throwIfAborted();
-    if(now()<serverRetryAt)throw new Error('morning_recovery_rate_limited');
     let cancelled;
     const cancellation=new Promise((_,reject)=>{
       cancelled=()=>reject(signal.reason);
       signal.addEventListener('abort',cancelled,{once:true});
     });
-    const deadline=timers.setTimeout(()=>controller.abort(new DOMException('morning_recovery_list_timeout','TimeoutError')),LIST_DEADLINE);
-    const ops={page:true,debt_recovery:true,filter,query,after};
+    const deadline=timers.setTimeout(()=>controller.abort(new DOMException('morning_recovery_timeout','TimeoutError')),LIST_DEADLINE);
     let reply;
     try{
-      const body=filter==='active'&&!query&&!after?{...ops,background_health:true}:ops;
-      reply=await Promise.race([call('list_recovery',body,scope,'low',signal),cancellation]);
+      reply=await Promise.race([call(action,body,scope,priority,signal),cancellation]);
     }catch(error){
-      if(!closed&&sameAccount(accountScope(),scope)&&error?.retryAfterMs>0){
+      if(action==='list_recovery'&&!closed&&sameAccount(accountScope(),scope)&&error?.retryAfterMs>0){
         serverRetryAt=Math.max(serverRetryAt,now()+error.retryAfterMs);
         nextRead=Math.max(nextRead,serverRetryAt);schedule();
       }
       throw error;
     }finally{timers.clearTimeout(deadline);signal.removeEventListener('abort',cancelled)}
+    return reply;
+  }
+  async function readPage(scope,filter,query,after,controller){
+    if(now()<serverRetryAt)throw new Error('morning_recovery_rate_limited');
+    const ops={page:true,debt_recovery:true,filter,query,after};
+    const body=filter==='active'&&!query&&!after?{...ops,background_health:true}:ops;
+    const reply=await boundedCall('list_recovery',body,scope,controller);
     const rows=decodeOperations(reply.operations),next=reply.next??null;
     if(next!==null&&(![0,1,2].includes(next.priority)||!dateLabel(next.sort_at)||next.operation_id!==rows.at(-1)?.operation_id))throw new Error('morning_recovery_page_invalid');
     return {rows,next,background:decodeBackground(reply.background_health)};
@@ -174,6 +204,17 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
     syncScope();
     if(!isVisible()){clearTimer();return Promise.resolve(false)}
     return refresh();
+  }
+  async function refreshSelected(scope){
+    if(onFirstActivePage()||viewLoading||viewRead||!isViewVisible())return;
+    const controller=new AbortController(),sequence=viewSequence;
+    viewRead=controller;
+    const current=()=>!closed&&viewRead===controller&&sequence===viewSequence&&sameAccount(accountScope(),scope);
+    try{
+      const incoming=await readPage(scope,filter,query,pageStack.at(-1),controller);
+      if(current()){page=incoming;viewError=false}
+    }catch{if(current())viewError=true}
+    finally{if(current())viewRead=null}
   }
   function refresh({force=false}={}){
     const scope=syncScope();
@@ -194,11 +235,14 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
         if(flight!==job)return false;
         if(!isOnline())throw new Error('morning_recovery_offline');
         operations=current.rows;activeNext=current.next;background=current.background;availability='fresh';lastSuccess=now();
+        backgroundFailures=background===null?Math.min(2,backgroundFailures+1):0;
         failures=0;nextRead=Math.max(serverRetryAt,lastSuccess+REFRESH_INTERVAL);
         if(!activeNext&&operations.length<=50){
           const keys=new Set(operations.filter(row=>!row.resolved_at).map(ackKey));
           for(const key of acknowledged)if(!keys.has(key))acknowledged.delete(key);
         }
+        if(!onFirstActivePage()){publish();await refreshSelected(scope)}
+        if(flight!==job||!sameAccount(accountScope(),scope))return false;
         return true;
       }catch(error){
         if(closed||flight!==job||!sameAccount(accountScope(),scope))return false;
@@ -216,10 +260,37 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
     return job.promise;
   }
   const active=()=>operations.filter(row=>!row.resolved_at);
-  const ackKey=row=>`${row.operation_id}:${row.stage}:${severity(row)}:${row.failure_kind||''}`;
+  const ackKey=row=>`${row.operation_id}:${row.stage}:${severity(row,now())}:${row.failure_kind||row.error_code||''}`;
   const shown=()=>onFirstActivePage()?operations:page.rows;
   const nextPage=()=>onFirstActivePage()?activeNext:page.next;
-  const urgent=()=>active().find(row=>severity(row)==='דורש טיפול'&&!acknowledged.has(ackKey(row)));
+  function urgent(){
+    return active().filter(row=>SEVERITY_ORDER[severity(row,now())]<=1&&!acknowledged.has(ackKey(row)))
+      .sort((a,b)=>SEVERITY_ORDER[severity(a,now())]-SEVERITY_ORDER[severity(b,now())]||Date.parse(a.created_at)-Date.parse(b.created_at))[0];
+  }
+  function attention(){
+    const signals=[];
+    if(availability==='auth'&&(active().length||failures>=2))signals.push({key:'auth',severity:'critical',message:CLOUD_STATUS.auth});
+    else if(failures>=3&&availability!=='offline')signals.push({key:'cloud',severity:'important',message:CLOUD_STATUS[availability]});
+    if(backgroundFailures>=2)signals.push({key:'background',severity:'important',message:'לא ניתן לאמת את תהליכי הרקע הפיננסיים.'});
+    for(const job of background||[]){
+      if(jobNeedsAttention(job))signals.push({key:`job:${job.kind}:${job.state}:${job.sourceState||''}`,
+        severity:job.state==='job_unavailable'||job.state==='stopped'?'critical':'important',
+        message:`${job.label} · ${['missing','stale'].includes(job.sourceState)?SOURCE_STATES[job.sourceState]:JOB_STATES[job.state]}`});
+    }
+    const live=new Set(signals.map(signal=>signal.key));
+    for(const key of acknowledgedSignals)if(!live.has(key))acknowledgedSignals.delete(key);
+    const row=urgent();
+    const operation=row&&{key:'operation:'+ackKey(row),operationId:row.operation_id,
+      severity:severity(row,now())==='critical'?'critical':'important',
+      message:STAGES[row.stage][0]+(row.document_number?` · מסמך ${row.document_number}`:'')};
+    return [operation,...signals].filter(signal=>signal&&!acknowledgedSignals.has(signal.key))
+      .sort((a,b)=>Number(b.severity==='critical')-Number(a.severity==='critical'))[0];
+  }
+  function acknowledge(signal){
+    if(signal.operationId){const row=active().find(row=>row.operation_id===signal.operationId);if(row&&signal.key==='operation:'+ackKey(row))rememberAcknowledgement(ackKey(row))}
+    else acknowledgedSignals.add(signal.key);
+    publish();
+  }
 
   async function view(nextFilter,nextQuery,stack){
     const scope=syncScope(),sequence=++viewSequence;
@@ -245,13 +316,13 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
     if(name==='morning-next'){const next=nextPage();if(next)await view(filter,query,[...pageStack,next]);return}
     if(name==='morning-previous'){if(pageStack.length>1)await view(filter,query,pageStack.slice(0,-1));return}
     if(!row)return;
-    if(name==='morning-ack'){acknowledged.add(ackKey(row));publish();return}
+    if(name==='morning-ack'){rememberAcknowledgement(ackKey(row));publish();return}
     if(name==='morning-copy'){
       const report={operationId:id,documentType:row.document_type,source:row.source_kind,stage:row.stage,documentNumber:row.document_number,errorCode:row.error_code,
         failureKind:row.failure_kind,attempts:row.attempts,firstFailedAt:row.first_failed_at,
         lastAttemptAt:row.last_attempt_at,lastFailureAt:row.failure_kind?row.last_attempt_at:null,nextRetryAt:row.next_retry_at,
         documentVerified:!!row.verified_at,paymentEvidence:row.payment_evidence,checksRegisteredAt:row.checks_registered_at,
-        bankLinked:row.bank_linked,debtState:row.debt_state,requiresUserAction:severity(row)!=='ממתין'&&!row.resolved_at};
+        bankLinked:row.bank_linked,debtState:row.debt_state,severity:severity(row,now()),requiresUserAction:SEVERITY_ORDER[severity(row,now())]<=1};
       await navigator.clipboard.writeText(JSON.stringify(report,null,2));return;
     }
     if(name==='morning-debt'){await debtAction?.(row)?.();return}
@@ -261,7 +332,7 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
       if(!tab)throw new Error('morning_document_popup_blocked');
       tab.opener=null;
       try{
-        const reply=await call('document_links',{document_id:row.document_id},scope,'high');
+        const reply=await boundedCall('document_links',{document_id:row.document_id},scope,new AbortController(),'high');
         const url=new URL(reply.url);
         if(url.protocol!=='https:')throw new Error('morning_document_link_invalid');
         tab.location.replace(url.href);
@@ -274,22 +345,23 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
       const local=await recoverLocal?.(id,row);assertScope(scope);
       let outcome=local;
       if(!local){
-        const result=await call('status',{operation_id:id,reconcile:true,retry_checks:true},scope,'high');
+        const result=await boundedCall('status',{operation_id:id,reconcile:true,retry_checks:true},scope,new AbortController(),'high');
         if(result.operation?.operation_id!==id)throw new Error('morning_recovery_receipt_mismatch');
         outcome=serverOutcome(result);
       }
-      results.set(id,receiptMessage(outcome));
+      showResult(id,outcome);
       // If a list was already in flight, its snapshot may predate this attempt.
       await flight?.promise;assertScope(scope);await refresh({force:true});
-      if(!onFirstActivePage())await view(filter,query,pageStack);
     }catch(error){
-      if(sameAccount(accountScope(),scope)&&!closed)results.set(id,receiptMessage({state:error?.code==='morning_cloud_auth_required'?'auth':'unavailable'}));
+      if(sameAccount(accountScope(),scope)&&!closed)showResult(id,{state:['morning_cloud_auth_required','mfa_required'].includes(error?.code)?'auth':'unavailable'});
     }finally{if(recovering.get(id)===token){recovering.delete(id);publish()}}
   }
 
   function markup(escape){
     const jobCard=job=>{
-      const inputs=[['ריצה אחרונה',job.lastRun],['התקדמות אחרונה',job.progress],['הפעולה הוותיקה בתור',job.oldest],
+      const inputs=[['ריצה אחרונה',job.lastRun],['השלמה עסקית אחרונה',job.progress],['הפעולה הוותיקה בתור',job.oldest],
+        ['מצב המשימה',RUN_STATES[job.runState]],['נתוני מקור',SOURCE_STATES[job.sourceState]],['תמונת בנק אחרונה',job.sourceAt],
+        ['בדיקת התאמות אחרונה',job.evaluated],['תוצאת בדיקת ההתאמה',job.lastOutcome],['מסמכים הממתינים לאימות תקבולים',job.missingEvidence],
         ['כשל ראשון',job.firstFailure],['כשל אחרון',job.lastFailure],['ניסיון אוטומטי הבא',job.retry],['ניסיונות שנכשלו',job.attempts]];
       return `<li><details data-incident-details="financial-job-${job.kind}" ${jobNeedsAttention(job)?'data-job-warning':''}>
         <summary>${job.label} · ${JOB_STATES[job.state]}</summary>
@@ -306,11 +378,11 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
         ['אימות התקבולים',row.check_count?(row.payment_evidence==='matched'||registered?'הושלם':row.stage==='payment_mismatch'?'אי התאמה':'ממתין'):''],
         ['רישום צ׳קים בקופה',row.check_count?(registered?`${row.check_count} נרשמו`:`${row.check_count} ממתינים · ${moneyFormat.format(Number(row.check_amount))}`):''],
         ['קישור לבנק',row.source_kind==='bank'?(row.bank_linked?'הושלם':'ממתין'):''],
-        ['עדכון החוב',row.debt_state==='pending'?'ממתין לשמירה בענן':row.debt_state==='preserved'?'נשמר בענן':''],
+        ['עדכון החוב',row.debt_state==='pending'?'ממתין לשמירה בענן':row.debt_state==='preserved'?'התאוששות נסגרה בענן':''],
         ['כשל ראשון',dateLabel(row.first_failed_at)],['ניסיון אחרון',dateLabel(row.last_attempt_at)],['ניסיון אוטומטי הבא',dateLabel(row.next_retry_at)],
         ['ניסיונות שנכשלו או דרשו אימות',row.attempts||''],['הושלם',dateLabel(row.resolved_at)]];
-      const title=row.stage==='registered'&&!row.check_count?(row.debt_state==='preserved'?'עדכון החוב נשמר בענן':'קישור המסמך לבנק הושלם'):stage[0];
-      return `<li><strong>${title}</strong><span class="morning-operation-state">${busy?'מתבצעת בדיקה':severity(row)}</span>
+      const title=row.stage==='registered'&&!row.check_count?(row.debt_state==='preserved'?'התאוששות החוב נסגרה בענן':'קישור המסמך לבנק הושלם'):stage[0];
+      return `<li><strong>${title}</strong><span class="morning-operation-state">${busy?'מתבצעת בדיקה':OPERATION_LABELS[severity(row,now())]}</span>
         <p>${TYPES[row.document_type]} ${escape(row.document_number||'')}</p>
         <dl>${fields.filter(([,value])=>value).map(([label,value])=>`<div><dt>${label}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl>
         ${stage[1]?`<p>${stage[1]} ${registered?'':'יש להימנע מהפקה נוספת או מהזנה חוזרת של הצ׳קים.'}</p>`:''}
@@ -341,13 +413,13 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
       ${[...results].filter(([id])=>!rows.some(row=>row.operation_id===id)).slice(-1).map(([,message])=>`<p role="status">${escape(message)}</p>`).join('')}
     </section>`;
   }
-  return {start(){polling=true;return wake()},wake,refresh,action,search,markup,
+  return {start(){polling=true;return wake()},wake,refresh,action,search,markup,acknowledge,
     dispose(){closed=true;clearTimer();cancelReads();viewSequence++},get availability(){return availability},
     get cloudStatusLabel(){
       if(!observed?.owner)return '';
       if(availability==='auth'||availability==='offline'||failures>=2)return CLOUD_STATUS[availability]||'';
       return background===null?'לא ניתן לאמת את תהליכי הרקע הפיננסיים.':background?.some(jobNeedsAttention)?'תהליך רקע פיננסי דורש בדיקה.':'';
     },
-    get count(){return active().length},get more(){return !!activeNext||active().length>50},get urgent(){return urgent()},
+    get count(){return active().length},get more(){return !!activeNext||active().length>50},get attention(){return attention()},
     get unread(){return active().filter(row=>!acknowledged.has(ackKey(row))).length}};
 }

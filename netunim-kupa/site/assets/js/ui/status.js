@@ -63,6 +63,7 @@ function toast(message,notice){
   const element=document.getElementById('toast');if(!element)return;
   element.textContent=message;element.classList.add('show');clearTimeout(timer);timer=setTimeout(()=>element.classList.remove('show'),1800);
 }
+function clearNotice(id){void noticeModule?.then(status=>status.clearNotice(id)).catch(()=>{})}
 function clearNotices(){noticeEpoch++;void noticeModule?.then(status=>status.clearNotices()).catch(()=>{})}
 
 
@@ -80,5 +81,5 @@ function canRunInteractiveAction(name=''){
 function reportError(message){alert(message)}
 function hideConnectScreen(){document.getElementById('connectScreen').style.display='none'}
 
-return { reportError, hideConnectScreen, setSaveStatus, setConnectedStatus, supaProjectRef, setCloudHeaderStatus, refreshCloudHeaderTimestamp, toast,clearNotices, canRunInteractiveAction };
+return { reportError, hideConnectScreen, setSaveStatus, setConnectedStatus, supaProjectRef, setCloudHeaderStatus, refreshCloudHeaderTimestamp, toast,clearNotice,clearNotices, canRunInteractiveAction };
 }

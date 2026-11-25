@@ -66,6 +66,76 @@ test('a 51st operation is reachable and registered checks are not presented as p
   await center.action('morning-previous','');assert.doesNotMatch(center.markup(String),/LAST-51/);
 });
 
+test('a poll refreshes the selected search while preserving its filter and term',async()=>{
+  let rows=[pending],requests=[];
+  const center=createMorningOperationCenter({accountScope:()=>({owner:'owner',epoch:1}),publish(){},
+    request:async(_path,{body})=>{requests.push(JSON.parse(body));return reply({ok:true,operations:rows})}});
+  await center.refresh();await center.search('attention','3972');
+  rows=[];await center.refresh({force:true});
+  assert.equal(center.count,0);
+  assert.doesNotMatch(center.markup(String),/10 ממתינים/);
+  assert.match(center.markup(String),/value="attention" selected/);
+  assert.match(center.markup(String),/value="3972"/);
+  assert.deepEqual(requests.map(row=>[row.filter,row.query]),[['active',''],['attention','3972'],['active',''],['attention','3972']]);
+});
+
+test('a second page refresh distinguishes operations off the first page from resolved rows',async()=>{
+  const first=Array.from({length:50},(_,i)=>({...pending,operation_id:`00000000-0000-4000-8000-${String(200+i).padStart(12,'0')}`}));
+  const cursor={priority:0,sort_at:'2026-11-24T15:00:00Z',operation_id:first.at(-1).operation_id};
+  let rows=[pending],hits=0;
+  const center=createMorningOperationCenter({accountScope:()=>({owner:'owner',epoch:1}),publish(){},
+    request:async(_path,{body})=>{const data=JSON.parse(body);if(data.after){hits++;assert.deepEqual(data.after,cursor);return reply({ok:true,operations:rows})}
+      return reply({ok:true,operations:first,next:cursor})}});
+  await center.refresh();await center.action('morning-next','');
+  await center.refresh({force:true});assert.match(center.markup(String),/3972/);
+  rows=[];await center.refresh({force:true});
+  assert.match(center.markup(String),/עמוד 2/);assert.doesNotMatch(center.markup(String),/3972/);
+  assert.equal(hits,3);
+});
+
+test('a newer search fences a delayed repeat of the previous query',async()=>{
+  let release,calls=0;
+  const center=createMorningOperationCenter({accountScope:()=>({owner:'owner',epoch:1}),publish(){},
+    request:async(_path,{body})=>{
+      const data=JSON.parse(body);
+      if(data.query==='old'&&++calls===2)return new Promise(resolve=>{release=resolve});
+      return reply({ok:true,operations:[{...pending,document_number:data.query||'head'}]});
+    }});
+  await center.refresh();await center.search('active','old');
+  const refresh=center.refresh({force:true});
+  while(!release)await new Promise(resolve=>setImmediate(resolve));
+  await center.search('active','new');
+  release(reply({ok:true,operations:[{...pending,document_number:'LATE-OLD'}]}));
+  await refresh;
+  assert.match(center.markup(String),/value="new"/);
+  assert.doesNotMatch(center.markup(String),/LATE-OLD/);
+});
+
+test('sustained verification, mismatched evidence and unhealthy jobs request acknowledgement',async()=>{
+  let now=Date.parse('2026-11-25T12:00:00Z'),scope={owner:'owner',epoch:1};
+  const healthy={state:'healthy',pending:0};
+  let background={bank:healthy,morning:healthy};
+  let rows=[{...pending,stage:'verification',created_at:new Date(now-1000).toISOString()}];
+  const center=createMorningOperationCenter({accountScope:()=>scope,publish(){},now:()=>now,
+    request:async()=>reply({ok:true,operations:rows,background_health:background})});
+  await center.refresh();assert.equal(center.attention,undefined);
+  now+=600_000;await center.refresh({force:true});
+  assert.equal(center.attention.operationId,id);
+  center.acknowledge(center.attention);assert.equal(center.attention,undefined);assert.equal(center.count,1);
+  rows=[{...rows[0],stage:'payment_mismatch'}];await center.refresh({force:true});
+  assert.equal(center.attention.severity,'critical');
+  rows=[];background={bank:{state:'stopped',pending:1},morning:healthy};await center.refresh({force:true});
+  assert.equal(center.count,0);assert.match(center.attention.key,/^job:bank/);
+  center.acknowledge(center.attention);assert.equal(center.attention,undefined);
+  background=null;await center.refresh({force:true});assert.equal(center.attention,undefined);
+  await center.refresh({force:true});assert.equal(center.attention.key,'background');
+  background={bank:healthy,morning:healthy};await center.refresh({force:true});
+  assert.equal(center.attention,undefined);
+  rows=[{...pending,stage:'payment_mismatch'}];await center.refresh({force:true});
+  center.acknowledge(center.attention);scope={owner:'other',epoch:2};await center.refresh({force:true});
+  assert.equal(center.attention.operationId,id);
+});
+
 test('known retry failures and cooldown are shown without recording completion',async()=>{
   let state='failed';
   const center=createMorningOperationCenter({accountScope:()=>({owner:'owner',epoch:1}),publish(){},

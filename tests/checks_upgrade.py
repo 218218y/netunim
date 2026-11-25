@@ -469,6 +469,21 @@ def check_background_health(db, scalar):
     db.sql('select netunim_internal.run_check_bank_refresh_queue()')
     empty=health(new_owner)['bank']
     assert empty['state']=='healthy' and empty['pending']==0 and empty['last_run_at'],empty
+    assert empty['source_state']=='no_history' and empty['run_state']=='healthy'
+    db.sql("begin;set local role authenticated;set local request.jwt.claim.sub="+quote(new_owner)
+           +";select revision from public.save_shared_checks_document_v6('main',0,"
+           +quote(json.dumps({'version':1,'checks':[{'id':'staging-no-bank-source','amount':50,
+               'dueDate':'2026-08-01','status':'בקופה'}],'bankEvents':[]}))
+           +"::jsonb,'source-health-fixture','[]','{}');commit;")
+    db.sql("update netunim_internal.check_bank_refresh_state set requested_at=now()-interval '10 seconds' where owner_id="
+           +quote(new_owner)+";select netunim_internal.run_check_bank_refresh_queue()")
+    never_connected=health(new_owner)['bank']
+    assert never_connected['last_outcome']=='no_bank_data' and never_connected['source_state']=='no_history'
+    assert never_connected['pending']==0 and never_connected['business_progressed_at'] is None
+    db.sql("insert into netunim_internal.bank_sync_operations(owner_id,document_name,operation_id,snapshot_seq,payload_sha256)"
+           " values("+quote(new_owner)+",'bank','bank-evidence',0,repeat('a',64))")
+    missing=health(new_owner)['bank']
+    assert missing['source_state']=='missing' and missing['pending']==0 and missing['run_state']=='healthy'
     db.sql("update cron.job set active=false where jobname='morning-check-registration'")
     assert health(new_owner)['morning']['state']=='job_unavailable'
     db.sql("update cron.job set active=true where jobname='morning-check-registration'")
@@ -489,10 +504,28 @@ def check_background_health(db, scalar):
     delayed=health()['bank']
     assert delayed['state']=='delayed' and delayed['pending']==1,delayed
     started=delayed['oldest_at']
+    with ThreadPoolExecutor(max_workers=1) as worker:
+        lock=worker.submit(db.sql,"begin;set local application_name='netunim-bank-busy-fixture';select pg_advisory_xact_lock("
+                           "hashtextextended('netunim_financial_write:'||"+quote(OWNER)+",0));select pg_sleep(6);commit;")
+        deadline=time.monotonic()+5
+        while scalar("select exists(select 1 from pg_stat_activity where application_name='netunim-bank-busy-fixture' and wait_event='PgSleep')")!='t':
+            assert time.monotonic()<deadline, 'contention fixture lock not acquired'
+            time.sleep(0.05)
+        db.sql('select netunim_internal.run_check_bank_refresh_queue()')
+        contention=health()['bank']
+        assert contention['state']=='delayed' and contention['oldest_at']==started
+        assert contention['failure_kind']=='contention' and contention['attempts']==0 and contention['next_retry_at']
+        db.sql("update netunim_internal.check_bank_refresh_state set next_retry_at=now()-interval '1 second'"+owner_filter
+               +';select netunim_internal.run_check_bank_refresh_queue()')
+        repeated=health()['bank']
+        assert repeated['first_failed_at']==contention['first_failed_at'] and repeated['oldest_at']==started
+        assert repeated['last_failed_at']>contention['last_failed_at'] and repeated['attempts']==0
+        lock.result(timeout=10)
+    db.sql("update netunim_internal.check_bank_refresh_state set next_retry_at=now()-interval '1 second'"+owner_filter)
     db.sql('select netunim_internal.run_check_bank_refresh_queue()')
     failed=health()['bank']
     assert failed['state']=='stopped' and failed['pending']==1 and failed['last_run_at'],failed
-    assert failed['oldest_at']==started and failed['first_failed_at']==failed['last_failed_at']
+    assert failed['oldest_at']==started and failed['first_failed_at']==contention['first_failed_at']
     assert failed['failure_kind']=='authorization' and failed['attempts']==1 and failed['next_retry_at'] is None,failed
     assert 'fixture private bank text' not in json.dumps(failed)
     assert health(new_owner)['bank']['pending']==0
@@ -504,4 +537,14 @@ def check_background_health(db, scalar):
            ';select netunim_internal.run_check_bank_refresh_queue()')
     recovered=health()['bank']
     assert recovered['state']=='healthy' and recovered['pending']==0 and recovered['progressed_at'],recovered
+    assert recovered['last_outcome']=='checked'
+    db.sql("begin;alter table public.bank_transaction_snapshots disable trigger user;"
+           "update public.bank_transaction_snapshots set snapshot_at=now()-interval '4 days' where owner_id="+quote(OWNER)
+           +";alter table public.bank_transaction_snapshots enable trigger user;commit;")
+    stale=health()['bank']
+    assert stale['source_state']=='stale' and stale['run_state']=='healthy' and stale['pending']==0
+    db.sql("begin;alter table public.bank_transaction_snapshots disable trigger user;"
+           "update public.bank_transaction_snapshots set snapshot_at=now() where owner_id="+quote(OWNER)
+           +";alter table public.bank_transaction_snapshots enable trigger user;commit;")
+    assert health()['bank']['source_state']=='fresh'
     print('PASS financial background health: empty vs stale scheduler, owner isolation, bounded failures and real unauthenticated Cron continuation')

@@ -2,10 +2,13 @@
 export function createStatusNotices({getToast,duration,document=globalThis.document,timers=globalThis}){
   const important=new Map();
   let timer,region;
+  function removeElement(record){
+    record.element?.remove();record.element=null;
+    if(region&&!region.childElementCount){region.remove();region=null}
+  }
   function clearNotice(id){
     const record=important.get(id);if(!record)return;
-    record.element.remove();important.delete(id);
-    if(!region.childElementCount){region.remove();region=null}
+    removeElement(record);important.delete(id);
   }
   function toast(message,notice){
     if(!notice?.id){
@@ -24,9 +27,10 @@ export function createStatusNotices({getToast,duration,document=globalThis.docum
       const button=document.createElement('button');button.type='button';button.textContent=notice.actionLabel;
       button.addEventListener('click',()=>{void Promise.resolve().then(notice.action).catch(()=>toast('לא ניתן לפתוח את הפעולה כרגע.'))});element.append(button);
     }
+    const entry={message,severity:notice.severity,element};
     const ack=document.createElement('button');ack.type='button';ack.textContent='קראתי';
-    ack.addEventListener('click',()=>{element.hidden=true});element.append(ack);
-    important.set(id,{message,severity:notice.severity,element});region.append(element);
+    ack.addEventListener('click',()=>{removeElement(entry);notice.acknowledge?.()});element.append(ack);
+    important.set(id,entry);region.append(element);
   }
   const clearNotices=()=>{for(const id of important.keys())clearNotice(id)};
   return {toast,clearNotice,clearNotices};
