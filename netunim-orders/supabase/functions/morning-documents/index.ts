@@ -79,7 +79,11 @@ function bankCheckSourceKey(item:any){const bank=digits(item?.bankNumber,20),bra
 function validateTaxId(value:unknown){const digits=String(value||'').replace(/\D/g,'');if(!digits)return'';if(digits.length>9)throw new Error('invalid_tax_id');const padded=digits.padStart(9,'0');let sum=0;for(let i=0;i<9;i++){let product=Number(padded[i])*((i%2)+1);if(product>9)product-=9;sum+=product}if(sum%10!==0)throw new Error('invalid_tax_id');return padded}
 function bearerClient(token:string){return createClient(SUPABASE_URL,PUBLISHABLE_KEY,{auth:{persistSession:false,autoRefreshToken:false},global:{headers:{Authorization:`Bearer ${token}`}}})}
 function bearerToken(req:Request){return (req.headers.get('Authorization')||'').match(/^Bearer\s+(.+)$/i)?.[1]||''}
-async function requireUser(req:Request){const token=bearerToken(req);return token?getMfaAssuredUser(bearerClient(token).auth,admin.auth.admin,token):null}
+async function requireUser(req:Request){
+  const token=bearerToken(req);if(!token)return null;
+  const client=bearerClient(token);
+  return getMfaAssuredUser(client.auth,admin.auth.admin,token);
+}
 async function sha256(value:string){const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return Array.from(new Uint8Array(digest),item=>item.toString(16).padStart(2,'0')).join('')}
 
 class MorningHttpError extends Error{status:number;payload:any;ambiguous:boolean;constructor(message:string,status=0,payload:any=null,ambiguous=false){super(message);this.status=status;this.payload=payload;this.ambiguous=ambiguous}}
