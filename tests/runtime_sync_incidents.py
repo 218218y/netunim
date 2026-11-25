@@ -169,6 +169,47 @@ def check_visibility_and_settings(browser, app):
     })()""".replace('__SELECTOR__', json.dumps(selector)))
 
 
+def check_automatic_financial_recovery(browser, app):
+    browser.call('Page.bringToFront')
+    assert browser.evaluate(r"""(async()=>{
+      const {createSyncIncidentFeature}=await import('./assets/js/shared/sync-incident-feature.js');
+      const app=__APP__,timers=new Map();
+      let now=100,id=0,financialReads=0,registryReads=0;
+      const port={setTimeout(callback,delay){timers.set(++id,{callback,due:now+delay});return id},clearTimeout(id){timers.delete(id)}};
+      const turn=()=>new Promise(resolve=>setTimeout(resolve,0));
+      const until=async condition=>{for(let tries=0;tries<100&&!condition();tries++)await turn()};
+      const advance=async ms=>{
+        now+=ms;
+        for(const [id,timer] of timers)if(timer.due<=now){timers.delete(id);timer.callback()}
+        await turn();
+      };
+      const feature=createSyncIncidentFeature({site:app,accountScope:()=>({owner:'11111111-1111-4111-8111-111111111111',epoch:1}),
+        subscribeAccountScope:()=>()=>{},primary:()=>false,domains:[],
+        morning:{now:()=>now,timers:port,isOnline:()=>true,isVisible:()=>true},
+        request:async path=>{
+          if(path.endsWith('/morning-documents'))return ++financialReads<=2
+            ?new Response('{}',{status:503}):Response.json({ok:true,operations:[]});
+          registryReads++;return Response.json([]);
+        }});
+      const root=document.body.lastElementChild;
+      const check=(condition,message)=>{if(!condition)throw Error('automatic Morning recovery '+app+' '+message)};
+      try{
+        check(root?.classList.contains('sync-incidents')&&root.dataset.inline==='false','fixture did not capture the new floating control');
+        await until(()=>root.hidden&&financialReads===1&&registryReads>0);
+        check(financialReads===1&&registryReads>0&&root.hidden,
+          'startup feed state '+JSON.stringify({financialReads,registryReads,hidden:root.hidden,visibility:document.visibilityState,label:root.querySelector('[role=status]')?.textContent}));
+        const baselineRegistryReads=registryReads;
+        await advance(4000);
+        await until(()=>!root.hidden);
+        check(financialReads===2&&!root.hidden&&root.textContent.includes('לא ניתן לאמת'),'continuing outage is missing');
+        await advance(12000);
+        await until(()=>root.hidden);
+        check(financialReads===3&&root.hidden&&registryReads===baselineRegistryReads,'recovery requires a click or a new incident registry poll');
+        return true;
+      }finally{feature.dispose()}
+    })()""".replace('__APP__',json.dumps(app)))
+
+
 def run():
     registry=Registry()
     with IncidentBrowser('orders',registry) as orders, IncidentBrowser('kupa',registry) as kupa:
@@ -310,6 +351,8 @@ def run():
         })()""")
         check_visibility_and_settings(orders, 'orders')
         check_visibility_and_settings(kupa, 'kupa')
+        check_automatic_financial_recovery(orders, 'orders')
+        check_automatic_financial_recovery(kupa, 'kupa')
         assert not orders.drain_serious_errors()
         assert not kupa.drain_serious_errors()
     print('PASS independent orders/kupa profiles: cross-site warnings, durable reload, native IDB races, domain ACK isolation, UI acknowledgement and closed-sheet detection')

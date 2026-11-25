@@ -19,15 +19,14 @@ export function createSyncIncidentFeature({site,accountScope,subscribeAccountSco
   const ordersRecoveryUrl=site==='kupa'&&['kupa.bargig-furniture.com','bargig-kupa.pages.dev'].includes(globalThis.location?.hostname)
     ?'https://orders.bargig-furniture.com/?morning-recovery=1':'';
   const financial=createMorningOperationCenter({request,accountScope,ordersRecoveryUrl,...morning,publish:()=>publish(monitor.view,true)});
-  const listIncidents=registry.list;
-  registry.list=scope=>{void financial.refresh();return listIncidents(scope)};
   const uiOptions={clientId,label,financial,saveLabel:value=>{localStorage.setItem(labelKey,value.slice(0,80));publish(monitor.view)},
     refresh:()=>Promise.all([monitor.wake(),financial.refresh({force:true})]),review:row=>monitor.review(row),confirmReview};
   ui=createSyncIncidentUi(uiOptions);
   const monitor=createSyncIncidentMonitor({site,clientId,deviceLabel:label,accountScope,primary,domains,store:createSyncIncidentStore(),registry,
     visible:()=>document.visibilityState!=='hidden',publish});
-  const wake=()=>{void monitor.wake()},visibility=()=>{if(document.visibilityState!=='hidden')wake()};
-  const unsubscribe=subscribeAccountScope(()=>{financial.syncScope();void monitor.accountChanged()});
+  const wake=()=>{void financial.wake();void monitor.wake()};
+  const visibility=()=>{if(document.visibilityState==='hidden')void financial.wake();else wake()};
+  const unsubscribe=subscribeAccountScope(()=>{void financial.wake();void monitor.accountChanged()});
   const online=()=>{void financial.refresh({force:true});wake()};
   const offline=()=>{void financial.refresh()};
   globalThis.addEventListener('online',online);globalThis.addEventListener('focus',wake);globalThis.addEventListener('pageshow',wake);
@@ -36,6 +35,7 @@ export function createSyncIncidentFeature({site,accountScope,subscribeAccountSco
   const labelChanged=event=>{if(event.storageArea===localStorage&&(event.key===labelKey||event.key===null)){publish(monitor.view);wake()}};
   globalThis.addEventListener('storage',labelChanged);
   void monitor.start();
+  void financial.start();
   return {open:ui.open,get alerts(){return monitor.view.incidents.map(row=>({id:'sync:'+row.incident_id,kind:'sync_incident',...row,description:syncIncidentDescription(row,clientId)}))},
     mountSettings(container){settingsUi?.dispose();container.replaceChildren();settingsUi=createSyncIncidentUi({...uiOptions,container,inline:true});settingsUi.update(monitor.view)},
     dispose(){unsubscribe();financial.dispose();monitor.stop();ui.dispose();settingsUi?.dispose();globalThis.removeEventListener('storage',labelChanged);globalThis.removeEventListener('online',online);globalThis.removeEventListener('offline',offline);globalThis.removeEventListener('focus',wake);globalThis.removeEventListener('pageshow',wake);document.removeEventListener('visibilitychange',visibility)}};

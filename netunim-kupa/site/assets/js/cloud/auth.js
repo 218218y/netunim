@@ -69,16 +69,16 @@ async function withSupaDataApiSlot(path,request,{priority='low',coalesceKey='',s
   return scheduled.then(response=>typeof response?.clone==='function'?response.clone():response);
 }
 
-function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
+function sleep(ms,signal){return new Promise((resolve,reject)=>{const abort=()=>{clearTimeout(timer);reject(signal.reason)},timer=setTimeout(()=>{signal?.removeEventListener('abort',abort);resolve()},ms);signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort()})}
 function isSupaNetworkError(error){const name=String(error?.name||''),message=String(error?.message||error||'').toLowerCase();return name==='AbortError'||name==='TypeError'||message.includes('failed to fetch')||message.includes('networkerror')||message.includes('load failed')}
 function supaNetworkFailure(error,{attempts=1}={}){const timedOut=String(error?.name||'')==='AbortError',repeated=attempts>1,e=new Error(timedOut?(repeated?'החיבור ל-Supabase לא הגיב בזמן גם לאחר ניסיונות חוזרים.':'החיבור ל-Supabase לא הגיב בזמן.'):(repeated?'לא ניתן להגיע כרגע ל-Supabase גם לאחר ניסיונות חוזרים.':'לא ניתן להגיע כרגע ל-Supabase.'));e.code=timedOut?'SUPABASE_NETWORK_TIMEOUT':'SUPABASE_NETWORK_UNAVAILABLE';e.cause=error;return e}
 async function fetchSupaNetwork(url,options,{retry=false,timeoutMs=SUPA_NETWORK_TIMEOUT_MS,assertRequestScope,withRequestScope}={}){
   const attempts=retry?SUPA_NETWORK_ATTEMPTS:1;let lastError=null;
   for(let attempt=0;attempt<attempts;attempt++){
-    assertRequestScope?.();
+    options.signal?.throwIfAborted();assertRequestScope?.();
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),Math.max(1000,Number(timeoutMs)||SUPA_NETWORK_TIMEOUT_MS));
-    try{const send=()=>{assertRequestScope?.();return fetch(url,{...options,signal:controller.signal})};return await (withRequestScope?withRequestScope(send):send())}
-    catch(error){lastError=error;if(!isSupaNetworkError(error))throw error;if(attempt+1>=attempts)throw supaNetworkFailure(error,{attempts});await sleep(SUPA_NETWORK_BACKOFF_MS[Math.min(attempt,SUPA_NETWORK_BACKOFF_MS.length-1)])}
+    try{const send=()=>{assertRequestScope?.();return fetch(url,{...options,signal:options.signal?AbortSignal.any([controller.signal,options.signal]):controller.signal})};return await (withRequestScope?withRequestScope(send):send())}
+    catch(error){options.signal?.throwIfAborted();lastError=error;if(!isSupaNetworkError(error))throw error;if(attempt+1>=attempts)throw supaNetworkFailure(error,{attempts});await sleep(SUPA_NETWORK_BACKOFF_MS[Math.min(attempt,SUPA_NETWORK_BACKOFF_MS.length-1)],options.signal)}
     finally{clearTimeout(timer)}
   }
   throw supaNetworkFailure(lastError,{attempts});
@@ -163,7 +163,7 @@ async function supaRefresh({force=true,observedAccessToken=''}={}){
     // Capture before waiting for the browser lock, which may outlive this login.
     accountScope.assertCurrent(scope);
     const s=loadSupaSession();
-    if(!s?.refresh_token)throw new Error('נדרשת התחברות מחדש לענן');
+    if(!s?.refresh_token)throw Object.assign(new Error('נדרשת התחברות מחדש לענן'),{code:'cloud_auth_required'});
     assertSessionOwner(s);
     if(s.refresh_token!==observedRefreshToken)return s;
     if(observedAccessToken&&s.access_token&&s.access_token!==observedAccessToken)return s;
@@ -195,7 +195,7 @@ async function supaRefresh({force=true,observedAccessToken=''}={}){
   return flight.promise;
 }
 
-async function supaEnsureSession(){let s=loadSupaSession();if(!s)throw new Error('נדרשת התחברות לענן');assertSessionOwner(s);if(Number(s.expires_at||0)<=Math.floor(Date.now()/1000)+60)s=await supaRefresh({force:false,observedAccessToken:s.access_token});return s}
+async function supaEnsureSession(){let s=loadSupaSession();if(!s)throw Object.assign(new Error('נדרשת התחברות לענן'),{code:'cloud_auth_required'});assertSessionOwner(s);if(Number(s.expires_at||0)<=Math.floor(Date.now()/1000)+60)s=await supaRefresh({force:false,observedAccessToken:s.access_token});return s}
 
 async function supaRest(path,options={}){
   // Capture the caller's login before any asynchronous capability/session work.

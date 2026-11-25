@@ -7,13 +7,20 @@ const pending={operation_id:id,stage:'check_registration',document_number:'3972'
   amount:9300,check_amount:9300,check_count:10,attempts:64,error_code:'mfa_required',resolved_at:null};
 const reply=(body,status=200)=>Response.json(body,{status});
 
+function pollClock(t){
+  t.mock.timers.enable({apis:['setTimeout','Date'],now:100});
+  return async ms=>{t.mock.timers.tick(ms);await new Promise(resolve=>setImmediate(resolve))};
+}
+
 test('empty, first-read failures and auth failure have distinct cloud evidence',async()=>{
   let mode='fail',now=1;
   const center=createMorningOperationCenter({accountScope:()=>({owner:'owner',epoch:1}),publish(){},now:()=>now,
     request:async()=>mode==='fail'?reply({},500):mode==='auth'?reply({},401):reply({ok:true,operations:[]})});
-  await center.refresh();assert.equal(center.availability,'unavailable');assert.ok(center.cloudStatusLabel);
+  await center.refresh();assert.equal(center.availability,'unavailable');assert.equal(center.cloudStatusLabel,'');
+  assert.match(center.markup(String),/לא ניתן לאמת/);
   mode='empty';await center.refresh({force:true});assert.equal(center.availability,'fresh');assert.equal(center.cloudStatusLabel,'');
-  mode='fail';now+=46000;await center.refresh();assert.equal(center.availability,'stale');assert.ok(center.cloudStatusLabel);assert.equal(center.count,0);
+  mode='fail';now+=46000;await center.refresh();assert.equal(center.availability,'stale');assert.equal(center.cloudStatusLabel,'');
+  now+=4000;await center.refresh();assert.ok(center.cloudStatusLabel);assert.equal(center.count,0);
   mode='auth';await center.refresh({force:true});assert.equal(center.availability,'auth');assert.match(center.cloudStatusLabel,/אימות/);
 });
 
@@ -109,8 +116,63 @@ test('the response from a previous account cannot repopulate the center',async()
   const center=createMorningOperationCenter({accountScope:()=>scope,publish(){},request:()=>
     scope.owner==='first'?new Promise(resolve=>{release=resolve}):Promise.resolve(reply({ok:true,operations:[]}))});
   const read=center.refresh();
+  await Promise.resolve();
   scope={owner:'second',epoch:2};
   await center.refresh();
   release(reply({ok:true,operations:[pending]}));await read;
   assert.equal(center.count,0);assert.doesNotMatch(center.markup(String),/3972/);
+});
+
+test('the automatic check recovers after a transient startup failure without Search',async t=>{
+  const advance=pollClock(t);let reads=0;
+  const center=createMorningOperationCenter({accountScope:()=>({owner:'owner',epoch:1}),publish(){},
+    request:async()=>++reads===1?reply({},503):reply({ok:true,operations:[]})});
+  t.after(()=>center.dispose());
+  await center.start();assert.equal(center.availability,'unavailable');assert.equal(center.cloudStatusLabel,'');
+  await advance(3999);assert.equal(reads,1);
+  await advance(1);assert.equal(reads,2);assert.equal(center.availability,'fresh');assert.equal(center.cloudStatusLabel,'');
+  await advance(44999);assert.equal(reads,2);
+  await advance(1);assert.equal(reads,3);
+});
+
+test('persistent failures appear and clear automatically, with no foreground request burst',async t=>{
+  const advance=pollClock(t);let reads=0,visible=true;
+  const center=createMorningOperationCenter({accountScope:()=>({owner:'owner',epoch:1}),isVisible:()=>visible,publish(){},
+    request:async()=>++reads<=2?reply({},503):reply({ok:true,operations:[]})});
+  t.after(()=>center.dispose());
+  await center.start();await advance(4000);
+  assert.equal(reads,2);assert.match(center.cloudStatusLabel,/לא ניתן לאמת/);
+  visible=false;await center.wake();await advance(60_000);assert.equal(reads,2);
+  visible=true;await Promise.all([center.wake(),center.wake(),center.search('active','')]);
+  assert.equal(reads,3);assert.equal(center.cloudStatusLabel,'');
+});
+
+test('an expired response body frees the read, and a late response cannot replace the recovered list',async t=>{
+  const advance=pollClock(t);let firstSignal,releaseBody,reads=0;
+  const center=createMorningOperationCenter({accountScope:()=>({owner:'owner',epoch:1}),publish(){},
+    request:async(_path,{signal})=>{
+      if(++reads>1)return reply({ok:true,operations:[]});
+      firstSignal=signal;
+      return {ok:true,status:200,json:()=>new Promise(resolve=>{releaseBody=resolve})};
+    }});
+  t.after(()=>center.dispose());
+  const first=center.start();await advance(0);assert.equal(typeof releaseBody,'function');
+  await advance(12000);assert.equal(await first,false);assert.equal(firstSignal.aborted,true);
+  await advance(4000);assert.equal(center.availability,'fresh');assert.equal(reads,2);
+  releaseBody({ok:true,operations:[pending]});await advance(0);
+  assert.equal(center.count,0);assert.equal(center.cloudStatusLabel,'');
+});
+
+test('manual refresh and filters respect a rate limit and reconnect with the same lifecycle',async t=>{
+  const advance=pollClock(t);let reads=0,online=true;
+  const center=createMorningOperationCenter({accountScope:()=>({owner:'owner',epoch:1}),isOnline:()=>online,publish(){},
+    request:async()=>++reads===1?Response.json({}, {status:429,headers:{'Retry-After':'15'}}):reply({ok:true,operations:[]})});
+  t.after(()=>center.dispose());
+  await center.start();await center.refresh({force:true});await center.search('attention','');
+  assert.equal(reads,1);
+  await advance(14999);assert.equal(reads,1);
+  await advance(1);assert.equal(reads,2);assert.equal(center.availability,'fresh');
+  online=false;await center.refresh();await advance(60_000);
+  assert.equal(reads,2);assert.equal(center.availability,'offline');
+  online=true;await center.wake();assert.equal(reads,3);assert.equal(center.cloudStatusLabel,'');
 });

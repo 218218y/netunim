@@ -19,3 +19,25 @@ for(const app of ['kupa','orders'])test(`${app} bounded network retry revalidate
   const retry=[...timers.values()].sort((a,b)=>a.delay-b.delay)[0];retry.callback();
   await assert.rejects(pending,{code:'FINANCE_OPERATION_SCOPE_CHANGED'});assert.equal(calls,1);assert.equal(timers.size,1);
 });
+
+for(const app of ['kupa','orders'])test(`${app} Edge reads honor the caller's cancellation during body delivery`,async t=>{
+  const original=Object.getOwnPropertyDescriptor(globalThis,'localStorage'),values=new Map();
+  Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,String(value)),removeItem:key=>values.delete(key)}});
+  t.after(()=>{if(original)Object.defineProperty(globalThis,'localStorage',original);else delete globalThis.localStorage});
+  const auth=app==='orders'?ordersAuth({}):kupaAuth({session:{},idbGet:async()=>null,idbPut:async()=>{},idbDelete:async()=>{},setCloudHeaderStatus:()=>{}});
+  const store=app==='orders'?auth.saveSession:auth.storeSupaSession,request=app==='orders'?auth.supaFetch:auth.supaRest;
+  store({user:{id:'A'},access_token:'fixture-A',expires_at:9999999999});
+  let networkSignal,calls=0;
+  t.mock.method(globalThis,'fetch',async(_url,{signal})=>{
+    calls++;networkSignal=signal;
+    const body=new ReadableStream({start(stream){signal.addEventListener('abort',()=>stream.error(signal.reason),{once:true})}});
+    return new Response(body);
+  });
+  const controller=new AbortController(),options={method:'POST',networkRetry:false,signal:controller.signal};
+  const response=await request('/functions/v1/fixture-operation',options);
+  const pending=assert.rejects(response.json(),{name:'AbortError'});
+  controller.abort();await pending;
+  assert.equal(networkSignal.aborted,true);
+  await assert.rejects(request('/functions/v1/fixture-operation',options),{name:'AbortError'});
+  assert.equal(calls,1);
+});

@@ -1,4 +1,7 @@
 const PATH='/functions/v1/morning-documents';
+const REFRESH_INTERVAL=45_000;
+const RETRY_DELAYS=[4_000,12_000,30_000,60_000];
+const LIST_DEADLINE=12_000;
 const STAGES={
   verification:['המסמך ממתין לאימות','בדיקת המצב תברר אם המסמך כבר הופק.'],
   payment_evidence:['חסר אימות תקבולים','רישום הצ׳קים יוכל להמשיך לאחר שמורנינג תחזיר את פירוט התקבולים.'],
@@ -38,6 +41,14 @@ const RESULT_MESSAGES={created:'ההתאוששות הושלמה.',already_regist
   'scope-changed':'הרשאת ההתאוששות השתנתה. יש לבדוק מחדש מהחשבון הפעיל.',
   unavailable:'מצב הפעולה אינו זמין כרגע. אפשר לבדוק שוב לאחר שהחיבור חוזר.',auth:CLOUD_STATUS.auth};
 const dateLabel=value=>value!=null&&Number.isFinite(new Date(value).getTime())?dateFormat.format(new Date(value)):'';
+
+function retryAfter(response,now){
+  if(response.status!==429&&response.status!==503)return 0;
+  const value=response.headers?.get?.('Retry-After');
+  if(!value)return 0;
+  const seconds=Number(value);
+  return Number.isFinite(seconds)?Math.max(0,seconds*1000):Math.max(0,(Date.parse(value)||0)-now);
+}
 
 function decodeOperations(value){
   if(!Array.isArray(value)||value.length>71)throw new Error('morning_recovery_list_invalid');
@@ -90,13 +101,21 @@ function serverOutcome(status){
   return status.check_retry||{state:status.operation?.state||'unavailable'};
 }
 
-export function createMorningOperationCenter({request,accountScope,publish,recoverLocal,debtAction,ordersRecoveryUrl='',now=Date.now,isOnline=()=>globalThis.navigator?.onLine!==false}){
+export function createMorningOperationCenter({request,accountScope,publish,recoverLocal,debtAction,ordersRecoveryUrl='',
+  now=Date.now,isOnline=()=>globalThis.navigator?.onLine!==false,isVisible=()=>globalThis.document?.visibilityState!=='hidden',timers=globalThis}){
   let observed=null,operations=[],background,availability='idle',lastSuccess=null,nextRead=0,flight=null,closed=false;
-  let filter='active',query='',page={rows:[],next:null},activeNext=null,pageStack=[null],viewSequence=0,activeSequence=0,viewLoading=false,viewError=false;
+  let filter='active',query='',page={rows:[],next:null},activeNext=null,pageStack=[null],viewSequence=0,viewRead=null,viewLoading=false,viewError=false;
+  let polling=false,timer=null,failures=0,serverRetryAt=0;
   const acknowledged=new Set(),recovering=new Map(),results=new Map();
+  function clearTimer(){if(timer!==null)timers.clearTimeout(timer);timer=null}
+  function cancelReads(){
+    const current=flight;flight=null;current?.controller.abort();
+    viewRead?.abort();viewRead=null;
+  }
   function syncScope(){
     const scope=accountScope();
     if(!sameAccount(scope,observed)){
+      clearTimer();cancelReads();failures=0;serverRetryAt=0;
       observed=scope;operations=[];background=undefined;availability=scope.owner?'idle':'signed_out';lastSuccess=null;nextRead=0;
       filter='active';query='';page={rows:[],next:null};activeNext=null;pageStack=[null];viewSequence++;viewLoading=false;viewError=false;
       acknowledged.clear();recovering.clear();results.clear();publish();
@@ -104,54 +123,92 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
     return scope;
   }
   function assertScope(scope){if(closed||!scope.owner||!sameAccount(accountScope(),scope))throw new Error('morning_recovery_account_changed')}
-  async function call(action,body,scope,priority='low'){
-    const assertRequestScope=()=>assertScope(scope);
+  async function call(action,body,scope,priority='low',signal){
+    const assertRequestScope=()=>{assertScope(scope);signal?.throwIfAborted()};
     assertRequestScope();
-    const response=await request(PATH,{method:'POST',body:JSON.stringify({action,...body}),dataPriority:priority,networkRetry:false,assertRequestScope});
+    const response=await request(PATH,{method:'POST',body:JSON.stringify({action,...body}),dataPriority:priority,networkRetry:false,assertRequestScope,...(signal?{signal}:{})});
     assertRequestScope();
     if(response.status===401)throw Object.assign(new Error('morning_cloud_auth_required'),{code:'morning_cloud_auth_required'});
+    if(!response.ok)throw Object.assign(new Error('morning_recovery_request_failed'),{retryAfterMs:retryAfter(response,now())});
     const value=await response.json();assertRequestScope();
-    if(!response.ok||value?.ok!==true)throw new Error('morning_recovery_request_failed');
+    if(value?.ok!==true)throw new Error('morning_recovery_request_failed');
     return value;
   }
-  async function readPage(scope,filter,query,after){
+  async function readPage(scope,filter,query,after,controller){
+    const signal=controller.signal;signal.throwIfAborted();
+    if(now()<serverRetryAt)throw new Error('morning_recovery_rate_limited');
+    let cancelled;
+    const cancellation=new Promise((_,reject)=>{
+      cancelled=()=>reject(signal.reason);
+      signal.addEventListener('abort',cancelled,{once:true});
+    });
+    const deadline=timers.setTimeout(()=>controller.abort(new DOMException('morning_recovery_list_timeout','TimeoutError')),LIST_DEADLINE);
     const ops={page:true,debt_recovery:true,filter,query,after};
-    const reply=await call('list_recovery',filter==='active'&&!query&&!after?{...ops,background_health:true}:ops,scope);
+    let reply;
+    try{
+      const body=filter==='active'&&!query&&!after?{...ops,background_health:true}:ops;
+      reply=await Promise.race([call('list_recovery',body,scope,'low',signal),cancellation]);
+    }catch(error){
+      if(!closed&&sameAccount(accountScope(),scope)&&error?.retryAfterMs>0){
+        serverRetryAt=Math.max(serverRetryAt,now()+error.retryAfterMs);
+        nextRead=Math.max(nextRead,serverRetryAt);schedule();
+      }
+      throw error;
+    }finally{timers.clearTimeout(deadline);signal.removeEventListener('abort',cancelled)}
     const rows=decodeOperations(reply.operations),next=reply.next??null;
     if(next!==null&&(![0,1,2].includes(next.priority)||!dateLabel(next.sort_at)||next.operation_id!==rows.at(-1)?.operation_id))throw new Error('morning_recovery_page_invalid');
     return {rows,next,background:decodeBackground(reply.background_health)};
   }
   const onFirstActivePage=()=>filter==='active'&&query===''&&pageStack.length===1;
+  function schedule(){
+    clearTimer();
+    if(!polling||closed||flight||!observed?.owner||!isVisible()||!isOnline())return;
+    const wait=Math.min(2_147_000_000,Math.max(0,nextRead-now()));
+    timer=timers.setTimeout(()=>{timer=null;void wake()},wait);
+  }
+  function wake(){
+    syncScope();
+    if(!isVisible()){clearTimer();return Promise.resolve(false)}
+    return refresh();
+  }
   function refresh({force=false}={}){
     const scope=syncScope();
-    if(closed||!scope.owner)return Promise.resolve();
+    if(closed||!scope.owner)return Promise.resolve(false);
     if(!isOnline()){
+      clearTimer();cancelReads();
       if(availability!=='offline'){availability='offline';publish()}
-      return Promise.resolve();
+      return Promise.resolve(false);
     }
     if(flight&&sameAccount(scope,flight.scope))return flight.promise;
-    if(!force&&now()<nextRead)return Promise.resolve();
-    nextRead=now()+45_000;
-    const job={scope,promise:null},sequence=++activeSequence;
+    if(now()<serverRetryAt||(!force&&availability!=='offline'&&now()<nextRead)){schedule();return Promise.resolve(false)}
+    clearTimer();
+    const job={scope,controller:new AbortController(),promise:null};
     flight=job;
-    job.promise=(async()=>{
+    job.promise=Promise.resolve().then(async()=>{
       try{
-        const current=await readPage(scope,'active','',null);assertScope(scope);
-        if(sequence!==activeSequence)return;
+        const current=await readPage(scope,'active','',null,job.controller);assertScope(scope);
+        if(flight!==job)return false;
         if(!isOnline())throw new Error('morning_recovery_offline');
         operations=current.rows;activeNext=current.next;background=current.background;availability='fresh';lastSuccess=now();
+        failures=0;nextRead=Math.max(serverRetryAt,lastSuccess+REFRESH_INTERVAL);
         if(!activeNext&&operations.length<=50){
           const keys=new Set(operations.filter(row=>!row.resolved_at).map(ackKey));
           for(const key of acknowledged)if(!keys.has(key))acknowledged.delete(key);
         }
+        return true;
       }catch(error){
-        if(closed||sequence!==activeSequence||!sameAccount(accountScope(),scope))return;
-        availability=error?.code==='morning_cloud_auth_required'?'auth':!isOnline()?'offline':lastSuccess!==null?'stale':'unavailable';
-        nextRead=now()+90_000;
+        if(closed||flight!==job||!sameAccount(accountScope(),scope))return false;
+        const auth=['cloud_auth_required','morning_cloud_auth_required'].includes(error?.code);
+        availability=auth?'auth':!isOnline()?'offline':lastSuccess!==null?'stale':'unavailable';
+        const delay=RETRY_DELAYS[failures];
+        failures=Math.min(failures+1,RETRY_DELAYS.length-1);
+        const currentTime=now();
+        nextRead=Math.max(serverRetryAt,currentTime+(auth?REFRESH_INTERVAL:delay));
+        return false;
       }finally{
-        if(flight===job){flight=null;publish()}
+        if(flight===job){flight=null;schedule();publish()}
       }
-    })();
+    });
     return job.promise;
   }
   const active=()=>operations.filter(row=>!row.resolved_at);
@@ -162,16 +219,19 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
 
   async function view(nextFilter,nextQuery,stack){
     const scope=syncScope(),sequence=++viewSequence;
-    const activeRead=nextFilter==='active'&&nextQuery===''&&stack.length===1?++activeSequence:null;
-    assertScope(scope);viewLoading=true;viewError=false;publish();
+    const firstActive=nextFilter==='active'&&nextQuery===''&&stack.length===1;
+    assertScope(scope);viewRead?.abort();
+    const controller=firstActive?null:new AbortController();viewRead=controller;
+    viewLoading=true;viewError=false;publish();
     try{
-      const response=await readPage(scope,nextFilter,nextQuery,stack.at(-1));assertScope(scope);
+      const response=controller?await readPage(scope,nextFilter,nextQuery,stack.at(-1),controller):null;
+      if(firstActive&&!await refresh({force:true}))throw new Error('morning_recovery_refresh_unconfirmed');
+      assertScope(scope);
       if(sequence!==viewSequence)return;
-      filter=nextFilter;query=nextQuery;pageStack=stack;page=response;
-      if(activeRead===activeSequence){operations=page.rows;activeNext=page.next;background=page.background;availability='fresh';lastSuccess=now();nextRead=now()+45_000}
+      filter=nextFilter;query=nextQuery;pageStack=stack;if(response)page=response;
     }catch{
       if(sequence===viewSequence)viewError=true;
-    }finally{if(sequence===viewSequence){viewLoading=false;publish()}}
+    }finally{if(sequence===viewSequence){viewRead=null;viewLoading=false;publish()}}
   }
   const search=(mode,term)=>view(Object.hasOwn(FILTERS,mode)?mode:'active',String(term||'').trim().slice(0,80),[null]);
 
@@ -277,9 +337,13 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
       ${[...results].filter(([id])=>!rows.some(row=>row.operation_id===id)).slice(-1).map(([,message])=>`<p role="status">${escape(message)}</p>`).join('')}
     </section>`;
   }
-  return {refresh,action,search,markup,syncScope,dispose:()=>{closed=true},get availability(){return availability},
-    get cloudStatusLabel(){return observed?.owner?CLOUD_STATUS[availability]||(background===null?'לא ניתן לאמת את תהליכי הרקע הפיננסיים.':
-      background?.some(jobNeedsAttention)?'תהליך רקע פיננסי דורש בדיקה.':''):''},
+  return {start(){polling=true;return wake()},wake,refresh,action,search,markup,
+    dispose(){closed=true;clearTimer();cancelReads();viewSequence++},get availability(){return availability},
+    get cloudStatusLabel(){
+      if(!observed?.owner)return '';
+      if(availability==='auth'||availability==='offline'||failures>=2)return CLOUD_STATUS[availability]||'';
+      return background===null?'לא ניתן לאמת את תהליכי הרקע הפיננסיים.':background?.some(jobNeedsAttention)?'תהליך רקע פיננסי דורש בדיקה.':'';
+    },
     get count(){return active().length},get more(){return !!activeNext||active().length>50},get urgent(){return urgent()},
     get unread(){return active().filter(row=>!acknowledged.has(ackKey(row))).length}};
 }
