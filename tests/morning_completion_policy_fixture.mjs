@@ -241,6 +241,7 @@ export function originalMorningCompletionPolicy(source,name){
    .replace("data.checks_registration_pending?'המסמך הופק ואומת. רישום הצ׳קים למעקב ממתין להשלמה אוטומטית; אין להפיק את המסמך שוב.':",'');
  const kind=name==='createMorningDocument'?'issue':'decision',node=declaration(source,name);
  let actual=tokens(source.slice(node.start,node.end));
+ if(name==='showRecoveryDecision')actual=actual.replace(',revision:context.decisionRevision','');
  if(name==='confirmRecoveryChoice')actual=actual.replace(',decisionRevision=decisionView?.revision','')
    .replace('if(decisionRevision!==undefined){await confirmSharedRecoveryChoice(chosen,decisionRevision,assertCurrent,generation);return}','');
  if(kind==='issue')for(const state of ['createBusy','blocked','completed'])actual=actual.replaceAll('session.read().'+state,state);

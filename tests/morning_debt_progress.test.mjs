@@ -88,7 +88,7 @@ test('invoice-receipt can update invoice while deliberately not re-recording an 
 test('Morning debt recovery awaits the journal, retries a failed commit, and accepts an authoritative replay',async()=>{
  const row=debt(),model={state:{customerDebts:[row]}},saves=[],renders=[],persistResults=[false,true];
  const editor=createDomainsCustomersEditor({model,customerUi:{},modal:()=>{},toast:()=>{},commitSave:async(message,meta)=>{saves.push({message,meta});return persistResults.shift()},closeModal:()=>{},renderCustomers:()=>renders.push(true),confirmDialog:async()=>true});
- const input={debtId:row.id,operationId:op(9),type:400,amount:250,verifiedAt:'2026-09-09T14:00:00.000Z'};
+ const input={debtId:row.id,operationId:op(9),documentId:'morning-doc-9',type:400,amount:250,verifiedAt:'2026-09-09T14:00:00.000Z'};
  const first=await editor.applyVerifiedMorningDocument(input);assert.equal(first.changed,true);assert.equal(first.persisted,false);assert.equal(saves.length,1);assert.equal(renders.length,1);assert.equal(saves[0].meta.surface,'orders.morning.customerDebt');
  const replay=await editor.applyVerifiedMorningDocument(input);assert.equal(replay.changed,false);assert.equal(replay.reason,'already-applied');assert.equal(replay.persisted,true);assert.equal(saves.length,2);assert.equal(renders.length,1);assert.equal(saves[1].message,'');
  model.state.customerDebts=[structuredClone(row)];

@@ -122,10 +122,12 @@ function publishedMorningEntries(base,local,remote){
   for(const link of remote?.morningDocuments||[]){
     const competing=localLinks.get(link.operationId);
     if(!prior.has(link.operationId)&&link.documentId&&link.documentId===competing?.documentId&&link.documentType===competing.documentType){
-      for(const kind of ['payment','invoice']){
-        const id='MORNING:'+link.operationId+':'+kind,entry=actualEntries.get(id);
-        if(entry?.source==='morning'&&entry.kind===kind&&entry.action==='add')remoteEntries.add(id);
-      }
+      const kinds=['payment','invoice'],prefix='MORNING:'+link.operationId+':';
+      const published=kinds.some(kind=>{
+        const entry=actualEntries.get(prefix+kind);
+        return entry?.source==='morning'&&entry.kind===kind&&(entry.action??'add')==='add';
+      });
+      if(published)for(const kind of kinds)remoteEntries.add(prefix+kind);
     }
   }
   return remoteEntries;

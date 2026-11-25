@@ -327,20 +327,24 @@ def run(db):
         return scalar("select stage||':'||debt_state from public.list_morning_recovery_operations_v3("
                       +quote(OWNER)+",'sandbox',"+quote(mode)+','+quote(debt_op)+',null,null,null)')
     assert debt_list('active')=='debt_update:pending'
-    def save_orders_link(doc_id,operation_key):
+    def save_orders_link(doc_id,operation_key,document_type=305):
         orders_state=json.loads(scalar("select state from public.order_management_documents where owner_id="+quote(OWNER)+" and document_name='suppliers'"))
         orders_revision=scalar("select revision from public.order_management_documents where owner_id="+quote(OWNER)+" and document_name='suppliers'")
         orders_state['customerDebts']=[{'id':debt_id,'amount':42,'morningDocuments':[
-            {'operationId':debt_op,'documentId':doc_id,'documentType':305,'documentNumber':'','verifiedAt':'2026-11-24T00:00:00Z'}]}]
+            {'operationId':debt_op,'documentId':doc_id,'documentType':document_type,'documentNumber':'','verifiedAt':'2026-11-24T00:00:00Z'}]}]
         return db.auth_sql('set local request.jwt.claims='+claims+";select revision from public.save_order_management_document_v6('suppliers',"
                            +orders_revision+','+quote(json.dumps(orders_state))+'::jsonb,'+quote(operation_key)+",'{}','{}')").strip()
-    save_orders_link('wrong-document','shared-morning-debt-nonreceipt')
-    assert debt_list('active')=='debt_update:pending'
-    save_orders_link('shared-debt-doc','shared-morning-debt-link-only')
-    assert debt_list('active')=='debt_update:pending'
     recover=lambda operation,revision=0,review=None,environment='sandbox': json.loads(db.auth_sql(
         'set local request.jwt.claims='+claims+";select public.resolve_morning_orders_debt_recovery_v1("
         +quote(environment)+','+quote(operation)+','+str(revision)+','+(quote(json.dumps(review))+'::jsonb' if review else 'null')+')'))
+    assert recover(debt_op)['state']=='missing_debt'
+    save_orders_link('wrong-document','shared-morning-debt-nonreceipt')
+    assert debt_list('active')=='debt_update:pending'
+    save_orders_link('shared-debt-doc','shared-morning-debt-wrong-type',320)
+    assert debt_list('active')=='debt_update:pending'
+    assert recover(debt_op)['state']=='conflicting_document'
+    save_orders_link('shared-debt-doc','shared-morning-debt-link-only')
+    assert debt_list('active')=='debt_update:pending'
     assert recover(debt_op,environment='production')['state']=='unavailable'
     assert recover(debt_op)['state']=='complete'
     receipt=scalar("select revision from public.order_management_documents where owner_id="+quote(OWNER)+" and document_name='suppliers'")
@@ -357,6 +361,9 @@ def run(db):
     print('PASS cheque upgrade: stored evidence replay, cents, V2 scope, no-op revisions, verified-only import, atomic failure, durable retry and payment-index idempotency')
 
 def check_morning_debt_decisions(db, scalar, recover, claims):
+    assert scalar("select netunim_internal.morning_debt_money('1.005')=1 and netunim_internal.morning_debt_money('0.005')=0.01 "
+                  "and netunim_internal.morning_debt_money('-1.005')=-1 "
+                  "and netunim_internal.morning_debt_money('999999999999.99')=999999999999.99")=='t'
     debt_id='morning-two-distinct-operations'
     first='00000000-0000-4000-8000-000000000991'
     second='00000000-0000-4000-8000-000000000992'

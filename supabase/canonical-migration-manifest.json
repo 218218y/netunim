@@ -378,5 +378,10 @@
     "version": "20261125100000",
     "name": "orders_morning_business_receipts",
     "sha256": "5104fb29fd91bd17e3e746dee43aa5f50bd281ec1e394645cbf3c919094f7fbc"
+  },
+  {
+    "version": "20261125101000",
+    "name": "orders_morning_snapshot_precision",
+    "sha256": "aa20d2751700dcec908f998583f5301874863d473a0906d56a42d686378b8f2f"
   }
 ]
