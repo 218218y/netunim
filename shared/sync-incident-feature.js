@@ -16,7 +16,9 @@ export function createSyncIncidentFeature({site,accountScope,subscribeAccountSco
   const label=()=>{try{return (localStorage.getItem(labelKey)||'').slice(0,80)}catch{return ''}};
   const registry=createSyncIncidentRegistry({request,accountScope});
   const publish=(state,force=false)=>{ui?.update(state,force);settingsUi?.update(state,force);onChange(state)};
-  const financial=createMorningOperationCenter({request,accountScope,...morning,publish:()=>publish(monitor.view,true)});
+  const ordersRecoveryUrl=site==='kupa'&&['kupa.bargig-furniture.com','bargig-kupa.pages.dev'].includes(globalThis.location?.hostname)
+    ?'https://orders.bargig-furniture.com/?morning-recovery=1':'';
+  const financial=createMorningOperationCenter({request,accountScope,ordersRecoveryUrl,...morning,publish:()=>publish(monitor.view,true)});
   const listIncidents=registry.list;
   registry.list=scope=>{void financial.refresh();return listIncidents(scope)};
   const uiOptions={clientId,label,financial,saveLabel:value=>{localStorage.setItem(labelKey,value.slice(0,80));publish(monitor.view)},

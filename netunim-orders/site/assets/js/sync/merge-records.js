@@ -114,15 +114,31 @@ function reconcileDebtMetadata(row,...sources){
 }
 
 function comparableProgress(entry){if(entry===undefined)return undefined;const value=clone(entry);delete value.createdAt;return value}
+function publishedMorningEntries(base,local,remote){
+  const prior=new Set((base?.morningDocuments||[]).map(link=>link.operationId));
+  const localLinks=new Map((local?.morningDocuments||[]).map(link=>[link.operationId,link]));
+  const remoteEntries=new Set();
+  for(const link of remote?.morningDocuments||[]){
+    const competing=localLinks.get(link.operationId);
+    if(!prior.has(link.operationId)&&link.documentId&&link.documentId===competing?.documentId&&link.documentType===competing.documentType){
+      remoteEntries.add('MORNING:'+link.operationId+':payment');
+      remoteEntries.add('MORNING:'+link.operationId+':invoice');
+    }
+  }
+  return remoteEntries;
+}
 function mergeDebtProgress(base,local,remote,conflicts,debtId){
   const bm=new Map(progressRows(base).map(x=>[String(x?.id),x])),lm=new Map(progressRows(local).map(x=>[String(x?.id),x])),rm=new Map(progressRows(remote).map(x=>[String(x?.id),x]));
   const keys=new Set([...bm.keys(),...lm.keys(),...rm.keys()]),out=[];
+  const published=publishedMorningEntries(base,local,remote);
   for(const id of keys){
     const b=bm.get(id),l=lm.get(id),r=rm.get(id);
     if(b!==undefined){
       if((l!==undefined&&!eq(comparableProgress(l),comparableProgress(b)))||(r!==undefined&&!eq(comparableProgress(r),comparableProgress(b)))){conflicts.push(`customerDebt:${debtId}`);continue}
       out.push(clone(b));continue;
     }
+    // A competing recovery may deliberately have omitted either allocation.
+    if(published.has(id)){if(r!==undefined)out.push(clone(r));continue}
     if(l!==undefined&&r!==undefined&&!eq(comparableProgress(l),comparableProgress(r))){conflicts.push(`customerDebt:${debtId}`);continue}
     const entry=clone(l!==undefined?l:r);
     if(l!==undefined&&r!==undefined){const createdAt=earliestTimestamp([l.createdAt,r.createdAt]);if(createdAt)entry.createdAt=createdAt;else delete entry.createdAt}

@@ -106,20 +106,35 @@ export function createDomainsCustomers({
   async function drain(){do{await Promise.all([documents.runtime.drain(),documentsBrowser.runtime.drain()])}while(documents.runtime.isPending()||documentsBrowser.runtime.isPending())}
   const runtime={dispose,drain,cancelPending:()=>{documents.runtime.cancelPending();documentsBrowser.runtime.cancelPending()},isPending:()=>documents.runtime.isPending()||documentsBrowser.runtime.isPending()};
   const morningOperationCenter={
-    async recoverLocal(operationId){
-      if(!storagePersistence.canMutate()||loadMorningDebtRecoveryContext()?.operationId!==operationId)return null;
+    async recoverLocal(operationId,row){
+      const local=loadMorningDebtRecoveryContext();
+      if(!storagePersistence.canMutate())return row?.debt_state==='pending'?{state:'write-blocked'}:null;
+      if(local?.operationId!==operationId){
+        if(row?.debt_state!=='pending'||!row.verified_at)return null;
+        if(local)return {state:'other-local-recovery'};
+        const adopted=await documents.adoptSharedDebtRecovery(operationId);
+        if(!adopted)return null;
+      }
       const result=await documents.recoverPendingMorningOperation({expectedOperationId:operationId,retryChecks:true,quiet:false});
       if(result.state==='unavailable')throw result.error;
       if(result.result?.reason==='decision-required')return {state:'decision-required'};
       if(result.status?.check_retry&&['cooldown','busy','failed'].includes(result.status.check_retry.state))return result.status.check_retry;
       if(result.status?.checks_registration_pending)return {state:'verification'};
       if(result.status?.bank_link_pending)return {state:'bank_link'};
+      if(result.state==='created'&&row?.debt_state==='pending')return {state:'debt-sync-pending'};
       return {state:result.state};
     },
     debtAction(row){
       const context=loadMorningDebtRecoveryContext();
       const debt=(model.state.customerDebts||[]).find(item=>(context?.operationId===row.operation_id&&context.debtId===item.id)
         ||item.morningDocuments?.some(link=>link.operationId===row.operation_id));
+      if(row.debt_state==='pending'&&row.verified_at)return async()=>{
+        const active=loadMorningDebtRecoveryContext();
+        if(active&&active.operationId!==row.operation_id){uiStatus.toast('פעולת מורנינג אחרת עדיין ממתינה בעמדה זו.');return}
+        const selected=active||await documents.adoptSharedDebtRecovery(row.operation_id);
+        if(selected?.debtId)await documents.openDebtRecovery(selected);
+        else uiStatus.toast('יש לרענן את מצב הפעולה בענן.');
+      };
       return debt?()=>editor.openDebtProgressDetails(debt.id):null;
     },
   };

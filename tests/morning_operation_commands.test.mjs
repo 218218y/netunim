@@ -13,6 +13,24 @@ test('only an explicit manual check asks to bypass the cheque follow-up cooldown
   assert.equal(requests[0].body.retry_checks,undefined);assert.equal(requests[1].body.retry_checks,true);
 });
 
+test('shared recovery metadata belongs to the reservation and failed storage prevents provider issuance',async()=>{
+  const original={operationId:OP,debtId:'debt-1',applyPayment:true,applyInvoice:false,financialSnapshot:{amount:100,paymentApplied:0,invoiceApplied:0,paymentComplete:false,invoiceComplete:false},clientName:'never store in recovery'};
+  for(const stored of [false,true]){
+    const requests=[];
+    const commands=createMorningOperationCommands({request:{json:async(action,input)=>{
+      requests.push({action,input});
+      if(action==='reserve')return {ok:true,reserved:true,operation:{operation_id:OP,state:'reserved'},orders_debt_recovery_stored:stored};
+      if(action==='abandon_reservation')return {ok:true,abandoned:true,operation:{operation_id:OP,state:'failed'}};
+      return {ok:true,verified:true,document:{id:'official',type:320,amount:42}};
+    }}});
+    const issuer=createMorningIssuance({commands,recovery:{persist(){},reset(){},block(){}}});
+    if(stored)await issuer.issue(payload(),original,guard);else await assert.rejects(issuer.issue(payload(),original,guard),/לא נשמרה בענן/);
+    assert.deepEqual(requests[0].input.orders_debt_recovery,{debtId:original.debtId,financialSnapshot:original.financialSnapshot,applyPayment:true,applyInvoice:false});
+    assert.equal(requests[1].action,stored?'create':'abandon_reservation');
+    assert.equal(requests[1].input.orders_debt_recovery,undefined);
+  }
+});
+
 test('current ledger evidence decodes decimal SQL text and retains historical document identities',()=>{
   const status=decodeMorningOperationStatus({ok:true,configured:true,environment:'sandbox',operation:ledger(),bank_link:{pending:false}},OP);
   assert.equal(status.operation.amount,42);assert.equal(status.operation.document_id,'historical-document');assert.equal(status.operation.document_number,'4001');

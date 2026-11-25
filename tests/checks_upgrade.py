@@ -296,5 +296,36 @@ def run(db):
     # privilege or fake JWT was needed for the background writes.
     claims=quote(json.dumps({'sub':OWNER,'role':'authenticated','aal':'aal2'}))
     assert scalar('begin;set local role authenticated;set local request.jwt.claim.sub='+quote(OWNER)+';set local request.jwt.claims='+claims+";select revision from public.shared_checks_documents where document_name='main';commit;")==revision
+    # A shared debt intent is pending after provider completion. Only the
+    # matching authoritative Orders V2 write consumes it, once.
+    debt_op='00000000-0000-4000-8000-000000000990'
+    debt_id='stage-cross-device-debt'
+    context={'debtId':debt_id,'applyPayment':False,'applyInvoice':True,'financialSnapshot':{
+        'amount':42,'paymentApplied':0,'invoiceApplied':0,'paymentComplete':False,'invoiceComplete':False}}
+    db.sql("insert into public.morning_document_operations(owner_id,environment,operation_id,request_fingerprint,state,document_type,amount,document_date,client_name,description,source_kind,orders_debt_recovery) values("
+           +quote(OWNER)+",'sandbox',"+quote(debt_op)+",'stage-shared-debt','reserved',305,42,current_date,'','', 'debt',"+quote(json.dumps(context))+"::jsonb)")
+    try:
+        db.sql("update public.morning_document_operations set orders_debt_recovery=jsonb_set(orders_debt_recovery,'{applyInvoice}','false') where operation_id="+quote(debt_op))
+        raise AssertionError('The first device choices were mutable before issuance')
+    except RuntimeError as error:
+        assert 'morning_orders_debt_recovery_immutable' in str(error)
+    db.sql("update public.morning_document_operations set state='created',issuance_started_at=now(),verified_at=now(),document_id='shared-debt-doc' where operation_id="+quote(debt_op))
+    def debt_list(mode):
+        return scalar("select stage||':'||debt_state from public.list_morning_recovery_operations_v3("
+                      +quote(OWNER)+",'sandbox',"+quote(mode)+','+quote(debt_op)+',null,null,null)')
+    assert debt_list('active')=='debt_update:pending'
+    def save_orders_link(doc_id,operation_key):
+        orders_state=json.loads(scalar("select state from public.order_management_documents where owner_id="+quote(OWNER)+" and document_name='suppliers'"))
+        orders_revision=scalar("select revision from public.order_management_documents where owner_id="+quote(OWNER)+" and document_name='suppliers'")
+        orders_state['customerDebts']=[{'id':debt_id,'amount':42,'morningDocuments':[{'operationId':debt_op,'documentId':doc_id,'documentType':305}]}]
+        return db.auth_sql('set local request.jwt.claims='+claims+";select revision from public.save_order_management_document_v6('suppliers',"
+                           +orders_revision+','+quote(json.dumps(orders_state))+'::jsonb,'+quote(operation_key)+",'{}','{}')").strip()
+    save_orders_link('wrong-document','shared-morning-debt-nonreceipt')
+    assert debt_list('active')=='debt_update:pending'
+    receipt=save_orders_link('shared-debt-doc','shared-morning-debt-receipt')
+    assert scalar("select orders_debt_recovery_revision from public.morning_document_operations where operation_id="+quote(debt_op))==receipt
+    assert debt_list('active')=='' and debt_list('resolved')=='registered:preserved'
+    save_orders_link('shared-debt-doc','shared-morning-debt-replay')
+    assert scalar("select orders_debt_recovery_revision from public.morning_document_operations where operation_id="+quote(debt_op))==receipt
     print('PASS Morning MFA continuation: fenced server trigger and cron, AAL1 denial, AAL2 access, ten checks and idempotent recovery')
     print('PASS cheque upgrade: stored evidence replay, cents, V2 scope, no-op revisions, verified-only import, atomic failure, durable retry and payment-index idempotency')

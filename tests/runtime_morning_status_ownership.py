@@ -19,7 +19,7 @@ FLOW = r"""(async()=>{
   let phase='allocation',held=gate(),entered=gate();const calls=[];
   cloudAuth.supaFetch=async(_path,options)=>{
     options.assertRequestScope();const input=JSON.parse(options.body);calls.push(input.action);
-    if(input.action==='reserve')return new Response(JSON.stringify({ok:true,reserved:true,operation:{operation_id:input.operation_id,state:'reserved'}}));
+    if(input.action==='reserve')return new Response(JSON.stringify({ok:true,reserved:true,orders_debt_recovery_stored:!!input.orders_debt_recovery,operation:{operation_id:input.operation_id,state:'reserved'}}));
     if(input.action==='create')return new Response(JSON.stringify({ok:true,verified:true,document:{id:'official-issued-document',number:'5001',type:input.document.type,amount:input.document.amount}}));
     check(input.action==='status','status fixture sends only defined operation commands');
     if(phase==='old'||phase==='old-before-create'){entered.resolve();await held.promise;return new Response(JSON.stringify({ok:true,configured:false,available:false,environment:'production',operation:null}))}

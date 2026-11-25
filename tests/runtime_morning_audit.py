@@ -15,7 +15,8 @@ cloudAuth.supaFetch=async(path,options)=>{
  const req=JSON.parse(options.body);window.auditCalls.push(req);
  const s=window.auditServer;let data={ok:true};
  if(req.action==='status')data={ok:true,configured:true,available:true,environment:'sandbox',operation:s.operation||null,unresolved:!!s.operation&&!['created','failed'].includes(s.operation.state),retryable_reserved:s.operation?.state==='reserved'};
- if(req.action==='reserve')data={ok:true,reserved:true,operation:{operation_id:req.operation_id,state:'reserved'}};
+ if(req.action==='orders_debt_recovery')data={ok:true,context:s.operation?.operation_id===req.operation_id?s.recovery:null};
+ if(req.action==='reserve')data={ok:true,reserved:true,orders_debt_recovery_stored:!!req.orders_debt_recovery,operation:{operation_id:req.operation_id,state:'reserved'}};
  if(req.action==='abandon_reservation'){window.auditSetServer({operation:{...s.operation,state:'failed'}});data={ok:true,abandoned:true,operation:window.auditServer.operation}}
  if(req.action==='create'){
   const op={operation_id:req.operation_id,state:s.uncertain?'needs_reconciliation':'created',document_type:req.document.type,amount:req.document.amount,document_id:'00000000-0000-4000-8000-000000000099',document_number:99,verified_at:s.uncertain?null:new Date().toISOString()};
@@ -357,6 +358,61 @@ def two_computers():
             print('PASS Morning two isolated computers with production V2 CAS/rebase:', scenario)
 
 
+def shared_recovery():
+    with BrowserSession(ROOT/'netunim-orders/site', 'morning-originating-device') as origin:
+        seed(origin)
+        evidence=js(origin, r"""
+        const recovery=await import('./assets/js/domains/customers/morning-debt-recovery.js');
+        window.auditSetServer({uncertain:true});await window.auditIssue(320,30);
+        const reservation=window.auditCalls.find(request=>request.action==='reserve');
+        const operation={...window.auditServer.operation,state:'created',verified_at:'2026-11-24T12:00:00Z'};
+        window.auditAssert(reservation.orders_debt_recovery?.applyPayment===true,'origin lost allocation before provider POST');
+        return {operation,context:recovery.loadMorningDebtRecoveryContext(),head:prepareCloudState(state)};
+        """)
+        assert evidence['context']['operationId']==evidence['operation']['operation_id']
+    with BrowserSession(ROOT/'netunim-orders/site','morning-receiving-device') as target:
+        seed(target)
+        js(target, 'window.sharedFixture='+json.dumps(evidence)+';return true;')
+        result=js(target, r"""
+        const {context,operation,head}=window.sharedFixture;
+        const recovery=await import('./assets/js/domains/customers/morning-debt-recovery.js');
+        window.auditAssert(!recovery.loadMorningDebtRecoveryContext(),'receiving profile inherited local recovery');
+        window.auditSetServer({operation,recovery:context});
+        const debt=head.customerDebts.find(row=>row.id==='AUDIT');
+        debt.debtProgress=[{id:'OTHER-DEVICE-PAYMENT',kind:'payment',action:'add',amount:20,source:'manual',createdAt:'2026-11-24T11:00:00Z'}];
+        window.auditCloudHead={revision:5,state:head};
+        const center=domainsCustomers.morningOperationCenter;
+        const row={operation_id:operation.operation_id,debt_state:'pending',verified_at:operation.verified_at};
+        const result=await center.recoverLocal(row.operation_id,row);
+        window.auditAssert(result?.state==='decision-required','changed debt must require a decision: '+JSON.stringify(result));
+        window.auditAssert((await window.auditProgress()).paymentApplied===20,'shared recovery silently changed the debt');
+        const button=document.querySelector('[data-action=morning-recovery-confirm]');
+        window.auditAssert(button&&!document.getElementById('morningRecoveryPayment').checked,'changed payment must remain unselected');
+        button.click();
+        await window.auditWait(()=>!recovery.loadMorningDebtRecoveryContext());
+        await requestCloudSave('');
+        const progress=await window.auditProgress();
+        window.auditAssert(progress.paymentApplied===20&&progress.invoiceApplied===30,'recovery ignored explicit choices');
+        window.auditAssert(window.auditCalls.every(request=>!['reserve','create'].includes(request.action)),'receiving device tried to issue');
+        const retained=window.auditCloudHead.state.customerDebts.find(row=>row.id==='AUDIT');
+        window.auditAssert(retained.morningDocuments.some(link=>link.operationId===row.operation_id),'cloud write lacks the operation receipt');
+        return window.auditCloudHead;
+        """)
+    with BrowserSession(ROOT/'netunim-orders/site','morning-restarted-device') as origin:
+        seed(origin)
+        js(origin, 'window.sharedFixture='+json.dumps(evidence)+';window.auditCloudHead='+json.dumps(result)+';return true;')
+        assert js(origin, r"""
+        const {context,operation}=window.sharedFixture;
+        const recovery=await import('./assets/js/domains/customers/morning-debt-recovery.js');
+        if(!recovery.saveMorningDebtRecoveryContext(context))return false;
+        window.auditSetServer({operation});
+        await recoverPendingMorningOperation();
+        const progress=await window.auditProgress();
+        return !recovery.loadMorningDebtRecoveryContext()&&progress.paymentApplied===20&&progress.invoiceApplied===30;
+        """)
+    print('PASS Morning shared recovery survives the originating device and honors the published decision on restart')
+
+
 def run():
     document_matrix()
     recovery_lock()
@@ -365,6 +421,7 @@ def run():
     ownership()
     remotely_missing_debt()
     two_computers()
+    shared_recovery()
 
 
 if __name__ == '__main__':

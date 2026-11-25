@@ -28,7 +28,7 @@ cloudAuth.supaFetch=async(path,options)=>{
     data={ok:true,version:1,...request,environment:'sandbox',pageSize:50,total:1,pages:1,readAt:new Date().toISOString(),items};
   }
   if(request.action==='status'){data={ok:true,configured:true,available:true,environment:'sandbox',operation:resolveStatus?{...operation,state:'created',verified_at:new Date().toISOString(),document_id:docs[0].id,document_number:100}:operation,unresolved:!!operation&&!resolveStatus};trace.push({status:request.operation_id,reconcile:request.reconcile,resolveStatus,returnedState:data.operation?.state,stack:new Error().stack})}
-  if(request.action==='reserve')data={ok:true,reserved:true,operation:{operation_id:request.operation_id,state:'reserved'}};
+  if(request.action==='reserve')data={ok:true,reserved:true,orders_debt_recovery_stored:!!request.orders_debt_recovery,operation:{operation_id:request.operation_id,state:'reserved'}};
   if(request.action==='abandon_reservation')data={ok:true,abandoned:operation?.state==='reserved',operation:operation?.state==='reserved'?{...operation,state:'failed'}:operation};
   if(request.action==='create'){
     if(uncertain){

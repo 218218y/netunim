@@ -25,6 +25,7 @@
  * policy:{
  *   matches:(context:ApplicationContext,verified:VerifiedDocument)=>boolean,
  *   snapshot:(debt:unknown,operationId:string)=>FinancialSnapshot|null,
+ *   hasVerifiedLink?:(debt:unknown,document:VerifiedDocument)=>boolean,
  *   changes:(before:FinancialSnapshot|undefined,current:FinancialSnapshot)=>{changed:boolean}
  * },
  * feedback:{toast:(text:string)=>void,status:(kind:string,text:string)=>void,decide:(context:ApplicationContext,current:FinancialSnapshot)=>void}
@@ -60,7 +61,9 @@ export function createMorningDebtApplication({lifetime,recovery,debts,policy,fee
     assertCurrent();lifetime.capture()();
     if(debts.isBlocked())return {changed:false,reason:'write-blocked'};
     const stored=recovery.read();if(stored?.operationId!==operationId)return {changed:false,reason:'recovery-changed'};context=stored;
-    const debt=debts.read(context.debtId),current=policy.snapshot(debt,operationId);
+    const debt=debts.read(context.debtId);
+    if(!immediate&&policy.hasVerifiedLink?.(debt,{operationId,documentId,type}))return {changed:false,reason:'already-applied',persisted:true};
+    const current=policy.snapshot(debt,operationId);
     if(!current){feedback.toast('המסמך אומת, אך החוב חסר. נקודת ההתאוששות נשמרה עד לשחזור החוב.');return {changed:false,reason:'missing-debt'}}
     const resolution=context.resolution,reviewed=resolution&&!policy.changes(resolution.financialSnapshot,current).changed;
     let selected=context;

@@ -43,7 +43,7 @@ FLOW = r"""(async()=>{
    options.assertRequestScope?.();const request=JSON.parse(options.body);calls.push(request);
    if(path.includes('/rest/v1/rpc/')){check(request.p_expected_revision===main.revision,'unexpected Main revision');main={revision:main.revision+1,state:structuredClone(request.p_state)};return new Response(JSON.stringify(main))}
    const id=request.operation_id,entry=ledger.get(id);
-   if(request.action==='reserve'){check(!entry,'duplicate reservation');ledger.set(id,{operation_id:id,state:'reserved'});return new Response(JSON.stringify({ok:true,reserved:true,operation:ledger.get(id)}))}
+   if(request.action==='reserve'){check(!entry,'duplicate reservation');ledger.set(id,{operation_id:id,state:'reserved'});return new Response(JSON.stringify({ok:true,reserved:true,orders_debt_recovery_stored:!!request.orders_debt_recovery,operation:ledger.get(id)}))}
    if(request.action==='create'){
      check(entry?.state==='reserved','create without unique reservation');entry.state='pending';entry.document_type=request.document.type;entry.amount=request.document.amount;
      if(request.source.debtId==='wake-debt-B'){effects++;entry.document_id='official-B';entry.document_number='fixture-B'}

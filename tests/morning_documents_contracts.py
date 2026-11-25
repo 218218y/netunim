@@ -179,11 +179,11 @@ ok('applyPayment=true,applyInvoice=true' in morning_debt and "reason:'skipped-by
 ok('Math.min(documentCents,paymentRemainingCents)' in morning_debt and 'Math.min(documentCents,invoiceRemainingCents)' in morning_debt and 'paymentUnapplied' in morning_debt and 'invoiceUnapplied' in morning_debt,
    'Morning debt caps: document value can close remaining balances but can never overpay or over-invoice the local debt')
 issuance=(SITE/"assets/js/domains/customers/morning-issuance.js").read_text(encoding="utf-8")
-reserve_call_pos=issuance.find("commands.reserve(payload,assertCurrent)")
+reserve_call_pos=issuance.find("commands.reserve(")
 recovery_save_pos=issuance.find('recovery.persist(context)')
 create_call_pos=issuance.find("commands.create(payload,assertCurrent)")
-ok(0 <= reserve_call_pos < recovery_save_pos < create_call_pos and 'orders.morning.pending-issuance.v1' in morning_debt_recovery and 'localStorage' in morning_debt_recovery,
-   'Morning reload recovery: a server pre-issue reservation and the exact local debt/type/amount/allocation policy are both durable before any official POST')
+ok(0 <= reserve_call_pos < recovery_save_pos < create_call_pos and 'orders_debt_recovery:shared' in issuance and 'orders.morning.pending-issuance.v1' in morning_debt_recovery and 'localStorage' in morning_debt_recovery,
+   'Morning reload recovery binds the minimal shared and local debt intent before the official creating POST')
 ok("const record={version:2,operationId:operation,debtId:debt,type:documentType,amount:amountCents/100,applyPayment:applyPayment===true,applyInvoice:applyInvoice===true,createdAt:time,sourceKind:kind}" in morning_debt_recovery and "if(kind==='bank')record.bankTransactionId=bankId" in morning_debt_recovery and all(token not in morning_debt_recovery for token in ('pdfBase64','document_url','allocationNumber','clientName')),
    'Morning reload recovery storage stays minimal: source identity is durable without PDF, signed URL, customer payload or permanent document metadata')
 ok('record.operationId===clean(operationId,80)' in morning_debt_recovery and 'record.type===Number(type)' in morning_debt_recovery and 'moneyCents(record.amount)===moneyCents(amount)' in morning_debt_recovery,

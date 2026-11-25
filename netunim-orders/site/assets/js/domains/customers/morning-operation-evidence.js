@@ -6,7 +6,7 @@ import {evidenceTimestamp} from '../../shared/response-evidence.js';
 /** @typedef {{checks_registration_state?:'registered'|'pending'|'evidence_pending'|'attention',checks_registration_attempts?:number,checks_registration_count?:number,checks_registration_amount?:number,checks_registration_evidence?:'matched'|'missing'|'mismatch',checks_registration_last_failed_at?:string,checks_registration_next_retry_at?:string}} CheckRegistration */
 /** @typedef {{state:string,retry_at?:string}} CheckRetry */
 /** @typedef {CheckRegistration & {ok:true,operation:LedgerOperation|null,configured?:boolean,available?:boolean,unresolved?:boolean,retryable_reserved?:boolean,environment?:string,checks_registration_pending?:boolean,bank_link_pending?:boolean,bank_link?:BankLink|null,check_retry?:CheckRetry}} OperationStatus */
-/** @typedef {{ok:true,reserved:boolean,operation:{operation_id:string,state:OperationState}}} Reservation */
+/** @typedef {{ok:true,reserved:boolean,operation:{operation_id:string,state:OperationState},orders_debt_recovery_stored?:boolean}} Reservation */
 /** @typedef {{id:string,type:number,amount:number,number?:string|number,allocationNumber?:string|number}} OfficialDocument */
 /** @typedef {CheckRegistration & {ok:true,verified:true,document:OfficialDocument,local_link_pending?:boolean,checks_registration_pending?:boolean,bank_link_pending?:boolean,bank_link?:BankLink|null}} CreatedDocument */
 /** @typedef {{ok:true,abandoned:boolean,operation:LedgerOperation|null}} Abandonment */
@@ -147,7 +147,8 @@ export function decodeMorningOperationStatus(value,expectedId){
 export function decodeMorningReservation(value,expectedId){
   const row=success(value),ledger=record(row.operation),operationId=identity(ledger.operation_id);
   if(operationId!==expectedId)throw invalid();
-  return {ok:true,reserved:flag(row.reserved),operation:{operation_id:operationId,state:state(ledger.state)}};
+  return {ok:true,reserved:flag(row.reserved),operation:{operation_id:operationId,state:state(ledger.state)},
+    ...(row.orders_debt_recovery_stored!==undefined?{orders_debt_recovery_stored:flag(row.orders_debt_recovery_stored)}:{})};
 }
 /** @param {unknown} value @param {{operation_id:string,document:{type:number,amount:number}}} payload @returns {CreatedDocument} */
 export function decodeMorningCreatedDocument(value,payload){

@@ -541,4 +541,9 @@ const syncIncidentsReady=import('./shared/sync-incident-feature.js').then(({crea
 export const appReady=lifecycle.boot().then(()=>{if(session.storageProtocolBlocked||!storageRecovery.isReady()||session.syncCapabilitiesError)return false;domainsCalendarController.start();connectivity.resumeStartup();return true});
 void appReady.then(()=>{startupMark('boot-complete');if(tab.primaryTab&&!session.storageProtocolBlocked&&storageRecovery.isReady()&&!session.syncCapabilitiesError)startupMark('command-ready')},()=>{});
 export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2.flush();return {...sharedChecksV2.diagnostics}}
-void appReady.then(ready=>{if(ready)uiAlertCenter.startDateWatcher()});
+void appReady.then(ready=>{
+  if(ready)uiAlertCenter.startDateWatcher();
+  if(new URLSearchParams(globalThis.location?.search||'').get('morning-recovery')==='1'){
+    uiNavigation.switchView('settings');
+  }
+});

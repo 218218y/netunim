@@ -12,9 +12,17 @@ export function createMorningIssuance({commands,recovery}){
   async function issue(payload,context,assertCurrent){
     assertCurrent();
     if(!payload.operation_id||context.operationId!==payload.operation_id)throw new Error('morning_issuance_context_mismatch');
-    const reservation=await commands.reserve(payload,assertCurrent);assertCurrent();
+    const shared='debtId' in context&&context.debtId&&'financialSnapshot' in context?{
+      debtId:context.debtId,financialSnapshot:context.financialSnapshot,
+      applyPayment:'applyPayment' in context&&context.applyPayment===true,
+      applyInvoice:'applyInvoice' in context&&context.applyInvoice===true,
+    }:null;
+    const reservation=await commands.reserve(shared?{...payload,orders_debt_recovery:shared}:payload,assertCurrent);assertCurrent();
     if(reservation.reserved!==true||reservation.operation?.state!=='reserved')throw new Error('השרת לא אישר הזמנה מוקדמת בטוחה לפעולת ההפקה. המסמך לא נשלח ל-Morning.');
-    try{recovery.persist(context)}
+    try{
+      if(shared&&reservation.orders_debt_recovery_stored!==true)throw new Error('נקודת ההתאוששות לא נשמרה בענן. המסמך טרם נשלח למורנינג.');
+      recovery.persist(context);
+    }
     catch(error){
       try{assertCurrent();const cleanup=await commands.abandonReservation(context.operationId,assertCurrent);assertCurrent();if(cleanup.abandoned===true)recovery.reset(context.operationId);else recovery.block()}
       catch(abandonError){recovery.block();if(!(abandonError&&typeof abandonError==='object'&&'code' in abandonError&&abandonError.code==='MORNING_OPERATION_SCOPE_CHANGED'))console.error('Morning pre-issue reservation cleanup failed',abandonError)}

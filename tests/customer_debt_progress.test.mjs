@@ -254,3 +254,22 @@ test('same Morning event verified at different times merges without a business c
  remote.customerDebts[0].debtProgress[0].amount=31;
  assert.ok(merge.merge3(base,local,remote).conflicts.includes('customerDebt:D'),'same ID with a different amount must conflict');
 });
+
+test('a published Morning debt receipt wins over a concurrent choice for the same document',()=>{
+ const normalization=createStateNormalization({}),merge=createSyncMerge({normalizeState:normalization.normalizeState});
+ const base=normalization.normalizeState(baseOrderState([{id:'D',amount:100}])),local=structuredClone(base),remote=structuredClone(base);
+ const operationId='00000000-0000-4000-8000-000000000078';
+ const link={operationId,documentId:'document-78',documentNumber:'78',documentType:320,verifiedAt:'2026-09-09T10:00:00.000Z'};
+ local.customerDebts[0].morningDocuments=[link];
+ remote.customerDebts[0].morningDocuments=[link];
+ local.customerDebts[0].debtProgress=[
+  {...add('MORNING:'+operationId+':payment','payment',30),source:'morning'},
+  add('independent-payment','payment',10),
+ ];
+ remote.customerDebts[0].debtProgress=[{...add('MORNING:'+operationId+':invoice','invoice',20),source:'morning'}];
+ const result=merge.merge3(base,local,remote),debt=result.state.customerDebts[0];
+ assert.deepEqual(result.conflicts,[]);
+ assert.equal(debt.morningDocuments.length,1);
+ assert.equal(customerDebtProgressData(debt).paymentApplied,10);
+ assert.equal(customerDebtProgressData(debt).invoiceApplied,20);
+});

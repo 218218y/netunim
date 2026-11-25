@@ -14,7 +14,7 @@ FLOW = r"""(async()=>{
   cloudAuth.supaFetch=async(_path,options)=>{
     options.assertRequestScope();const request=JSON.parse(options.body);calls.push(request);
     if(request.action==='status')return new Response(JSON.stringify({ok:true,configured:true,available:true,environment:'sandbox'}));
-    if(request.action==='reserve')return new Response(JSON.stringify({ok:true,reserved:true,operation:{operation_id:request.operation_id,state:'reserved'}}));
+    if(request.action==='reserve')return new Response(JSON.stringify({ok:true,reserved:true,orders_debt_recovery_stored:!!request.orders_debt_recovery,operation:{operation_id:request.operation_id,state:'reserved'}}));
     if(request.action==='create'){
       const response=new Response(JSON.stringify({ok:true,verified:true,document:{id:documentId,type:305,amount:42,number:'4001'}})),read=response.json.bind(response);
       response.json=async()=>{entered.resolve();await held.promise;return read()};return response;

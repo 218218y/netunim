@@ -28,6 +28,7 @@ type OperationRow={
   document_type:number;amount:number|string;document_date:string;client_name:string;description:string;
   document_id?:string|null;document_number?:string|null;
   check_intent?:JsonRecord[]|null;check_payment_evidence?:string|null;checks_registered_at?:string|null;checks_registration_error?:string|null;checks_registration_attempts?:number;checks_registration_next_retry_at?:string|null;
+  orders_debt_recovery?:JsonRecord|null;
   checks_registration_failure_kind?:string|null;checks_registration_first_failed_at?:string|null;checks_registration_last_failed_at?:string|null;
   allocation_number?:string|null;allocation_checked_at?:string|null;verified_at?:string|null;issuance_started_at?:string|null;
   reconciliation_attempts:number;last_reconciliation_at?:string|null;error_code?:string|null;error_message?:string|null;
@@ -175,15 +176,38 @@ async function readOperation(ownerId:string,operationId:string){const {data,erro
 async function updateOperation(ownerId:string,operationId:string,patch:JsonRecord){const {data,error}=await admin.from('morning_document_operations').update({...patch,updated_at:new Date().toISOString()}).eq('owner_id',ownerId).eq('environment',MORNING_ENV).eq('operation_id',operationId).select('operation_id').maybeSingle();if(error)return error;if(!data)return {code:'morning_operation_missing',message:'Morning operation ledger row disappeared during update'};return null}
 async function claimReservedOperation(ownerId:string,operationId:string){const startedAt=new Date().toISOString(),{data,error}=await admin.from('morning_document_operations').update({state:'pending',issuance_started_at:startedAt,updated_at:startedAt}).eq('owner_id',ownerId).eq('environment',MORNING_ENV).eq('operation_id',operationId).eq('state','reserved').select('*').maybeSingle();if(error)throw error;return data as OperationRow|null}
 async function abandonStaleReservation(row:OperationRow){const now=new Date().toISOString(),{data,error}=await admin.from('morning_document_operations').update({state:'failed',error_code:'reservation_abandoned',error_message:'Pre-issuance reservation expired before Morning POST started',client_name:'',description:'',updated_at:now}).eq('owner_id',row.owner_id).eq('environment',MORNING_ENV).eq('operation_id',row.operation_id).eq('state','reserved').select('operation_id').maybeSingle();if(error)throw error;return !!data}
+function normalizeOrdersDebtRecovery(input:any,value:any){
+  if(value===undefined)return undefined;
+  const snapshot=value?.financialSnapshot;
+  if(!input.sourceDebtId||!['debt','bank'].includes(input.sourceKind)||value?.debtId!==input.sourceDebtId
+    ||typeof value.applyPayment!=='boolean'||typeof value.applyInvoice!=='boolean'||!snapshot
+    ||typeof snapshot.paymentComplete!=='boolean'||typeof snapshot.invoiceComplete!=='boolean')throw new Error('invalid_orders_debt_recovery');
+  const {amount,paymentApplied,invoiceApplied}=snapshot;
+  if([amount,paymentApplied,invoiceApplied].some(number=>typeof number!=='number'||!Number.isFinite(amountCents(number)))
+    ||paymentApplied<0||invoiceApplied<0)throw new Error('invalid_orders_debt_recovery');
+  return {debtId:input.sourceDebtId,applyPayment:value.applyPayment,applyInvoice:value.applyInvoice,
+    financialSnapshot:{amount,paymentApplied,invoiceApplied,paymentComplete:snapshot.paymentComplete,invoiceComplete:snapshot.invoiceComplete}};
+}
 async function reserveOperation(ownerId:string,input:any,fingerprint:string,allowStaleRelease=true){
+  const assertReplay=(row:OperationRow)=>{
+    const context=input.ordersDebtRecovery;
+    let sameContext=true;
+    if(context!==undefined&&row.state==='reserved'){
+      try{sameContext=!!row.orders_debt_recovery&&JSON.stringify(normalizeOrdersDebtRecovery(input,row.orders_debt_recovery))===JSON.stringify(context)}
+      catch{sameContext=false}
+    }
+    if(row.request_fingerprint!==fingerprint||!sameContext)
+      throw Object.assign(new Error('operation_id_conflict'),{code:'operation_id_conflict'});
+    return {row,created:false};
+  };
   const existing=await readOperation(ownerId,input.operationId);
-  if(existing){if(existing.request_fingerprint!==fingerprint)throw Object.assign(new Error('operation_id_conflict'),{code:'operation_id_conflict'});return {row:existing,created:false}}
-  const row={owner_id:ownerId,environment:MORNING_ENV,operation_id:input.operationId,request_fingerprint:fingerprint,state:'reserved',document_type:input.type,amount:input.amount,document_date:input.date,client_name:input.clientName,description:input.description,source_kind:input.sourceKind,source_bank_transaction_id:input.sourceBankTransactionId,...(input.checkIntent.length?{check_intent:input.checkIntent}:{})};
+  if(existing)return assertReplay(existing);
+  const row={owner_id:ownerId,environment:MORNING_ENV,operation_id:input.operationId,request_fingerprint:fingerprint,state:'reserved',document_type:input.type,amount:input.amount,document_date:input.date,client_name:input.clientName,description:input.description,source_kind:input.sourceKind,source_bank_transaction_id:input.sourceBankTransactionId,...(input.checkIntent.length?{check_intent:input.checkIntent}:{}),...(input.ordersDebtRecovery?{orders_debt_recovery:input.ordersDebtRecovery}:{})};
   const {data,error}=await admin.from('morning_document_operations').insert(row).select('*').single();
   if(error){
     if(String(error.code||'')==='23505'){
       const replay=await readOperation(ownerId,input.operationId);
-      if(replay){if(replay.request_fingerprint!==fingerprint)throw Object.assign(new Error('operation_id_conflict'),{code:'operation_id_conflict'});return {row:replay,created:false}}
+      if(replay)return assertReplay(replay);
       const {data:blocked,error:blockedError}=await businessOperationQuery().eq('request_fingerprint',fingerprint).in('state',['reserved','pending','created_unverified','needs_reconciliation']).limit(1).maybeSingle();
       if(blockedError)throw blockedError;
       if(allowStaleRelease&&blocked?.state==='reserved'&&Date.now()-new Date(blocked.updated_at||blocked.created_at).getTime()>=RESERVATION_STALE_MS){
@@ -371,13 +395,13 @@ async function reconcileRow(ownerId:string,row:OperationRow){
 }
 async function reserve(ownerId:string,body:any){
   if(!configured())return json({ok:false,code:MORNING_ENV_VALID?'morning_not_configured':'morning_invalid_environment',message:MORNING_ENV_VALID?'Morning אינו מוגדר ב-Supabase':'MORNING_ENV חייב להיות production או sandbox'},503);
-  let input;try{input=normalizeInput(body)}catch(error:any){const code=String(error?.message||'invalid_document');return json({ok:false,code,message:userMessage(code)},400)}
+  let input;try{const normalized=normalizeInput(body);input={...normalized,ordersDebtRecovery:normalizeOrdersDebtRecovery(normalized,body?.orders_debt_recovery)}}catch(error:any){const code=String(error?.message||'invalid_document');return json({ok:false,code,message:code==='invalid_orders_debt_recovery'?'בחירת עדכון החוב אינה תקינה. המסמך טרם נשלח למורנינג.':userMessage(code)},400)}
   if(!input.operationId)return json({ok:false,code:'missing_operation_id',message:'מזהה הפעולה חסר'},400);
   try{await validateLinkedDocument(input);await validateBankSource(ownerId,input)}catch(error:any){if(error?.code==='linked_document_not_linkable')return json({ok:false,code:'linked_document_not_linkable',message:'החשבונית שנבחרה אינה פתוחה או אינה מתאימה לקישור'},400);if(['invalid_bank_source','bank_payment_mismatch','bank_reference_mismatch'].includes(String(error?.code||error?.message||'')))return json({ok:false,code:String(error?.code||error?.message),message:'תנועת הבנק או התקבול אינם תואמים למקור שנבחר. המסמך לא נשלח ל-Morning.'},400);return dbError(error,'morning_link_validation_failed')}
   const fingerprint=await sha256(JSON.stringify(input.fingerprintSource));
   try{
     const reserved=await reserveOperation(ownerId,input,fingerprint),row=reserved.row;
-    if(row.state==='reserved')return json({ok:true,reserved:true,operation:{operation_id:row.operation_id,state:row.state}});
+    if(row.state==='reserved')return json({ok:true,reserved:true,operation:{operation_id:row.operation_id,state:row.state},...(input.ordersDebtRecovery?{orders_debt_recovery_stored:!!row.orders_debt_recovery}:{})});
     if(row.state==='created'&&row.document_id&&row.verified_at)return json({ok:true,reserved:false,verified:true,operation:{operation_id:row.operation_id,state:row.state,verified_at:row.verified_at},document:{id:row.document_id,number:row.document_number,type:row.document_type,amount:Number(row.amount),date:row.document_date,allocationNumber:row.allocation_number||''}});
     return json({ok:false,code:'morning_operation_unresolved',message:'פעולת ההפקה כבר קיימת ואינה במצב הזמנה מוקדמת בטוח. לא נשלח מסמך נוסף.',uncertain:row.state!=='failed',operation_id:row.operation_id},409);
   }catch(error:any){
@@ -431,7 +455,8 @@ async function status(ownerId:string,body:any){
       unresolved:!!operation&&['pending','created_unverified','needs_reconciliation'].includes(operation.state),
       retryable_reserved:operation?.state==='reserved',environment:MORNING_ENV,
       ...(operation?checkRegistrationSummary(operation):{checks_registration_pending:false}),
-      bank_link_pending:bankLink.pending,bank_link:bankLink.pending?null:bankLink,...(checkRetry?{check_retry:checkRetry}:{})});
+      bank_link_pending:bankLink.pending,bank_link:bankLink.pending?null:bankLink,
+      debt_recovery_pending:!!operation?.orders_debt_recovery,...(checkRetry?{check_retry:checkRetry}:{})});
   }catch(error){return dbError(error,'morning_status_failed')}
 }
 async function listRecoveryOperations(ownerId:string,body:any){
@@ -446,11 +471,24 @@ async function listRecoveryOperations(ownerId:string,body:any){
   if(!['active','attention','waiting','verification','resolved'].includes(filter)||after!==null&&(
     ![0,1,2].includes(after.priority)||typeof after.sort_at!=='string'||!Number.isFinite(Date.parse(after.sort_at))||!isUuid(after.operation_id)))
     return json({ok:false,code:'morning_recovery_page_invalid'},400);
-  const {data,error}=await admin.rpc('list_morning_recovery_operations_v2',{...scope,p_filter:filter,p_query:isUuid(query)?query.toLowerCase():query,
+  const rpc=body.debt_recovery===true?'list_morning_recovery_operations_v3':'list_morning_recovery_operations_v2';
+  const {data,error}=await admin.rpc(rpc,{...scope,p_filter:filter,p_query:isUuid(query)?query.toLowerCase():query,
     p_after_priority:after?.priority??null,p_after_created:after?.sort_at??null,p_after_id:after?.operation_id??null});
   if(error)return dbError(error,'morning_recovery_list_failed');
   const rows=data.slice(0,50),last=rows.at(-1);
   return json({ok:true,operations:rows,next:data.length>50?{priority:last.priority,sort_at:last.sort_at,operation_id:last.operation_id}:null});
+}
+async function ordersDebtRecovery(ownerId:string,body:any){
+  const id=clean(body?.operation_id,80);
+  if(!MORNING_ENV_VALID||!isUuid(id))return json({ok:false,code:'morning_recovery_operation_invalid'},400);
+  try{
+    const row=await readOperation(ownerId,id);
+    const context=row?.state==='created'&&row.verified_at&&row.orders_debt_recovery?{
+      ...row.orders_debt_recovery,version:2,operationId:row.operation_id,type:row.document_type,amount:Number(row.amount),
+      createdAt:row.created_at,sourceKind:row.source_kind,bankTransactionId:row.source_bank_transaction_id,
+    }:null;
+    return json({ok:true,context});
+  }catch(error){return dbError(error,'morning_debt_recovery_read_failed')}
 }
 async function preview(ownerId:string,body:any){if(!configured())return json({ok:false,code:MORNING_ENV_VALID?'morning_not_configured':'morning_invalid_environment',message:MORNING_ENV_VALID?'Morning אינו מוגדר ב-Supabase':'MORNING_ENV חייב להיות production או sandbox'},503);let input;try{input=normalizeInput(body);await validateLinkedDocument(input);await validateBankSource(ownerId,input)}catch(error:any){const code=String(error?.code||error?.message||'invalid_document');return json({ok:false,code,message:code==='linked_document_not_linkable'?'החשבונית שנבחרה אינה פתוחה או אינה מתאימה לקישור':userMessage(code)},400)}try{const data=await morningRequest('/documents/preview',{method:'POST',body:JSON.stringify(input.payload)}),pdfBase64=findPdfBase64(data);if(!pdfBase64)return json({ok:false,code:'morning_preview_missing_pdf',message:'Morning לא החזירה PDF לתצוגה מקדימה'},502);return json({ok:true,pdfBase64:validatePreviewPdfBase64(pdfBase64)})}catch(error:any){return json({ok:false,code:'morning_preview_failed',message:String(error?.message||'תצוגה מקדימה נכשלה')},error?.status===413?413:error?.status>=400&&error.status<500?400:502)}}
 async function create(ownerId:string,body:any){
@@ -548,5 +586,6 @@ Deno.serve(withEdgeOrigins(async(req:Request)=>{
     try{if(!await mayReadDocument(user,body))return documentReadForbidden()}catch(error){return dbError(error,'morning_document_permission_failed')}
   }
   if(action==='list_recovery')return listRecoveryOperations(user.id,body);
+  if(action==='orders_debt_recovery')return ordersDebtRecovery(user.id,body);
   if(action==='status')return status(user.id,body);if(action==='reserve')return reserve(user.id,body);if(action==='abandon_reservation')return abandonReservation(user.id,body);if(action==='preview')return preview(user.id,body);if(action==='create')return create(user.id,body);if(action==='search_documents')return searchDocuments(body);if(action==='get_document')return getDocument(body);if(action==='document_links')return getDocument(body,true);if(action==='document_pdf')return getDocumentPdf(body);return json({ok:false,code:'morning_unknown_action',message:'פעולת Morning אינה מוכרת'},400);
 },edgeOrigins(Deno.env.get('FINANCIAL_EDGE_ALLOWED_ORIGINS')||'')));

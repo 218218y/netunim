@@ -1,6 +1,6 @@
 # Morning recovery and operations center
 
-The Morning ledger records verified issuance separately from check registration and bank linking. The Orders Storage V2 journal owns debt changes. Orders retains the pending recovery context, including the operator’s allocation choices, until the journal confirms its commit and server follow-up is complete.
+The Morning ledger records verified issuance separately from check registration, bank linking, and the Orders debt update. The Orders Storage V2 journal owns debt changes and publishes the durable receipt.
 
 ## Automatic execution paths reviewed
 
@@ -24,7 +24,9 @@ The Morning background import was the confirmed mismatch between server authorit
 - The center fetches at most fifty rows per page and uses the next cursor to reach older operations. Active records prioritize failures awaiting intervention, then sort by creation time. Search accepts a document number or exact operation UUID. History covers bank links and check registrations completed within fourteen days. The first page used for alerts remains independent of the selected filter.
 - The manual retry receipt distinguishes a registered result, an already-completed import, lock contention, cooldown and a saved failure. An Orders manual request waits for any in-flight automatic recovery and runs the requested retry when check registration still needs it. Pending debt decisions and failed durable writes use persistent notices. Acknowledging a notice does not change the ledger or complete the operation.
 - Both sites share the incident monitor’s foreground refresh cadence. The list uses low-priority requests and the existing account-epoch fence. Reconnection refreshes the list. A failed refresh leaves previously reported operations visible in that tab.
-- The Orders center can resume the locally bound debt workflow when the operation IDs match. A debt reference is available on the originating device before sync and on another Orders device after a stored document link reaches it. The Morning ledger does not hold debt allocation choices or serve as a cross-device debt authority.
+- A new debt-linked issuance reserves the operation ID, debt ID, two allocation choices and a five-field financial snapshot before any provider POST. The browser requires an explicit reservation receipt. Its local checkpoint still protects an interrupted issue or a locally queued save. Older already-issued operations without shared choices can resume from their original checkpoint.
+- The owner can resume a verified shared checkpoint in Orders from another device, subject to MFA and current Orders write authority. Recovery refreshes the canonical V2 head and asks for new choices if the debt changed. Kupa shows the same pending step and can direct the operator to Orders.
+- The Orders V2 snapshot publishes the matching debt and verified document link in the same transaction that records completion and removes the shared choices. A competing device sees the published association before applying. If both race, V2 keeps the published operation's allocation and retains independent changes.
 
 ## Verification
 

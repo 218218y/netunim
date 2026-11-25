@@ -17,7 +17,7 @@ import {$} from '../../state/constants.js';
 import {morningDebtImpact} from './morning-debt.js';
 import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
 import {bankMorningEligibility,bankMorningPrefill} from '../finance/bank-morning.js';
-import {createMorningDebtRecoveryContext,loadMorningDebtRecoveryContext,saveMorningDebtRecoveryContext,clearMorningDebtRecoveryContext,morningDebtRecoveryMatchesVerified,morningVerifiedApplicationDurable,morningFinancialSnapshot,morningFinancialChanges} from './morning-debt-recovery.js';
+import {createMorningDebtRecoveryContext,loadMorningDebtRecoveryContext,saveMorningDebtRecoveryContext,clearMorningDebtRecoveryContext,morningDebtRecoveryMatchesVerified,morningVerifiedApplicationDurable,morningFinancialSnapshot,morningFinancialChanges,normalizeMorningDebtRecoveryContext} from './morning-debt-recovery.js';
 import {createMorningPayments,morningPaymentTotalCents} from './morning-payments.js';
 import {activeMorningBankDebts,collapseMorningBankDebtPicker,filterMorningBankDebtPicker,morningBankDebtPickerMarkup,syncMorningBankDebtPickerSelection} from './morning-bank-debt-picker.js';
 import {createMorningBankLinks} from './morning-bank-links.js';
@@ -121,7 +121,9 @@ const debtApplication=createMorningDebtApplication({
     isBlocked:()=>rejectSecondaryMutation?.()===true,
     apply:command=>applyVerifiedDebtDocument?.(command)||{changed:false,reason:'no-handler'},
   },
-  policy:{matches:morningDebtRecoveryMatchesVerified,snapshot:morningFinancialSnapshot,changes:morningFinancialChanges},
+  policy:{matches:morningDebtRecoveryMatchesVerified,snapshot:morningFinancialSnapshot,changes:morningFinancialChanges,
+    hasVerifiedLink:(debt,document)=>!!debt?.morningDocuments?.some(link=>link.operationId===document.operationId
+      &&link.documentId===document.documentId&&link.documentType===document.type)},
   feedback:{toast,status:connectionStatus,decide:(...args)=>recoveryDecision.show(...args)},
 });
 const issuance=createMorningIssuance({commands:operationCommands,recovery:{persist:persistRecoveryContext,reset:resetOperationAfterTerminal,block:()=>{blocked=true}}});
@@ -139,7 +141,7 @@ const recoveryFlow=createMorningRecovery({
     notice(context,text){
       const assertCurrent=captureScope();
       toast(text,{id:'morning:'+context.operationId,severity:'important',
-        ...(context.debtId?{actionLabel:'פתח חוב',action:()=>{assertCurrent();return openMorningDocument(context.debtId)}}:{})});
+        ...(context.debtId?{actionLabel:'פתח חוב',action:()=>{assertCurrent();return openDebtRecovery(context)}}:{})});
     },
   },
 });
@@ -202,6 +204,11 @@ function openMorningDocument(debtId){
   const d=(model.state.customerDebts||[]).find(item=>item.id===debtId);if(!d)return toast('חוב הלקוח לא נמצא');
   return openMorningDocumentModal({prefill:debtMorningPrefill(d),debtId:d.id,source:{kind:'debt'}});
 }
+function openDebtRecovery(context){
+  const debt=(model.state.customerDebts||[]).find(item=>item.id===context.debtId);
+  if(!debt)return toast('חוב הלקוח לא נמצא במצב ההזמנות הנוכחי');
+  return openMorningDocumentModal({prefill:debtMorningPrefill(debt),debtId:debt.id,source:sourceFromRecovery(context),initialType:context.type});
+}
 function openStandaloneMorningDocument(){return openMorningDocumentModal({prefill:null,debtId:'',source:{kind:'standalone'}})}
 function openBankMorningDocument(transaction,type=DEFAULT_DOCUMENT_TYPE){
   const eligibility=bankMorningEligibility(transaction,'business');if(!eligibility.eligible){toast(eligibility.reason||'לא ניתן להפיק מסמך מתנועה זו');return}
@@ -261,6 +268,19 @@ function recoveryContext(type,amount,policy=debtUpdatePolicy(type),operationId=a
 function persistRecoveryContext(context){
   if(!saveMorningDebtRecoveryContext(context))throw new Error('לא ניתן לשמור נקודת התאוששות מקומית לפני ההפקה. המסמך לא נשלח ל-Morning כדי שלא יאבד הקשר לחוב במקרה של ניתוק או רענון.');
   pendingRecovery=context;issuanceContext=context;return context;
+}
+async function adoptSharedDebtRecovery(operationId){
+  const assertCurrent=captureScope();
+  const reply=await request.json('orders_debt_recovery',{operation_id:operationId},assertCurrent);assertCurrent();
+  const context=normalizeMorningDebtRecoveryContext(reply.context);
+  if(!context||!context.debtId||context.operationId!==operationId)return null;
+  const local=loadMorningDebtRecoveryContext()||pendingRecovery;
+  if((local&&local.operationId!==operationId)||createBusy)return null;
+  if(!local){
+    if(!saveMorningDebtRecoveryContext(context))throw new Error('לא ניתן לשמור את נקודת ההתאוששות בעמדה זו.');
+    pendingRecovery=context;blocked=true;completed=false;
+  }
+  return local||context;
 }
 function clearRecoveryContext(operationId=''){
   const target=operationId||pendingRecovery?.operationId||issuanceContext?.operationId||'';
@@ -332,6 +352,8 @@ function command(run,args){return disposed?Promise.resolve(false):lifetime.run((
 const runtime={dispose,cancelPending:()=>{vatStatusRevision++;headerVat?.clear();lifetime.cancelPending();statusFlow.cancelPending()},drain:lifetime.drain,isPending:lifetime.isPending};
 return {
   dispose,runtime,isDebtRecoveryPending,rejectDebtRecoveryMutation,documentButton,recoverPendingMorningOperation,
+  adoptSharedDebtRecovery:(...args)=>command(adoptSharedDebtRecovery,args),
+  openDebtRecovery:(...args)=>command(openDebtRecovery,args),
   saveRecoveryChoice:(...args)=>disposed?false:recoveryDecision.save(...args),
   confirmRecoveryChoice:(...args)=>command(recoveryDecision.confirm,args),
   openMorningDocumentModal:(...args)=>command(openMorningDocumentModal,args),

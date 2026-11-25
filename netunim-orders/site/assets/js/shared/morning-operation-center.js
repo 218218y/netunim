@@ -5,6 +5,7 @@ const STAGES={
   payment_mismatch:['התקבולים אינם תואמים למסמך','נדרשת בדיקה של פירוט התקבולים במורנינג.'],
   check_registration:['רישום צ׳קים בקופה ממתין','בדיקת המצב יכולה לחדש את רישום הצ׳קים המאומתים.'],
   bank_link:['קישור מסמך לתנועת בנק ממתין','בדיקת המצב יכולה להשלים את הקישור.'],
+  debt_update:['עדכון החוב ממתין לשמירה בענן','אפשר להמשיך מהחוב באתר ההזמנות.'],
   registered:['רישום הצ׳קים הושלם',''],
 };
 const TYPES={305:'חשבונית מס',320:'חשבונית מס / קבלה',400:'קבלה'};
@@ -22,6 +23,10 @@ const RESULT_MESSAGES={created:'ההתאוששות הושלמה.',already_regist
   verification:'אימות המסמך או התקבולים עדיין ממתין.',bank_link:'קישור המסמך לתנועת הבנק עדיין ממתין.',
   'decision-required':'נדרשת הכרעה לגבי זקיפת החוב. יש לפתוח את החוב להמשך טיפול.',
   'local-pending':'עדכון החוב עדיין ממתין לאישור כתיבה עמידה.',
+  'debt-sync-pending':'עדכון החוב נשמר בעמדה וממתין לאישור כתיבה בענן.',
+  'other-local-recovery':'עמדה זו מחזיקה פעולת התאוששות אחרת. יש להשלים אותה תחילה.',
+  'write-blocked':'יש להשלים את הטיפול בעמדה הראשית של אתר ההזמנות.',
+  debt_update:'עדכון החוב עדיין ממתין באתר ההזמנות.',
   'cleanup-pending':'נקודת ההתאוששות עדיין ממתינה לניקוי בטוח.',
   'scope-changed':'הרשאת ההתאוששות השתנתה. יש לבדוק מחדש מהחשבון הפעיל.',
   unavailable:'מצב הפעולה אינו זמין כרגע. אפשר לבדוק שוב לאחר שהחיבור חוזר.',auth:CLOUD_STATUS.auth};
@@ -45,6 +50,7 @@ function decodeOperations(value){
 function severity(row){
   if(row.stage==='registered')return 'הושלם';
   if(row.stage==='verification'||row.stage==='payment_mismatch')return 'דורש בדיקה';
+  if(row.stage==='debt_update')return 'דורש טיפול';
   if(row.stage==='check_registration'&&row.error_code&&!row.next_retry_at)return 'דורש טיפול';
   return 'ממתין';
 }
@@ -58,11 +64,12 @@ function serverOutcome(status){
   if(status.check_retry&&['busy','cooldown','failed'].includes(status.check_retry.state))return status.check_retry;
   if(status.unresolved||status.retryable_reserved||status.checks_registration_pending)return {state:'verification'};
   if(status.bank_link_pending)return {state:'bank_link'};
+  if(status.debt_recovery_pending)return {state:'debt_update'};
   if(status.available===false)return {state:'unavailable'};
   return status.check_retry||{state:status.operation?.state||'unavailable'};
 }
 
-export function createMorningOperationCenter({request,accountScope,publish,recoverLocal,debtAction,now=Date.now,isOnline=()=>globalThis.navigator?.onLine!==false}){
+export function createMorningOperationCenter({request,accountScope,publish,recoverLocal,debtAction,ordersRecoveryUrl='',now=Date.now,isOnline=()=>globalThis.navigator?.onLine!==false}){
   let observed=null,operations=[],availability='idle',lastSuccess=null,nextRead=0,flight=null,closed=false;
   let filter='active',query='',page={rows:[],next:null},activeNext=null,pageStack=[null],viewSequence=0,activeSequence=0,viewLoading=false,viewError=false;
   const acknowledged=new Set(),recovering=new Map(),results=new Map();
@@ -87,7 +94,7 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
     return value;
   }
   async function readPage(scope,filter,query,after){
-    const reply=await call('list_recovery',{page:true,filter,query,after},scope);
+    const reply=await call('list_recovery',{page:true,debt_recovery:true,filter,query,after},scope);
     const rows=decodeOperations(reply.operations),next=reply.next??null;
     if(next!==null&&(![0,1,2].includes(next.priority)||!dateLabel(next.sort_at)||next.operation_id!==rows.at(-1)?.operation_id))throw new Error('morning_recovery_page_invalid');
     return {rows,next};
@@ -159,7 +166,7 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
         lastAttemptAt:row.last_attempt_at,nextRetryAt:row.next_retry_at};
       await navigator.clipboard.writeText(JSON.stringify(report,null,2));return;
     }
-    if(name==='morning-debt'){debtAction?.(row)?.();return}
+    if(name==='morning-debt'){await debtAction?.(row)?.();return}
     if(name==='morning-document'){
       if(!row.verified_at||!UUID.test(row.document_id||''))return;
       const tab=globalThis.open('about:blank','_blank');
@@ -176,7 +183,7 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
     if(name!=='morning-retry'||row.resolved_at||recovering.has(id))return;
     const token={};recovering.set(id,token);publish();
     try{
-      const local=await recoverLocal?.(id);assertScope(scope);
+      const local=await recoverLocal?.(id,row);assertScope(scope);
       let outcome=local;
       if(!local){
         const result=await call('status',{operation_id:id,reconcile:true,retry_checks:true},scope,'high');
@@ -202,16 +209,18 @@ export function createMorningOperationCenter({request,accountScope,publish,recov
         ['אימות התקבולים',row.check_count?(row.payment_evidence==='matched'||registered?'הושלם':row.stage==='payment_mismatch'?'אי התאמה':'ממתין'):''],
         ['רישום צ׳קים בקופה',row.check_count?(registered?`${row.check_count} נרשמו`:`${row.check_count} ממתינים · ${moneyFormat.format(Number(row.check_amount))}`):''],
         ['קישור לבנק',row.source_kind==='bank'?(row.bank_linked?'הושלם':'ממתין'):''],
+        ['עדכון החוב',row.debt_state==='pending'?'ממתין לשמירה בענן':row.debt_state==='preserved'?'נשמר בענן':''],
         ['כשל ראשון',dateLabel(row.first_failed_at)],['ניסיון אחרון',dateLabel(row.last_attempt_at)],['ניסיון אוטומטי הבא',dateLabel(row.next_retry_at)],
         ['ניסיונות שנכשלו או דרשו אימות',row.attempts||''],['הושלם',dateLabel(row.resolved_at)]];
-      const title=row.stage==='registered'&&!row.check_count?'קישור המסמך לבנק הושלם':stage[0];
+      const title=row.stage==='registered'&&!row.check_count?(row.debt_state==='preserved'?'עדכון החוב נשמר בענן':'קישור המסמך לבנק הושלם'):stage[0];
       return `<li><strong>${title}</strong><span class="morning-operation-state">${busy?'מתבצעת בדיקה':severity(row)}</span>
         <p>${TYPES[row.document_type]} ${escape(row.document_number||'')}</p>
         <dl>${fields.filter(([,value])=>value).map(([label,value])=>`<div><dt>${label}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl>
         ${stage[1]?`<p>${stage[1]} ${registered?'':'יש להימנע מהפקה נוספת או מהזנה חוזרת של הצ׳קים.'}</p>`:''}
         ${results.has(id)?`<p role="status">${escape(results.get(id))}</p>`:''}
         <div class="sync-incidents-actions">
-          ${row.resolved_at?'':button('retry','בדוק מצב הפקה',id,busy)}
+          ${row.resolved_at||row.stage==='debt_update'&&!recoverLocal?'':button('retry',row.stage==='debt_update'?'השלם עדכון חוב':'בדוק מצב הפקה',id,busy)}
+          ${row.debt_state==='pending'&&!debtAction&&ordersRecoveryUrl?`<a href="${escape(ordersRecoveryUrl)}" target="_blank" rel="noopener">פתח את מרכז הבקרה בהזמנות</a>`:''}
           ${row.verified_at&&UUID.test(row.document_id||'')?button('document','פתח מסמך',id):''}
           ${debtAction?.(row)?button('debt','פתח חוב',id):''}
           ${row.resolved_at||acknowledged.has(ackKey(row))?'':button('ack','קראתי',id)}
