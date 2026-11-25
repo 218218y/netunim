@@ -6,11 +6,11 @@ const {decision:morningRecoveryDecisionMarkup}=createMorningDocumentView({format
 
 // Only a saved explicit choice, a current refresh and an unchanged financial
 // snapshot can confirm a recovery decision. This owner never issues documents.
-export function createMorningRecoveryDecision({session,debts,recovery,application,display,feedback}){
+export function createMorningRecoveryDecision({session,debts,recovery,approve,application,display,feedback}){
 let decisionView=null;
 function showRecoveryDecision(context,current){
   const displayedCurrent=morningFinancialSnapshot(debts.read(context.debtId))||current;
-  decisionView={operationId:context.operationId,financialSnapshot:current};
+  decisionView={operationId:context.operationId,financialSnapshot:current,revision:context.decisionRevision};
   if(!display.isOpen()){
     display.open('הכרעה בעדכון חוב מ-Morning',generation=>`<div data-morning-generation="${generation}"><div id="morningConnectionStatus"></div><div id="morningRecoveryDecision"></div></div>`,'<button class="btn" data-action="close-modal">סגור — ההפקה תישאר ממתינה</button>');
   }
@@ -29,7 +29,7 @@ function saveRecoveryChoice(){
 }
 async function confirmRecoveryChoice(button){
   if(application.isPending()||recovery.isPending()||!saveRecoveryChoice())return;
-  const generation=session.generation();
+  const generation=session.generation(),decisionRevision=decisionView?.revision;
   const assertCurrent=session.capture(),chosen=recovery.read();if(!chosen?.resolution)return;
   display.busy(button,true,'מסנכרן ובודק…');
   try{
@@ -40,10 +40,20 @@ async function confirmRecoveryChoice(button){
     if(!current){feedback.toast('החוב אינו קיים. נקודת ההתאוששות נשמרה.');return}
     if(morningFinancialChanges(chosen.resolution.financialSnapshot,current).changed){showRecoveryDecision(chosen,current);feedback.toast('החוב השתנה שוב בזמן הבדיקה. בדוק ואשר את המצב המעודכן.');return}
     const latest=recovery.read();if(latest?.operationId!==chosen.operationId||JSON.stringify(latest.resolution)!==JSON.stringify(chosen.resolution))return;
+    if(decisionRevision!==undefined){await confirmSharedRecoveryChoice(chosen,decisionRevision,assertCurrent,generation);return}
     const approved=createMorningDebtRecoveryContext({...chosen,resolution:{...chosen.resolution,confirmedAt:new Date().toISOString()}});
     if(!recovery.save(approved)){feedback.toast('שמירת האישור נכשלה. לא בוצעה זקיפה.');return}
     recovery.adopt(approved);if(session.isActive(generation))display.markSaved();await recovery.run();
   }catch(error){if(!session.scopeChanged(error))feedback.toast('ההכרעה נשמרה להתאוששות; לא ניתן להשלים כרגע: '+error.message)}finally{display.busy(button,false)}
+}
+async function confirmSharedRecoveryChoice(chosen,revision,assertCurrent,generation){
+  const {financialSnapshot,applyPayment,applyInvoice}=chosen.resolution;
+  const result=await approve(chosen.operationId,revision,assertCurrent,{financialSnapshot,applyPayment,applyInvoice});assertCurrent();
+  if(result.state==='approved'&&session.isActive(generation))display.markSaved();
+  if(result.state==='approved'||result.state==='decision_changed'||result.state==='complete'||result.state==='historical'){
+    await recovery.run();return;
+  }
+  feedback.toast(result.state==='missing_debt'?'החוב חסר בענן. ההכרעה ממתינה עד לשחזור החוב.':'שמירת ההכרעה בענן ממתינה. אפשר לנסות שוב לאחר רענון החוב.');
 }
 function clear(){decisionView=null;const panel=display.field('morningRecoveryDecision');if(panel){panel.hidden=true;panel.replaceChildren()}}
 return {show:showRecoveryDecision,save:saveRecoveryChoice,confirm:confirmRecoveryChoice,clear};

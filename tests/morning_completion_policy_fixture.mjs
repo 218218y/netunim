@@ -233,6 +233,7 @@ export function originalMorningCompletionPolicy(source,name){
  // Preserve the historical financial/issuance policy when the NEW cheque
  // follow-up is absent. Its pending behavior is exercised by command tests.
  if(name==='createMorningDocument')source=source.replaceAll('morningCheckRegistrationMessage(data)||','')
+   .replace(',...(data.debt_recovery_contract?{businessRecovery:true}:{})','')
    // Compare the original issuance policy independently of the new recipient line.
    .replace('${recipientConfirmation(payload.document.client.email)}\\n','')
    .replaceAll('!!(data.bank_link_pending||data.checks_registration_pending)','!!data.bank_link_pending')
@@ -240,6 +241,8 @@ export function originalMorningCompletionPolicy(source,name){
    .replace("data.checks_registration_pending?'המסמך הופק ואומת. רישום הצ׳קים למעקב ממתין להשלמה אוטומטית; אין להפיק את המסמך שוב.':",'');
  const kind=name==='createMorningDocument'?'issue':'decision',node=declaration(source,name);
  let actual=tokens(source.slice(node.start,node.end));
+ if(name==='confirmRecoveryChoice')actual=actual.replace(',decisionRevision=decisionView?.revision','')
+   .replace('if(decisionRevision!==undefined){await confirmSharedRecoveryChoice(chosen,decisionRevision,assertCurrent,generation);return}','');
  if(kind==='issue')for(const state of ['createBusy','blocked','completed'])actual=actual.replaceAll('session.read().'+state,state);
  for(const [original,port] of [...ports[kind]].reverse())actual=actual.replaceAll(tokens(port),tokens(original));
  return actual;

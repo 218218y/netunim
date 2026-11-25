@@ -118,11 +118,14 @@ function publishedMorningEntries(base,local,remote){
   const prior=new Set((base?.morningDocuments||[]).map(link=>link.operationId));
   const localLinks=new Map((local?.morningDocuments||[]).map(link=>[link.operationId,link]));
   const remoteEntries=new Set();
+  const actualEntries=new Map(progressRows(remote).map(entry=>[entry.id,entry]));
   for(const link of remote?.morningDocuments||[]){
     const competing=localLinks.get(link.operationId);
     if(!prior.has(link.operationId)&&link.documentId&&link.documentId===competing?.documentId&&link.documentType===competing.documentType){
-      remoteEntries.add('MORNING:'+link.operationId+':payment');
-      remoteEntries.add('MORNING:'+link.operationId+':invoice');
+      for(const kind of ['payment','invoice']){
+        const id='MORNING:'+link.operationId+':'+kind,entry=actualEntries.get(id);
+        if(entry?.source==='morning'&&entry.kind===kind&&entry.action==='add')remoteEntries.add(id);
+      }
     }
   }
   return remoteEntries;

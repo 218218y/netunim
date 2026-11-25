@@ -59,7 +59,7 @@ export function createMorningStatus({lifetime,commands,session,recovery,applicat
         let recoveryCleanupPending=false;
         if(verifiedCreated&&needsLocalRecovery&&data.operation){
           const context=session.read().context,assertWrite=lifetime.capture(),
-            result=await application.apply({operationId:data.operation.operation_id,documentId:data.operation.document_id,documentNumber:data.operation.document_number,type:data.operation.document_type,amount:Number(data.operation.amount),verifiedAt:data.operation.verified_at},{assertCurrent:assertWrite,isCurrent:()=>canPublish()&&sameOperation()});
+            result=await application.apply({operationId:data.operation.operation_id,documentId:data.operation.document_id,documentNumber:data.operation.document_number,type:data.operation.document_type,amount:Number(data.operation.amount),verifiedAt:data.operation.verified_at,...(data.debt_recovery_contract?{businessRecovery:true}:{})},{assertCurrent:assertWrite,isCurrent:()=>canPublish()&&sameOperation()});
           assertCurrent();assertWrite();
           if(!sameOperation())return data;
           const settlement=application.settle(operationId,result,{serverLinkPending:!!(data.bank_link_pending||data.checks_registration_pending)});

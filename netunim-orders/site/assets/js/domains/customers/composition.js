@@ -118,10 +118,13 @@ export function createDomainsCustomers({
       const result=await documents.recoverPendingMorningOperation({expectedOperationId:operationId,retryChecks:true,quiet:false});
       if(result.state==='unavailable')throw result.error;
       if(result.result?.reason==='decision-required')return {state:'decision-required'};
+      if(['write-blocked','missing-debt','conflicting-recovery','verification-mismatch','decision-changed'].includes(result.result?.reason))
+        return {state:result.result.reason};
       if(result.status?.check_retry&&['cooldown','busy','failed'].includes(result.status.check_retry.state))return result.status.check_retry;
       if(result.status?.checks_registration_pending)return {state:'verification'};
       if(result.status?.bank_link_pending)return {state:'bank_link'};
-      if(result.state==='created'&&row?.debt_state==='pending')return {state:'debt-sync-pending'};
+      if(result.state==='created'&&row?.debt_state==='pending'&&!['cloud-complete','historical-receipt'].includes(result.result?.reason))
+        return {state:'debt-sync-pending'};
       return {state:result.state};
     },
     debtAction(row){

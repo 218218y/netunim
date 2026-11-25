@@ -43,7 +43,7 @@ async function recoverPendingMorningOperation({quiet=false,assertCurrent,retryCh
         operation=abandoned.operation;
       }
       if(operation?.state==='created'&&operation.verified_at){
-        const result=await application.apply(context,{operationId:operation.operation_id,documentId:operation.document_id,documentNumber:operation.document_number,type:operation.document_type,amount:Number(operation.amount),verifiedAt:operation.verified_at},{assertCurrent});assertCurrent();
+        const result=await application.apply(context,{operationId:operation.operation_id,documentId:operation.document_id,documentNumber:operation.document_number,type:operation.document_type,amount:Number(operation.amount),verifiedAt:operation.verified_at,...(data.debt_recovery_contract?{businessRecovery:true}:{})},{assertCurrent});assertCurrent();
         const settlement=application.settle(context.operationId,result,{serverLinkPending:!!(data.bank_link_pending||data.checks_registration_pending)});if(settlement.recoveryCleared)publish.notify(context,data.bank_link);
         if(result.reason==='decision-required')publish.notice?.(context,'המסמך אומת. נדרשת הכרעה לעדכון החוב.');
         else if(result.persisted===false)publish.notice?.(context,'המסמך אומת. יש להשלים את השמירה העמידה של עדכון החוב.');

@@ -17,7 +17,7 @@ import {$} from '../../state/constants.js';
 import {morningDebtImpact} from './morning-debt.js';
 import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
 import {bankMorningEligibility,bankMorningPrefill} from '../finance/bank-morning.js';
-import {createMorningDebtRecoveryContext,loadMorningDebtRecoveryContext,saveMorningDebtRecoveryContext,clearMorningDebtRecoveryContext,morningDebtRecoveryMatchesVerified,morningVerifiedApplicationDurable,morningFinancialSnapshot,morningFinancialChanges,normalizeMorningDebtRecoveryContext} from './morning-debt-recovery.js';
+import {createMorningDebtRecoveryContext,loadMorningDebtRecoveryContext,saveMorningDebtRecoveryContext,clearMorningDebtRecoveryContext,morningDebtRecoveryMatchesVerified,morningVerifiedApplicationDurable,morningFinancialSnapshot,morningFinancialChanges,normalizeMorningDebtRecoveryContext,normalizeMorningRecoveryDecision} from './morning-debt-recovery.js';
 import {createMorningPayments,morningPaymentTotalCents} from './morning-payments.js';
 import {activeMorningBankDebts,collapseMorningBankDebtPicker,filterMorningBankDebtPicker,morningBankDebtPickerMarkup,syncMorningBankDebtPickerSelection} from './morning-bank-debt-picker.js';
 import {createMorningBankLinks} from './morning-bank-links.js';
@@ -116,14 +116,13 @@ const operationCommands=createMorningOperationCommands({request});
 const debtApplication=createMorningDebtApplication({
   lifetime,recovery:{read:loadMorningDebtRecoveryContext},
   debts:{
+    shared:{read:readSharedDebtRecovery,apply:resolveSharedDebtRecovery},
     read:id=>(model.state.customerDebts||[]).find(d=>d.id===id),
     refresh:()=>refreshForMorningRecovery?.(),
     isBlocked:()=>rejectSecondaryMutation?.()===true,
     apply:command=>applyVerifiedDebtDocument?.(command)||{changed:false,reason:'no-handler'},
   },
-  policy:{matches:morningDebtRecoveryMatchesVerified,snapshot:morningFinancialSnapshot,changes:morningFinancialChanges,
-    hasVerifiedLink:(debt,document)=>!!debt?.morningDocuments?.some(link=>link.operationId===document.operationId
-      &&link.documentId===document.documentId&&link.documentType===document.type)},
+  policy:{matches:morningDebtRecoveryMatchesVerified,snapshot:morningFinancialSnapshot,changes:morningFinancialChanges},
   feedback:{toast,status:connectionStatus,decide:(...args)=>recoveryDecision.show(...args)},
 });
 const issuance=createMorningIssuance({commands:operationCommands,recovery:{persist:persistRecoveryContext,reset:resetOperationAfterTerminal,block:()=>{blocked=true}}});
@@ -164,6 +163,7 @@ const recoveryDecision=createMorningRecoveryDecision({
   session:{isActive,generation:()=>modalSession.generation,assertModal:modalAssert,capture:captureScope,scopeChanged},
   debts:{read:id=>(model.state.customerDebts||[]).find(d=>d.id===id),refresh:()=>refreshForMorningRecovery?.(),isBlocked:()=>rejectSecondaryMutation?.()===true},
   recovery:{read:loadMorningDebtRecoveryContext,save:saveMorningDebtRecoveryContext,adopt:context=>{pendingRecovery=context;issuanceContext=context},isPending:()=>lifetime.pending('recovery'),run:recoverPendingMorningOperation},
+  approve:resolveSharedDebtRecovery,
   application:debtApplication,
   display:{isOpen:()=>$('#modalBackdrop')?.classList.contains('open')===true,open:(...args)=>modalSession.open(...args),field:currentField,status:connectionStatus,markSaved:markDocumentDraftSaved,busy:setBusy},
   feedback:{toast},
@@ -269,10 +269,20 @@ function persistRecoveryContext(context){
   if(!saveMorningDebtRecoveryContext(context))throw new Error('לא ניתן לשמור נקודת התאוששות מקומית לפני ההפקה. המסמך לא נשלח ל-Morning כדי שלא יאבד הקשר לחוב במקרה של ניתוק או רענון.');
   pendingRecovery=context;issuanceContext=context;return context;
 }
-async function adoptSharedDebtRecovery(operationId){
-  const assertCurrent=captureScope();
+async function readSharedDebtRecovery(operationId,assertCurrent){
   const reply=await request.json('orders_debt_recovery',{operation_id:operationId},assertCurrent);assertCurrent();
   const context=normalizeMorningDebtRecoveryContext(reply.context);
+  if(!context||reply.state!=='pending')return {state:reply.state,context};
+  const decision=normalizeMorningRecoveryDecision(reply.decision);
+  if(reply.decision!==null&&!decision)throw new Error('לא ניתן לאמת את ההכרעה השמורה בענן.');
+  return {state:reply.state,context:{...context,decisionRevision:decision?.revision??0,...(decision?{resolution:decision}:{})}};
+}
+async function resolveSharedDebtRecovery(operationId,decisionRevision,assertCurrent,review){
+  const reply=await request.json('resolve_orders_debt_recovery',{operation_id:operationId,decision_revision:decisionRevision,...(review?{review}:{})},assertCurrent);
+  assertCurrent();return reply;
+}
+async function adoptSharedDebtRecovery(operationId){
+  const assertCurrent=captureScope(),{context}=await readSharedDebtRecovery(operationId,assertCurrent);assertCurrent();
   if(!context||!context.debtId||context.operationId!==operationId)return null;
   const local=loadMorningDebtRecoveryContext()||pendingRecovery;
   if((local&&local.operationId!==operationId)||createBusy)return null;

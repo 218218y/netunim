@@ -373,5 +373,10 @@
     "version": "20261124200000",
     "name": "financial_background_health",
     "sha256": "33fcd0f501d6c6aad32673900a3a7bff2036bb023f517200ac5632524076a929"
+  },
+  {
+    "version": "20261125100000",
+    "name": "orders_morning_business_receipts",
+    "sha256": "5104fb29fd91bd17e3e746dee43aa5f50bd281ec1e394645cbf3c919094f7fbc"
   }
 ]

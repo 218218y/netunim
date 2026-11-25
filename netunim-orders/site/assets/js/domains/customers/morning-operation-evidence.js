@@ -5,10 +5,10 @@ import {evidenceTimestamp} from '../../shared/response-evidence.js';
 /** @typedef {{pending?:boolean,operationId?:string,documentId?:string,documentNumber?:string|number,documentType?:number,documentAmount?:number,transactionId?:number,linkId?:number,verifiedAt?:string,handledAt?:string}} BankLink */
 /** @typedef {{checks_registration_state?:'registered'|'pending'|'evidence_pending'|'attention',checks_registration_attempts?:number,checks_registration_count?:number,checks_registration_amount?:number,checks_registration_evidence?:'matched'|'missing'|'mismatch',checks_registration_last_failed_at?:string,checks_registration_next_retry_at?:string}} CheckRegistration */
 /** @typedef {{state:string,retry_at?:string}} CheckRetry */
-/** @typedef {CheckRegistration & {ok:true,operation:LedgerOperation|null,configured?:boolean,available?:boolean,unresolved?:boolean,retryable_reserved?:boolean,environment?:string,checks_registration_pending?:boolean,bank_link_pending?:boolean,bank_link?:BankLink|null,check_retry?:CheckRetry}} OperationStatus */
+/** @typedef {CheckRegistration & {ok:true,operation:LedgerOperation|null,configured?:boolean,available?:boolean,unresolved?:boolean,retryable_reserved?:boolean,debt_recovery_contract?:boolean,environment?:string,checks_registration_pending?:boolean,bank_link_pending?:boolean,bank_link?:BankLink|null,check_retry?:CheckRetry}} OperationStatus */
 /** @typedef {{ok:true,reserved:boolean,operation:{operation_id:string,state:OperationState},orders_debt_recovery_stored?:boolean}} Reservation */
 /** @typedef {{id:string,type:number,amount:number,number?:string|number,allocationNumber?:string|number}} OfficialDocument */
-/** @typedef {CheckRegistration & {ok:true,verified:true,document:OfficialDocument,local_link_pending?:boolean,checks_registration_pending?:boolean,bank_link_pending?:boolean,bank_link?:BankLink|null}} CreatedDocument */
+/** @typedef {CheckRegistration & {ok:true,verified:true,document:OfficialDocument,debt_recovery_contract?:boolean,local_link_pending?:boolean,checks_registration_pending?:boolean,bank_link_pending?:boolean,bank_link?:BankLink|null}} CreatedDocument */
 /** @typedef {{ok:true,abandoned:boolean,operation:LedgerOperation|null}} Abandonment */
 /** @typedef {{operation_id?:string,prevent_retry?:boolean,uncertain?:boolean,document?:{id:string,number?:string|number,allocationNumber?:string|number}}} FailureDetails */
 
@@ -128,7 +128,7 @@ function operation(value,expectedId){
 export function decodeMorningOperationStatus(value,expectedId){
   const row=success(value);
   /** @type {OperationStatus} */ const result={ok:true,operation:operation(row.operation,expectedId),...checkRegistration(row)};
-  for(const name of /** @type {const} */ (['configured','available','unresolved','retryable_reserved','checks_registration_pending','bank_link_pending']))if(row[name]!==undefined)result[name]=flag(row[name]);
+  for(const name of /** @type {const} */ (['configured','available','unresolved','retryable_reserved','debt_recovery_contract','checks_registration_pending','bank_link_pending']))if(row[name]!==undefined)result[name]=flag(row[name]);
   if(row.environment!==undefined){if(typeof row.environment!=='string'||row.environment.length>40||(result.configured!==false&&!['production','sandbox'].includes(row.environment)))throw invalid();result.environment=row.environment}
   if(row.bank_link!==undefined)result.bank_link=bankLink(row.bank_link,expectedId);
   if(row.check_retry!==undefined){
@@ -158,7 +158,7 @@ export function decodeMorningCreatedDocument(value,payload){
   if(doc.number!==undefined&&doc.number!==null)document.number=numberLabel(doc.number);
   if(doc.allocationNumber!==undefined&&doc.allocationNumber!==null)document.allocationNumber=numberLabel(doc.allocationNumber);
   /** @type {CreatedDocument} */ const result={ok:true,verified:true,document,...checkRegistration(row)};
-  for(const name of /** @type {const} */ (['local_link_pending','checks_registration_pending','bank_link_pending']))if(row[name]!==undefined)result[name]=flag(row[name]);
+  for(const name of /** @type {const} */ (['local_link_pending','debt_recovery_contract','checks_registration_pending','bank_link_pending']))if(row[name]!==undefined)result[name]=flag(row[name]);
   if(row.bank_link!==undefined)result.bank_link=bankLink(row.bank_link,payload.operation_id);
   linkedDocument(result.bank_link,document,result.bank_link_pending);
   return result;

@@ -16,6 +16,33 @@ cloudAuth.supaFetch=async(path,options)=>{
  const s=window.auditServer;let data={ok:true};
  if(req.action==='status')data={ok:true,configured:true,available:true,environment:'sandbox',operation:s.operation||null,unresolved:!!s.operation&&!['created','failed'].includes(s.operation.state),retryable_reserved:s.operation?.state==='reserved'};
  if(req.action==='orders_debt_recovery')data={ok:true,context:s.operation?.operation_id===req.operation_id?s.recovery:null};
+ if(s.businessRecovery&&req.action==='status'&&data.operation)data.debt_recovery_contract=true;
+ if(s.businessRecovery&&req.action==='orders_debt_recovery')data={...data,state:s.receipt?'complete':'pending',decision:s.decision??null};
+ if(s.businessRecovery&&req.action==='resolve_orders_debt_recovery'){
+  const module=await import('./assets/js/domains/customers/morning-debt-recovery.js');
+  const debt=window.auditCloudHead.state.customerDebts.find(row=>row.id===s.recovery.debtId);
+  const snapshot=module.morningFinancialSnapshot(debt,req.operation_id);
+  if(req.decision_revision!==(s.decision?.revision??0))data={ok:true,state:'decision_changed'};
+  else if(req.review){
+   window.auditAssert(!module.morningFinancialChanges(snapshot,req.review.financialSnapshot).changed,'approval against stale snapshot');
+   const decision={...req.review,confirmedAt:s.operation.verified_at,revision:req.decision_revision+1};
+   window.auditSetServer({decision});
+   if(s.loseApprovalResponse)return new Response(JSON.stringify({ok:false,message:'lost approval response'}),{status:503});
+   data={ok:true,state:'approved',decision};
+  }else{
+   const choice=s.decision||s.recovery;
+   if(module.morningFinancialChanges(snapshot,choice.financialSnapshot).changed)data={ok:true,state:'decision_required'};
+   else{
+    const progress=await import('./assets/js/domains/customers/morning-debt.js');
+    const links=await import('./assets/js/domains/customers/morning-debt-documents.js');
+    progress.applyVerifiedMorningDocumentToDebt(debt,{...choice,operationId:req.operation_id,type:s.operation.document_type,amount:s.operation.amount,verifiedAt:s.operation.verified_at});
+    links.addVerifiedMorningDebtDocument(debt,{operationId:req.operation_id,documentId:s.operation.document_id,
+      documentNumber:s.operation.document_number,type:s.operation.document_type,verifiedAt:s.operation.verified_at});
+    window.auditCloudHead.revision++;window.auditSetServer({receipt:true});
+    data={ok:true,state:'complete'};
+   }
+  }
+ }
  if(req.action==='reserve')data={ok:true,reserved:true,orders_debt_recovery_stored:!!req.orders_debt_recovery,operation:{operation_id:req.operation_id,state:'reserved'}};
  if(req.action==='abandon_reservation'){window.auditSetServer({operation:{...s.operation,state:'failed'}});data={ok:true,abandoned:true,operation:window.auditServer.operation}}
  if(req.action==='create'){
@@ -377,7 +404,7 @@ def shared_recovery():
         const {context,operation,head}=window.sharedFixture;
         const recovery=await import('./assets/js/domains/customers/morning-debt-recovery.js');
         window.auditAssert(!recovery.loadMorningDebtRecoveryContext(),'receiving profile inherited local recovery');
-        window.auditSetServer({operation,recovery:context});
+        window.auditSetServer({operation,recovery:context,businessRecovery:true,loseApprovalResponse:true});
         const debt=head.customerDebts.find(row=>row.id==='AUDIT');
         debt.debtProgress=[{id:'OTHER-DEVICE-PAYMENT',kind:'payment',action:'add',amount:20,source:'manual',createdAt:'2026-11-24T11:00:00Z'}];
         window.auditCloudHead={revision:5,state:head};
@@ -389,26 +416,26 @@ def shared_recovery():
         const button=document.querySelector('[data-action=morning-recovery-confirm]');
         window.auditAssert(button&&!document.getElementById('morningRecoveryPayment').checked,'changed payment must remain unselected');
         button.click();
-        await window.auditWait(()=>!recovery.loadMorningDebtRecoveryContext());
-        await requestCloudSave('');
-        const progress=await window.auditProgress();
-        window.auditAssert(progress.paymentApplied===20&&progress.invoiceApplied===30,'recovery ignored explicit choices');
+        await window.auditWait(()=>window.auditServer.decision?.revision===1&&!button.disabled);
+        window.auditAssert(recovery.loadMorningDebtRecoveryContext()&&window.auditServer.decision?.revision===1,'approval loss was not recoverable');
+        window.auditAssert((await window.auditProgress()).invoiceApplied===0,'lost approval performed an unconfirmed write');
         window.auditAssert(window.auditCalls.every(request=>!['reserve','create'].includes(request.action)),'receiving device tried to issue');
-        const retained=window.auditCloudHead.state.customerDebts.find(row=>row.id==='AUDIT');
-        window.auditAssert(retained.morningDocuments.some(link=>link.operationId===row.operation_id),'cloud write lacks the operation receipt');
-        return window.auditCloudHead;
+        return {head:window.auditCloudHead,decision:window.auditServer.decision};
         """)
     with BrowserSession(ROOT/'netunim-orders/site','morning-restarted-device') as origin:
         seed(origin)
-        js(origin, 'window.sharedFixture='+json.dumps(evidence)+';window.auditCloudHead='+json.dumps(result)+';return true;')
+        js(origin, 'window.sharedFixture='+json.dumps(evidence)+';window.sharedResult='+json.dumps(result)+';return true;')
         assert js(origin, r"""
         const {context,operation}=window.sharedFixture;
         const recovery=await import('./assets/js/domains/customers/morning-debt-recovery.js');
         if(!recovery.saveMorningDebtRecoveryContext(context))return false;
-        window.auditSetServer({operation});
+        window.auditCloudHead=window.sharedResult.head;
+        window.auditSetServer({operation,recovery:context,businessRecovery:true,decision:window.sharedResult.decision});
         await recoverPendingMorningOperation();
         const progress=await window.auditProgress();
-        return !recovery.loadMorningDebtRecoveryContext()&&progress.paymentApplied===20&&progress.invoiceApplied===30;
+        const retained=window.auditCloudHead.state.customerDebts.find(row=>row.id==='AUDIT');
+        return !recovery.loadMorningDebtRecoveryContext()&&progress.paymentApplied===20&&progress.invoiceApplied===30
+          &&window.auditServer.receipt&&retained.morningDocuments.some(link=>link.operationId===operation.operation_id);
         """)
     print('PASS Morning shared recovery survives the originating device and honors the published decision on restart')
 

@@ -18,6 +18,14 @@ export function normalizeMorningFinancialSnapshot(value){
   return out;
 }
 
+export function normalizeMorningRecoveryDecision(value){
+  const financialSnapshot=normalizeMorningFinancialSnapshot(value?.financialSnapshot),revision=value?.revision;
+  const confirmedAt=validDateTime(value?.confirmedAt);
+  if(!financialSnapshot||!Number.isSafeInteger(revision)||revision<=0||!confirmedAt
+    ||typeof value.applyPayment!=='boolean'||typeof value.applyInvoice!=='boolean')return null;
+  return {financialSnapshot,revision,confirmedAt,applyPayment:value.applyPayment,applyInvoice:value.applyInvoice};
+}
+
 export function morningFinancialSnapshot(debt,operationId=''){
   if(!debt)return null;
   // Only this operation's stable IDs are excluded, never equal amounts or manual events.
@@ -91,7 +99,7 @@ export function morningDebtRecoveryMatchesVerified(context,{operationId,type,amo
 const DURABLE_NO_MUTATION_REASONS=new Set(['standalone','skipped-by-policy','no-balance','ineligible-debt']);
 export function morningVerifiedApplicationDurable(result){
   if(!result||typeof result!=='object'||result.persisted===false)return false;
-  if(result.changed===true||result.reason==='already-applied')return result.persisted===true;
+  if(result.changed===true||['already-applied','cloud-complete','historical-receipt'].includes(result.reason))return result.persisted===true;
   return result.changed===false&&DURABLE_NO_MUTATION_REASONS.has(String(result.reason||''));
 }
 

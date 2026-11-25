@@ -2,9 +2,6 @@ import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
 export function originalMorningApplicationPolicy(source){
   const node=declaration(source,'applyVerifiedContextOnce');
   return tokens(source.slice(node.start,node.end))
-    // The second-device path stops on a verified link from the refreshed V2 head.
-    // The original choice policy still applies when the head has no such link.
-    .replace("const debt=debts.read(context.debtId);if(!immediate&&policy.hasVerifiedLink?.(debt,{operationId,documentId,type}))return{changed:false,reason:'already-applied',persisted:true};const current=", 'const debt=debts.read(context.debtId),current=')
     .replaceAll(',isCurrent=()=>true','').replaceAll('if(isCurrent()===true)','')
     .replaceAll('lifetime.capture()', 'captureScope()')
     .replaceAll('policy.matches(', 'morningDebtRecoveryMatchesVerified(')

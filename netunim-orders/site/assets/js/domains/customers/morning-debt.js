@@ -1,4 +1,4 @@
-import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
+import {customerDebtActiveProgressEntries,customerDebtProgressData} from '../../shared/customer-debt-progress.js';
 
 const CENTS=100;
 const MORNING_EFFECTS=Object.freeze({
@@ -50,6 +50,19 @@ export function morningDebtImpact(debt,type,documentAmount,{applyPayment=true,ap
     paymentUnapplied:amount(paymentSelected?Math.max(0,documentCents-paymentApplyCents):0),
     invoiceUnapplied:amount(invoiceSelected?Math.max(0,documentCents-invoiceApplyCents):0),
   };
+}
+
+export function morningDebtAllocationMatches(debt,{operationId,type,amount:documentAmount,applyPayment,applyInvoice},allowMissing=false){
+  const rows=Array.isArray(debt.debtProgress)?debt.debtProgress:[];
+  const ids=['payment','invoice'].map(kind=>morningDebtProgressEntryId(operationId,kind));
+  const baseline={...debt,debtProgress:rows.filter(row=>!ids.includes(row.id))};
+  const expected=morningDebtImpact(baseline,type,documentAmount,{applyPayment,applyInvoice});
+  return ['payment','invoice'].every((kind,index)=>{
+    const id=ids[index],entry=rows.find(row=>row.id===id),amount=expected[kind+'Apply'];
+    if(!entry)return allowMissing||amount===0;
+    return amount>0&&entry.kind===kind&&entry.source==='morning'&&entry.action==='add'
+      &&cents(entry.amount)===cents(amount)&&customerDebtActiveProgressEntries(debt,kind).includes(entry);
+  });
 }
 
 export function applyVerifiedMorningDocumentToDebt(debt,{operationId,type,amount:documentAmount,verifiedAt,applyPayment=true,applyInvoice=true}={}){

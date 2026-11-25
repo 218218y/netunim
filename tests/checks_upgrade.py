@@ -330,19 +330,116 @@ def run(db):
     def save_orders_link(doc_id,operation_key):
         orders_state=json.loads(scalar("select state from public.order_management_documents where owner_id="+quote(OWNER)+" and document_name='suppliers'"))
         orders_revision=scalar("select revision from public.order_management_documents where owner_id="+quote(OWNER)+" and document_name='suppliers'")
-        orders_state['customerDebts']=[{'id':debt_id,'amount':42,'morningDocuments':[{'operationId':debt_op,'documentId':doc_id,'documentType':305}]}]
+        orders_state['customerDebts']=[{'id':debt_id,'amount':42,'morningDocuments':[
+            {'operationId':debt_op,'documentId':doc_id,'documentType':305,'documentNumber':'','verifiedAt':'2026-11-24T00:00:00Z'}]}]
         return db.auth_sql('set local request.jwt.claims='+claims+";select revision from public.save_order_management_document_v6('suppliers',"
                            +orders_revision+','+quote(json.dumps(orders_state))+'::jsonb,'+quote(operation_key)+",'{}','{}')").strip()
     save_orders_link('wrong-document','shared-morning-debt-nonreceipt')
     assert debt_list('active')=='debt_update:pending'
-    receipt=save_orders_link('shared-debt-doc','shared-morning-debt-receipt')
+    save_orders_link('shared-debt-doc','shared-morning-debt-link-only')
+    assert debt_list('active')=='debt_update:pending'
+    recover=lambda operation,revision=0,review=None,environment='sandbox': json.loads(db.auth_sql(
+        'set local request.jwt.claims='+claims+";select public.resolve_morning_orders_debt_recovery_v1("
+        +quote(environment)+','+quote(operation)+','+str(revision)+','+(quote(json.dumps(review))+'::jsonb' if review else 'null')+')'))
+    assert recover(debt_op,environment='production')['state']=='unavailable'
+    assert recover(debt_op)['state']=='complete'
+    receipt=scalar("select revision from public.order_management_documents where owner_id="+quote(OWNER)+" and document_name='suppliers'")
     assert scalar("select orders_debt_recovery_revision from public.morning_document_operations where operation_id="+quote(debt_op))==receipt
+    proof=json.loads(scalar("select orders_debt_recovery_proof from public.morning_document_operations where operation_id="+quote(debt_op)))
+    assert proof['invoice']=={'outcome':'applied','amount':42}
+    assert proof['payment']=={'outcome':'not_applicable','amount':0}
     assert debt_list('active')=='' and debt_list('resolved')=='registered:preserved'
-    save_orders_link('shared-debt-doc','shared-morning-debt-replay')
+    assert recover(debt_op)['state']=='complete'
     assert scalar("select orders_debt_recovery_revision from public.morning_document_operations where operation_id="+quote(debt_op))==receipt
+    check_morning_debt_decisions(db, scalar, recover, claims)
     check_background_health(db, scalar)
     print('PASS Morning MFA continuation: fenced server trigger and cron, AAL1 denial, AAL2 access, ten checks and idempotent recovery')
     print('PASS cheque upgrade: stored evidence replay, cents, V2 scope, no-op revisions, verified-only import, atomic failure, durable retry and payment-index idempotency')
+
+def check_morning_debt_decisions(db, scalar, recover, claims):
+    debt_id='morning-two-distinct-operations'
+    first='00000000-0000-4000-8000-000000000991'
+    second='00000000-0000-4000-8000-000000000992'
+    declined='00000000-0000-4000-8000-000000000993'
+    stale='00000000-0000-4000-8000-000000000994'
+
+    def save_debt(debt):
+        state=json.loads(scalar("select state from public.order_management_documents where owner_id="+quote(OWNER)+" and document_name='suppliers'"))
+        rev=scalar("select revision from public.order_management_documents where owner_id="+quote(OWNER)+" and document_name='suppliers'")
+        state['customerDebts']=[row for row in state['customerDebts'] if row['id']!=debt_id]+[debt]
+        return db.auth_sql('set local request.jwt.claims='+claims+";select revision from public.save_order_management_document_v6('suppliers',"
+                           +rev+','+quote(json.dumps(state))+'::jsonb,'+quote('synthetic-debt-'+rev)+",'{}','{}')")
+
+    def read_debt():
+        return json.loads(scalar("select d from public.order_management_documents s cross join lateral jsonb_array_elements(s.state->'customerDebts') d where owner_id="
+                                 +quote(OWNER)+" and document_name='suppliers' and d->>'id'="+quote(debt_id)))
+
+    def reserve(operation, amount, payment=True, invoice=True):
+        context={'debtId':debt_id,'applyPayment':payment,'applyInvoice':invoice,'financialSnapshot':{
+            'amount':1000,'paymentApplied':0,'invoiceApplied':0,'paymentComplete':False,'invoiceComplete':False}}
+        db.sql("insert into public.morning_document_operations(owner_id,environment,operation_id,request_fingerprint,state,document_type,amount,document_date,source_kind,orders_debt_recovery) values("
+               +quote(OWNER)+",'sandbox',"+quote(operation)+','+quote(operation)+",'reserved',320,"+str(amount)+",current_date,'debt',"
+               +quote(json.dumps(context))+"::jsonb);update public.morning_document_operations set state='created',issuance_started_at=now(),verified_at=now(),document_id="
+               +quote('doc-'+operation)+",document_number='TEST' where operation_id="+quote(operation))
+
+    def proof(operation):
+        return json.loads(scalar("select coalesce(orders_debt_recovery_proof,'null') from public.morning_document_operations where operation_id="+quote(operation)))
+
+    save_debt({'id':debt_id,'amount':1000})
+    for operation,amount in ((first,700),(second,600),(declined,20),(stale,20)):
+        reserve(operation,amount)
+    for role in ('anon','service_role'):
+        assert scalar("select has_function_privilege("+quote(role)+",'public.resolve_morning_orders_debt_recovery_v1(text,uuid,bigint,jsonb)','execute')")=='f'
+    aal1=quote(json.dumps({'sub':OWNER,'role':'authenticated','aal':'aal1'}))
+    try:
+        db.auth_sql('set local request.jwt.claims='+aal1+";select public.resolve_morning_orders_debt_recovery_v1('sandbox',"+quote(first)+',0,null)')
+        raise AssertionError('AAL1 allocated an Orders debt')
+    except RuntimeError as error:
+        assert 'mfa_required' in str(error)
+    other='11111111-1111-4111-8111-111111111193'
+    assert json.loads(scalar('begin;set local role authenticated;set local request.jwt.claim.sub='+quote(other)
+        +";select public.resolve_morning_orders_debt_recovery_v1('sandbox',"+quote(first)+',0,null);commit;'))=={'state':'unavailable'}
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        states=sorted(workers.map(lambda _: recover(first)['state'],range(2)))
+    assert states==['complete','complete']
+    assert proof(first)['invoice']=={'amount':700,'outcome':'partial'}
+    assert proof(first)['payment']=={'amount':700,'outcome':'partial'}
+    assert recover(second)['state']=='decision_required'
+    debt=read_debt()
+    stale_write={**debt,'debtProgress':debt['debtProgress']+[
+        {'id':'MORNING:'+second+':invoice','kind':'invoice','source':'morning','action':'add','amount':600}]}
+    try:
+        save_debt(stale_write)
+        raise AssertionError('Stale full allocation was committed')
+    except RuntimeError as error:
+        assert 'morning_debt_allocation_changed' in str(error)
+    assert read_debt()==debt and proof(second) is None
+
+    review={'financialSnapshot':{'amount':1000,'paymentApplied':700,'invoiceApplied':700,
+        'paymentComplete':False,'invoiceComplete':False},'applyPayment':True,'applyInvoice':True}
+    approved=recover(second,review=review)
+    assert approved['state']=='approved' and approved['decision']['revision']==1
+    assert recover(second,review=review)==approved
+    assert recover(second,review={**review,'applyInvoice':False})['state']=='decision_changed'
+    assert recover(second)['state']=='decision_changed'
+    assert recover(second,1)['state']=='complete'
+    assert proof(second)['payment']=={'amount':300,'outcome':'applied'} and proof(second)['decisionRevision']==1
+    assert sum(row['amount'] for row in read_debt()['debtProgress'] if row['kind']=='payment')==1000
+    closed_snapshot={'amount':1000,'paymentApplied':1000,'invoiceApplied':1000,'paymentComplete':True,'invoiceComplete':True}
+    assert recover(declined,review={'financialSnapshot':closed_snapshot,'applyPayment':False,'applyInvoice':True})['state']=='approved'
+    assert recover(declined,1)['state']=='complete'
+    assert proof(declined)['payment']=={'amount':0,'outcome':'declined'}
+    assert proof(declined)['invoice']=={'amount':0,'outcome':'no_balance'}
+    assert len(read_debt()['debtProgress'])==4
+    assert recover(stale,review={'financialSnapshot':closed_snapshot,'applyPayment':True,'applyInvoice':True})['state']=='approved'
+    debt=read_debt()
+    debt['debtProgress'].append({'id':'user-reversal','kind':'payment','action':'reset','removesEntry':True,
+                                'clears':['MORNING:'+first+':payment']})
+    save_debt(debt)
+    assert recover(first)['state']=='complete' and read_debt()==debt
+    assert recover(stale,1)['state']=='decision_required' and proof(stale) is None
+    assert recover(stale,1,review={'financialSnapshot':closed_snapshot,'applyPayment':True,'applyInvoice':True})['state']=='decision_changed'
+    print('PASS Morning Orders: SQL receipts, independent concurrent allocation limits, revision-fenced approvals, reversals and AAL2')
 
 
 def check_background_health(db, scalar):

@@ -22,7 +22,7 @@ async function createMorningDocument(button){
     if(!confirmed)return;assertCurrent();if(!session.isActive(generation))return;
     if(rejectCurrentIssuance())return;
     const data=await issuance.issue(payload,context,assertCurrent);assertCurrent();
-    const result=await application.apply(context,{operationId:context.operationId,documentId:data.document.id,documentNumber:data.document.number,type:data.document.type??type,amount:data.document.amount??amount,verifiedAt:new Date().toISOString()},{immediate:issuanceEpoch===session.interruptionEpoch()&&connectivity.isOnline(),assertCurrent,isCurrent:()=>session.isActive(generation)});assertCurrent();
+    const result=await application.apply(context,{operationId:context.operationId,documentId:data.document.id,documentNumber:data.document.number,type:data.document.type??type,amount:data.document.amount??amount,verifiedAt:new Date().toISOString(),...(data.debt_recovery_contract?{businessRecovery:true}:{})},{immediate:issuanceEpoch===session.interruptionEpoch()&&connectivity.isOnline(),assertCurrent,isCurrent:()=>session.isActive(generation)});assertCurrent();
     const settlement=recovery.settle(context.operationId,result,{serverLinkPending:!!data.local_link_pending||!!(data.bank_link_pending||data.checks_registration_pending)}),
       durable=settlement.durable,recoveryCleared=settlement.recoveryCleared;if(recoveryCleared)recovery.notify(context,data.bank_link);
     media.invalidateCache();

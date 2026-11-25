@@ -3,9 +3,10 @@
 /** @typedef {{
  * operationId:string,debtId:string,type:number,amount:number,applyPayment:boolean,applyInvoice:boolean,
  * financialSnapshot?:FinancialSnapshot,
+ * decisionRevision?:number,
  * resolution?:{financialSnapshot:FinancialSnapshot,applyPayment:boolean,applyInvoice:boolean,confirmedAt:string}
  * }} ApplicationContext */
-/** @typedef {{operationId?:string|undefined,documentId?:string|undefined,documentNumber?:string|number|undefined,type?:number|undefined,amount?:number|undefined,verifiedAt?:string|undefined}} VerifiedDocument */
+/** @typedef {{operationId?:string|undefined,documentId?:string|undefined,documentNumber?:string|number|undefined,type?:number|undefined,amount?:number|undefined,verifiedAt?:string|undefined,businessRecovery?:boolean}} VerifiedDocument */
 /** @typedef {{changed:boolean,reason?:string,persisted?:boolean}} ApplicationResult */
 /** @typedef {import('../../core/morning-operation-scope.js').MorningAssertion} MorningAssertion */
 /** @typedef {{immediate?:boolean,assertCurrent?:MorningAssertion,isCurrent?:()=>boolean}} ApplicationOptions */
@@ -21,11 +22,11 @@
  * @param {{
  * lifetime:Pick<ReturnType<typeof import('./morning-lifetime.js').createMorningLifetime>,'capture'|'join'|'pending'>,
  * recovery:{read:()=>ApplicationContext|null},
- * debts:{read:(id:string)=>unknown,refresh:()=>Promise<unknown>,isBlocked:()=>boolean,apply:(command:DebtApplication)=>ApplicationResult|Promise<ApplicationResult>},
+ * debts:{read:(id:string)=>unknown,refresh:()=>Promise<unknown>,isBlocked:()=>boolean,apply:(command:DebtApplication)=>ApplicationResult|Promise<ApplicationResult>,
+ *   shared?:{read:(id:string,assert:MorningAssertion)=>Promise<{state:string,context:ApplicationContext|null}>,apply:(id:string,revision:number,assert:MorningAssertion)=>Promise<{state:string}>}},
  * policy:{
  *   matches:(context:ApplicationContext,verified:VerifiedDocument)=>boolean,
  *   snapshot:(debt:unknown,operationId:string)=>FinancialSnapshot|null,
- *   hasVerifiedLink?:(debt:unknown,document:VerifiedDocument)=>boolean,
  *   changes:(before:FinancialSnapshot|undefined,current:FinancialSnapshot)=>{changed:boolean}
  * },
  * feedback:{toast:(text:string)=>void,status:(kind:string,text:string)=>void,decide:(context:ApplicationContext,current:FinancialSnapshot)=>void}
@@ -42,10 +43,47 @@ export function createMorningDebtApplication({lifetime,recovery,debts,policy,fee
     if(existing&&lifetime.pending(key)){existing.isCurrent=isCurrent;return existing.promise}
     /** @type {ApplicationFlight} */ const flight={promise:Promise.resolve({changed:false}),isCurrent};flights.set(key,flight);
     try{
-      flight.promise=lifetime.join(key,assertCurrent,()=>applyVerifiedContextOnce(context,args,{...options,assertCurrent,isCurrent:()=>flight.isCurrent()===true}))
+      const currentOptions={...options,assertCurrent,isCurrent:()=>flight.isCurrent()===true};
+      flight.promise=lifetime.join(key,assertCurrent,()=>args.businessRecovery
+        ?applySharedRecovery(context,args,currentOptions):applyVerifiedContextOnce(context,args,currentOptions))
         .finally(()=>{if(flights.get(key)===flight)flights.delete(key)});
       return flight.promise;
     }catch(error){if(flights.get(key)===flight)flights.delete(key);throw error}
+  }
+  /** @param {ApplicationContext|null} context @param {VerifiedDocument} verified @param {ApplicationOptions} options @returns {Promise<ApplicationResult>} */
+  async function applySharedRecovery(context,verified,{assertCurrent=lifetime.capture(),isCurrent=()=>true}={}){
+    const operationId=verified.operationId,{shared}=debts;
+    if(!context||!operationId||context.operationId!==operationId||!shared)return {changed:false,reason:'unbound-operation'};
+    assertCurrent();
+    const receipt=await shared.read(operationId,assertCurrent);assertCurrent();
+    if(!policy.matches(context,verified))return {changed:false,reason:'verification-mismatch'};
+    if(receipt.state==='complete'||receipt.state==='historical')return {
+      changed:false,reason:receipt.state==='complete'?'cloud-complete':'historical-receipt',persisted:true,
+    };
+    const currentContext=receipt.context;
+    if(receipt.state!=='pending'||!currentContext||!policy.matches(currentContext,verified)||currentContext.debtId!==context.debtId)
+      return {changed:false,reason:'verification-mismatch'};
+    if(debts.isBlocked())return {changed:false,reason:'write-blocked'};
+    if(isCurrent())feedback.status('loading','מסנכרן את החוב עם הענן ובודק את היתרה…');
+    const refreshed=await debts.refresh();assertCurrent();
+    if(refreshed!==true)return {changed:false,reason:'cloud-refresh-pending'};
+    if(debts.isBlocked())return {changed:false,reason:'write-blocked'};
+    if(recovery.read()?.operationId!==operationId)return {changed:false,reason:'recovery-changed'};
+    const result=await shared.apply(operationId,currentContext.decisionRevision??0,assertCurrent);assertCurrent();
+    if(result.state==='complete'){
+      await debts.refresh().catch(()=>false);assertCurrent();
+      return {changed:true,reason:'cloud-complete',persisted:true};
+    }
+    if(result.state==='historical')return {changed:false,reason:'historical-receipt',persisted:true};
+    if(result.state==='decision_required'){
+      const current=policy.snapshot(debts.read(currentContext.debtId),operationId);
+      if(current&&isCurrent())feedback.decide(currentContext,current);
+      return {changed:false,reason:current?'decision-required':'missing-debt'};
+    }
+    if(result.state==='decision_changed')return {changed:false,reason:'decision-changed'};
+    if(result.state==='missing_debt')return {changed:false,reason:'missing-debt'};
+    if(result.state==='conflicting_progress'||result.state==='conflicting_document')return {changed:false,reason:'conflicting-recovery'};
+    return {changed:false,reason:'cloud-write-pending',persisted:false};
   }
   /** @param {ApplicationContext|null} context @param {VerifiedDocument} args @param {ApplicationOptions} options @returns {Promise<ApplicationResult>} */
   async function applyVerifiedContextOnce(context,{operationId,documentId,documentNumber,type,amount,verifiedAt}={}, {immediate=false,assertCurrent=lifetime.capture(),isCurrent=()=>true}={}){
@@ -61,9 +99,7 @@ export function createMorningDebtApplication({lifetime,recovery,debts,policy,fee
     assertCurrent();lifetime.capture()();
     if(debts.isBlocked())return {changed:false,reason:'write-blocked'};
     const stored=recovery.read();if(stored?.operationId!==operationId)return {changed:false,reason:'recovery-changed'};context=stored;
-    const debt=debts.read(context.debtId);
-    if(!immediate&&policy.hasVerifiedLink?.(debt,{operationId,documentId,type}))return {changed:false,reason:'already-applied',persisted:true};
-    const current=policy.snapshot(debt,operationId);
+    const debt=debts.read(context.debtId),current=policy.snapshot(debt,operationId);
     if(!current){feedback.toast('המסמך אומת, אך החוב חסר. נקודת ההתאוששות נשמרה עד לשחזור החוב.');return {changed:false,reason:'missing-debt'}}
     const resolution=context.resolution,reviewed=resolution&&!policy.changes(resolution.financialSnapshot,current).changed;
     let selected=context;

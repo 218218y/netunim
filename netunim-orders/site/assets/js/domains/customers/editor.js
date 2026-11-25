@@ -3,7 +3,7 @@ import {money} from '../../core/money.js';
 import {customerDebtProgressData,customerDebtProgressEntries,customerDebtActiveProgressEntries,customerDebtVisibleProgressEntries,customerDebtProgressMode} from '../../shared/customer-debt-progress.js';
 import {normalizeNoteReminderDate} from '../../contracts/note-reminder-date.js';
 import {checkDateFmt} from '../../core/dates.js';
-import {applyVerifiedMorningDocumentToDebt} from './morning-debt.js';
+import {applyVerifiedMorningDocumentToDebt,morningDebtAllocationMatches} from './morning-debt.js';
 import {addVerifiedMorningDebtDocument,morningDebtDocuments} from './morning-debt-documents.js';
 import {morningDocumentLabel} from '../../core/morning-document-types.js';
 import {$} from '../../state/constants.js';
@@ -278,13 +278,14 @@ async function removeDebtProgressEntry(id,kind,entryId){
 
 async function applyVerifiedMorningDocument({debtId,operationId,documentId,documentNumber,type,amount,verifiedAt,applyPayment=true,applyInvoice=true}={}){
   const d=(model.state.customerDebts||[]).find(row=>row.id===debtId);if(!d)return {changed:false,reason:'missing-debt'};
-  const result=applyVerifiedMorningDocumentToDebt(d,{operationId,type,amount,verifiedAt,applyPayment,applyInvoice});
+  const command={operationId,type,amount,verifiedAt,applyPayment,applyInvoice};
+  if(!morningDebtAllocationMatches(d,command,true))return {changed:false,reason:'conflicting-recovery'};
+  const result=applyVerifiedMorningDocumentToDebt(d,command);
   const linkChanged=addVerifiedMorningDebtDocument(d,{operationId,documentId,documentNumber,type,verifiedAt});
-  const linked=Array.isArray(d.morningDocuments)&&d.morningDocuments.some(link=>link.operationId===String(operationId||'').trim());
+  const linked=d.morningDocuments?.some(link=>link.operationId===operationId&&link.documentId===documentId&&link.documentType===type);
   const changed=result.changed||linkChanged;
-  if(!changed&&!uncommittedMorningDebts.has(d))return linked||result.reason==='already-applied'?{...result,persisted:true}:result;
-  // Recovery refreshes from the authoritative head before applying. Stable IDs
-  // on that head already prove durability. Only a mutation in memory needs a receipt.
+  if(!linked||!morningDebtAllocationMatches(d,command))return {changed,reason:'conflicting-recovery',persisted:false};
+  if(!changed&&!uncommittedMorningDebts.has(d))return {...result,persisted:true};
   uncommittedMorningDebts.add(d);
   const commit=commitSave(changed?'חוב הלקוח עודכן לפי מסמך Morning מאומת':'',{surface:'orders.morning.customerDebt',domains:['customerDebts'],operations:[{type:'put',collection:'customerDebts',id:d.id,mode:'replace',record:d}]});
   if(changed)renderCustomers({resultsOnly:true});
