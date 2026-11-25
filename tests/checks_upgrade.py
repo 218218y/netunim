@@ -1,5 +1,6 @@
 """Business regressions against PostgreSQL, including the real V2 write boundary."""
 import json
+import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from isolated_sync_postgres import OWNER, quote
@@ -327,11 +328,17 @@ def run(db):
         return scalar("select stage||':'||debt_state from public.list_morning_recovery_operations_v3("
                       +quote(OWNER)+",'sandbox',"+quote(mode)+','+quote(debt_op)+',null,null,null)')
     assert debt_list('active')=='debt_update:pending'
-    def save_orders_link(doc_id,operation_key,document_type=305):
+    def save_orders_link(doc_id,operation_key,document_type=305,progress=None,wrong_target=False):
         orders_state=json.loads(scalar("select state from public.order_management_documents where owner_id="+quote(OWNER)+" and document_name='suppliers'"))
         orders_revision=scalar("select revision from public.order_management_documents where owner_id="+quote(OWNER)+" and document_name='suppliers'")
         orders_state['customerDebts']=[{'id':debt_id,'amount':42,'morningDocuments':[
             {'operationId':debt_op,'documentId':doc_id,'documentType':document_type,'documentNumber':'','verifiedAt':'2026-11-24T00:00:00Z'}]}]
+        if progress:
+            target=orders_state['customerDebts'][0]
+            if wrong_target:
+                target={'id':'other-synthetic-debt','amount':42}
+                orders_state['customerDebts'].append(target)
+            target['debtProgress']=progress
         return db.auth_sql('set local request.jwt.claims='+claims+";select revision from public.save_order_management_document_v6('suppliers',"
                            +orders_revision+','+quote(json.dumps(orders_state))+'::jsonb,'+quote(operation_key)+",'{}','{}')").strip()
     recover=lambda operation,revision=0,review=None,environment='sandbox': json.loads(db.auth_sql(
@@ -345,6 +352,17 @@ def run(db):
     assert recover(debt_op)['state']=='conflicting_document'
     save_orders_link('shared-debt-doc','shared-morning-debt-link-only')
     assert debt_list('active')=='debt_update:pending'
+    entry={'id':'MORNING:'+debt_op+':invoice','kind':'invoice','source':'morning','action':'add','amount':42}
+    def rejects_progress(entries,error,wrong_target=False):
+        try:
+            save_orders_link('shared-debt-doc','synthetic-'+scalar('select gen_random_uuid()'),progress=entries,wrong_target=wrong_target)
+            raise AssertionError('Invalid Orders V2 progress was accepted')
+        except RuntimeError as cause:
+            assert error in str(cause), str(cause)
+    rejects_progress([entry,entry],'morning_debt_duplicate_progress')
+    rejects_progress([entry,{**entry,'amount':41}],'morning_debt_duplicate_progress')
+    rejects_progress([entry],'morning_debt_wrong_target',True)
+    assert debt_list('active')=='debt_update:pending'
     assert recover(debt_op,environment='production')['state']=='unavailable'
     assert recover(debt_op)['state']=='complete'
     receipt=scalar("select revision from public.order_management_documents where owner_id="+quote(OWNER)+" and document_name='suppliers'")
@@ -354,11 +372,63 @@ def run(db):
     assert proof['payment']=={'outcome':'not_applicable','amount':0}
     assert debt_list('active')=='' and debt_list('resolved')=='registered:preserved'
     assert recover(debt_op)['state']=='complete'
+    rejects_progress([entry,entry],'morning_debt_duplicate_progress')
     assert scalar("select orders_debt_recovery_revision from public.morning_document_operations where operation_id="+quote(debt_op))==receipt
     check_morning_debt_decisions(db, scalar, recover, claims)
+    check_morning_snapshots_and_severity(db, scalar)
     check_background_health(db, scalar)
     print('PASS Morning MFA continuation: fenced server trigger and cron, AAL1 denial, AAL2 access, ten checks and idempotent recovery')
     print('PASS cheque upgrade: stored evidence replay, cents, V2 scope, no-op revisions, verified-only import, atomic failure, durable retry and payment-index idempotency')
+
+def check_morning_snapshots_and_severity(db, scalar):
+    states=[
+        {'amount':1.005,'debtProgress':[{'id':'p','kind':'payment','amount':0.005}]},
+        {'amount':-100.005,'invoiceIssued':True},
+        {'amount':1000,'paid':True,'debtProgress':[{'id':'invoice','kind':'invoice','amount':300}]},
+        {'amount':100,'debtProgress':[{'id':'p','kind':'payment','amount':37},
+            {'id':'reset','kind':'payment','action':'reset','clears':['p']},
+            {'id':'undo-reset','kind':'payment','action':'reset','removesEntry':True,'clears':['reset']}]},
+        {'amount':42,'debtProgress':[{'id':'p','kind':'invoice','amount':42},
+            {'id':'remove','kind':'invoice','action':'reset','removesEntry':True,'clears':['p']}]},
+    ]
+    js="""import {morningFinancialSnapshot} from './netunim-orders/site/assets/js/domains/customers/morning-debt-recovery.js';
+let raw=''; for await(const chunk of process.stdin)raw+=chunk;
+console.log(JSON.stringify(JSON.parse(raw).map(debt=>morningFinancialSnapshot(debt))));"""
+    serialized=json.dumps(states)
+    expected=json.loads(subprocess.run(['node','--input-type=module','-e',js],input=serialized,
+                                        capture_output=True,text=True,check=True).stdout)
+    actual=json.loads(scalar("select jsonb_agg(netunim_internal.morning_debt_snapshot(value) order by ordinality) from jsonb_array_elements("
+                             +quote(serialized)+"::jsonb) with ordinality"))
+    assert actual==expected,(actual,expected)
+    historical={'debtProgress':[{'id':'historic'},{'id':'historic'}]}
+    assert scalar("select not netunim_internal.morning_debt_unique_progress("+quote(json.dumps(historical))+")")=='t'
+    owner=scalar('select gen_random_uuid()')
+    db.sql("insert into auth.users(id) values("+quote(owner)+");"
+           "insert into public.morning_document_operations(owner_id,environment,operation_id,request_fingerprint,state,document_type,amount,document_date,created_at,issuance_started_at) "
+           "select "+quote(owner)+",'sandbox',gen_random_uuid(),seq::text,'needs_reconciliation',305,25,current_date,"
+           "now()-interval '3 minutes',now()-interval '3 minutes' from generate_series(1,55) seq;"
+           "insert into public.morning_document_operations(owner_id,environment,operation_id,request_fingerprint,state,document_type,amount,document_date,created_at,issuance_started_at) "
+           "values("+quote(owner)+",'sandbox',gen_random_uuid(),'old','needs_reconciliation',305,25,current_date,now()-interval '11 minutes',now()-interval '11 minutes');"
+           "insert into public.morning_document_operations(owner_id,environment,operation_id,request_fingerprint,state,document_type,amount,document_date,"
+           "created_at,verified_at,issuance_started_at,document_id,document_number,source_kind,source_bank_transaction_id) "
+           "select "+quote(owner)+",'sandbox',gen_random_uuid(),'bank-'||age,'created',305,25,current_date,now()-age,now()-age,now()-age,"
+           "gen_random_uuid()::text,'bank-'||age,'bank',90001 from (values(interval '31 minutes'),(interval '5 minutes')) as ages(age);")
+    signature='public.list_morning_recovery_operations_v4(uuid,text,text,text,int,timestamptz,uuid)'
+    for role in ('anon','authenticated'):
+        assert scalar("select has_function_privilege("+quote(role)+','+quote(signature)+",'execute')")=='f'
+    def read_page(mode,after=None):
+        cursor=','.join((str(after['priority']),quote(after['sort_at']),quote(after['operation_id']))) if after else 'null,null,null'
+        return json.loads(scalar("select coalesce(json_agg(row),'[]') from public.list_morning_recovery_operations_v4("
+                                 +quote(owner)+",'sandbox',"+quote(mode)+",'',"+cursor+") row"))
+    active=read_page('active')
+    assert len(active)==51 and [(row['stage'],row['priority']) for row in active[:2]]==[('bank_link',1),('verification',1)]
+    assert all(row['severity']=='warning' and row['priority']==2 for row in active[2:])
+    assert read_page('attention')==active[:2]
+    assert any(row['stage']=='bank_link' and row['severity']=='info' for row in read_page('active',active[49]))
+    assert all(row['priority'] in (2,3) for row in read_page('waiting'))
+    following=read_page('active',active[49])
+    assert len(following)==8 and not ({row['operation_id'] for row in active[:50]} & {row['operation_id'] for row in following})
+    print('PASS Morning final contract: identical browser/SQL snapshots, owned priority filters and non-overlapping keyset pagination')
 
 def check_morning_debt_decisions(db, scalar, recover, claims):
     assert scalar("select netunim_internal.morning_debt_money('1.005')=1 and netunim_internal.morning_debt_money('0.005')=0.01 "

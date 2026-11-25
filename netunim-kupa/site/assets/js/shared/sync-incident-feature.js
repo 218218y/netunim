@@ -8,7 +8,7 @@ import {createMorningOperationCenter} from './morning-operation-center.js';
 
 // Browser resources are composed once per application. No business write waits
 // for this feature, and its RPCs retain the normal authenticated API scheduler.
-export function createSyncIncidentFeature({site,accountScope,subscribeAccountScope,primary,request,domains,morning={},notices,confirmReview=async()=>false,onChange=()=>{}}){
+export function createSyncIncidentFeature({site,accountScope,subscribeAccountScope,primary,request,domains,morning={},notices,reconnect,confirmReview=async()=>false,onChange=()=>{}}){
   let ui=null,settingsUi=null,accountChanging=false;
   try{
   const raw=String(clientInstanceId()),clientId=raw.length>0&&raw.length<=160&&!/[\u0000-\u001f]/.test(raw)?raw:crypto.randomUUID();
@@ -19,8 +19,8 @@ export function createSyncIncidentFeature({site,accountScope,subscribeAccountSco
   const ordersRecoveryUrl=site==='kupa'&&['kupa.bargig-furniture.com','bargig-kupa.pages.dev'].includes(globalThis.location?.hostname)
     ?'https://orders.bargig-furniture.com/?morning-recovery=1':'';
   const financial=createMorningOperationCenter({request,accountScope,ordersRecoveryUrl,...morning,
-    isViewVisible:()=>ui?.isOpen()||settingsUi?.isOpen(),publish:()=>publish(monitor.view,true)});
-  const uiOptions={clientId,label,financial,notices,saveLabel:value=>{localStorage.setItem(labelKey,value.slice(0,80));publish(monitor.view)},
+    canReconnect:typeof reconnect==='function',isViewVisible:()=>ui?.isOpen()||settingsUi?.isOpen(),publish:()=>publish(monitor.view,true)});
+  const uiOptions={clientId,label,financial,notices,reconnect,saveLabel:value=>{localStorage.setItem(labelKey,value.slice(0,80));publish(monitor.view)},
     refresh:()=>Promise.all([monitor.wake(),financial.refresh({force:true})]),review:row=>monitor.review(row),confirmReview};
   ui=createSyncIncidentUi(uiOptions);
   const monitor=createSyncIncidentMonitor({site,clientId,deviceLabel:label,accountScope,primary,domains,store:createSyncIncidentStore(),registry,

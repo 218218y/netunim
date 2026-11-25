@@ -136,6 +136,76 @@ test('sustained verification, mismatched evidence and unhealthy jobs request ack
   assert.equal(center.attention.operationId,id);
 });
 
+test('the negotiated server severity controls labels and attention, and a long legacy bank link escalates',async()=>{
+  const now=Date.parse('2026-11-25T12:00:00Z');
+  let negotiated=true,rows=[{...pending,stage:'bank_link',severity:'error',priority:1,verified_at:new Date(now-1000).toISOString()}];
+  const center=createMorningOperationCenter({accountScope:()=>({owner:'owner',epoch:1}),publish(){},now:()=>now,
+    request:async(_url,{body})=>{assert.equal(JSON.parse(body).severity_contract,true);return reply({ok:true,operations:rows,
+      ...(negotiated?{severity_contract:true}:{})})}});
+  await center.refresh();assert.equal(center.attention.operationId,id);
+  assert.match(center.markup(String),/דורש טיפול/);
+  rows=[{...rows[0],severity:'info',priority:3}];await center.refresh({force:true});
+  assert.equal(center.attention,undefined);
+  negotiated=false;
+  rows=[{...pending,stage:'bank_link',verified_at:new Date(now-31*60_000).toISOString()}];
+  await center.refresh({force:true});assert.equal(center.attention.operationId,id);
+});
+
+test('recovery distinguishes MFA, permission, conflict and rate limits without displaying raw errors',async()=>{
+  const failures=[
+    [403,{code:'mfa_required'},/אימות דו־שלבי/],
+    [403,{code:'custom_internal_code'},/אין הרשאה/],
+    [409,{code:'some_conflict'},/הפעולה השתנתה בענן/],
+    [429,{code:'busy'},/הניסיון מוגבל עד/],
+    [503,{code:'maintenance'},/אינו זמין זמנית/],
+    [422,{code:'invalid_link'},/השירות דחה/],
+  ];
+  let current;
+  const center=createMorningOperationCenter({accountScope:()=>({owner:'owner',epoch:1}),publish(){},canReconnect:true,
+    request:async(_url,{body})=>JSON.parse(body).action==='list_recovery'?reply({ok:true,operations:[pending]})
+      :Response.json({ok:false,...current[1],message:'private-server-details'},{status:current[0],headers:{'Retry-After':'30'}})});
+  await center.refresh();
+  for(current of failures){
+    await center.action('morning-retry',id);
+    const markup=center.markup(String);
+    assert.match(markup,current[2]);assert.doesNotMatch(markup,/private-server-details|custom_internal_code/);
+    assert.equal(markup.includes('morning-authenticate'),current[1].code==='mfa_required');
+  }
+});
+
+test('the active list, selected page and job feed can have different verification times',async()=>{
+  const healthy={state:'healthy',pending:0};
+  let background={bank:healthy,morning:healthy},failSelected=false,now=Date.parse('2026-11-25T12:00:00Z');
+  const center=createMorningOperationCenter({accountScope:()=>({owner:'owner',epoch:1}),publish(){},now:()=>now,
+    request:async(_url,{body})=>{
+      const data=JSON.parse(body);
+      if(data.query&&failSelected)return reply({},503);
+      return reply({ok:true,operations:[pending],...(data.background_health?{background_health:background}:{})});
+    }});
+  await center.refresh();await center.search('attention','3972');
+  failSelected=true;background=null;now+=60_000;await center.refresh({force:true});
+  const markup=center.markup(String);
+  assert.equal(center.availability,'fresh');
+  assert.match(markup,/אימות ענן אחרון/);assert.match(markup,/אימות העמוד המוצג/);
+  assert.match(markup,/מוצגים הנתונים מהבדיקה האחרונה/);
+  assert.match(markup,/לא ניתן לאמת את תהליכי הרקע/);assert.match(markup,/אימות תהליכי רקע אחרון/);
+  assert.match(markup,/10 ממתינים/);
+  failSelected=false;background={bank:healthy,morning:healthy};await center.refresh({force:true});
+  assert.doesNotMatch(center.markup(String),/מוצגים הנתונים מהבדיקה האחרונה|לא ניתן לאמת את תהליכי הרקע/);
+});
+
+test('a failed manual retry disappears once the active cloud list confirms resolution',async()=>{
+  let active=[pending];
+  const center=createMorningOperationCenter({accountScope:()=>({owner:'owner',epoch:1}),publish(){},
+    request:async(_url,{body})=>JSON.parse(body).action==='list_recovery'?reply({ok:true,operations:active})
+      :reply({ok:true,operation:{operation_id:id,state:'created'},check_retry:{state:'failed'}})});
+  await center.refresh();await center.action('morning-retry',id);
+  assert.match(center.markup(String),/ניסיון ההתאוששות נכשל/);
+  active=[{...pending,stage:'registered',resolved_at:'2026-11-25T12:00:00Z'}];
+  await center.refresh({force:true});
+  assert.equal(center.count,0);assert.doesNotMatch(center.markup(String),/ניסיון ההתאוששות נכשל/);
+});
+
 test('known retry failures and cooldown are shown without recording completion',async()=>{
   let state='failed';
   const center=createMorningOperationCenter({accountScope:()=>({owner:'owner',epoch:1}),publish(){},

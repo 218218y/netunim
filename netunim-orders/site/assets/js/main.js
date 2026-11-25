@@ -531,6 +531,7 @@ const syncIncidentsReady=import('./shared/sync-incident-feature.js').then(({crea
   confirmReview:message=>uiModal.confirmDialog('טיפול ידני בהתראת סנכרון',message,{confirmText:'סימון כטופל ללא אימות',tone:'danger'}),
   primary:()=>tab.primaryTab,request:cloudAuth.supaFetch,
   notices:{toast:uiStatus.toast,clearNotice:uiStatus.clearNotice},
+  reconnect:()=>uiCloud.loginModal('open'),
   morning:domainsCustomers.morningOperationCenter,
   domains:[
     {domain:'orders_main',read:()=>storageOwner.current()===cloudAuth.getAccountScope().owner?mainStorageV2.incidentSample():{known:false}},

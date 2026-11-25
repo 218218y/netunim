@@ -1,7 +1,7 @@
 import {syncIncidentDescription} from './sync-incident-model.js';
 import {createStatusNotices} from './status-notices.js';
 const escape=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-export function createSyncIncidentUi({document=globalThis.document,container=document.body,inline=false,clientId,label,saveLabel,refresh,review,financial,notices,confirmReview=async()=>false}){
+export function createSyncIncidentUi({document=globalThis.document,container=document.body,inline=false,clientId,label,saveLabel,refresh,review,financial,notices,reconnect,confirmReview=async()=>false}){
   const root=document.createElement('section');root.className='sync-incidents';root.dir='rtl';root.hidden=true;root.setAttribute('aria-label','התראות סנכרון בין מחשבים');
   root.dataset.inline=String(inline);container.append(root);
   const attentionNotices=inline?null:notices??createStatusNotices({document,getToast:()=>null});
@@ -29,7 +29,8 @@ export function createSyncIncidentUi({document=globalThis.document,container=doc
     if(noticeKey&&noticeKey!==attention?.key)attentionNotices.clearNotice(noticeKey);
     noticeKey=attention?.key||'';
     if(attention)attentionNotices.toast(attention.message,{id:attention.key,severity:attention.severity,
-      actionLabel:attention.operationId?'פרטי הפעולה':'פתח מרכז בקרה',action:()=>openAttention(attention),
+      actionLabel:attention.operationId?'פרטי הפעולה':attention.reconnect&&reconnect?'פתח אימות ענן':'פתח מרכז בקרה',
+      action:()=>attention.reconnect&&reconnect?reconnect():openAttention(attention),
       acknowledge:()=>{if(attention.acknowledge)attention.acknowledge();else financial.acknowledge(attention)}});
   }
   function render(){
@@ -98,7 +99,8 @@ export function createSyncIncidentUi({document=globalThis.document,container=doc
         if(!inline)opened=false;render();await refresh();
       }
       if(action==='refresh')await refresh();
-      if(action.startsWith('morning-')){
+      if(action==='morning-authenticate')await reconnect?.();
+      else if(action.startsWith('morning-')){
         await financial?.action(action,button.dataset.incidentId);
         if(action==='morning-ack'&&!inline&&!financial?.unread)opened=false;
       }

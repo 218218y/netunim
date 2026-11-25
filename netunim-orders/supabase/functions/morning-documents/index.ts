@@ -481,10 +481,12 @@ async function listRecoveryOperations(ownerId:string,body:any){
     return json({ok:true,operations:data});
   }
   const filter=body.filter??'active',query=typeof body.query==='string'?body.query.trim().slice(0,80):'',after=body.after??null;
+  const severityContract=body.severity_contract===true;
   if(!['active','attention','waiting','verification','resolved'].includes(filter)||after!==null&&(
-    ![0,1,2].includes(after.priority)||typeof after.sort_at!=='string'||!Number.isFinite(Date.parse(after.sort_at))||!isUuid(after.operation_id)))
+    !Number.isInteger(after.priority)||after.priority<0||after.priority>(severityContract?4:2)
+    ||typeof after.sort_at!=='string'||!Number.isFinite(Date.parse(after.sort_at))||!isUuid(after.operation_id)))
     return json({ok:false,code:'morning_recovery_page_invalid'},400);
-  const rpc=body.debt_recovery===true?'list_morning_recovery_operations_v3':'list_morning_recovery_operations_v2';
+  const rpc=severityContract?'list_morning_recovery_operations_v4':body.debt_recovery===true?'list_morning_recovery_operations_v3':'list_morning_recovery_operations_v2';
   const includeHealth=body.background_health===true&&filter==='active'&&!query&&!after;
   const [{data,error},health]=await Promise.all([
     admin.rpc(rpc,{...scope,p_filter:filter,p_query:isUuid(query)?query.toLowerCase():query,
@@ -494,6 +496,7 @@ async function listRecoveryOperations(ownerId:string,body:any){
   if(error)return dbError(error,'morning_recovery_list_failed');
   const rows=data.slice(0,50),last=rows.at(-1);
   return json({ok:true,operations:rows,next:data.length>50?{priority:last.priority,sort_at:last.sort_at,operation_id:last.operation_id}:null,
+    ...(severityContract?{severity_contract:true}:{}),
     ...(includeHealth?{background_health:health?.error?null:health?.data??null}:{})});
 }
 async function ordersDebtRecovery(ownerId:string,body:any){

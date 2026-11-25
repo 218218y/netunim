@@ -388,5 +388,10 @@
     "version": "20261125110000",
     "name": "financial_source_health",
     "sha256": "ff5126eafa4afef031b204b777169aed1d9ca41737c6cb7cfd14d62cf466b8e7"
+  },
+  {
+    "version": "20261125120000",
+    "name": "morning_final_acceptance",
+    "sha256": "e5954bb6170105f2a87a726de66aef07e761336e069c8bc860a60df90fc8c98e"
   }
 ]
