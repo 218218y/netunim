@@ -385,6 +385,10 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 @media(max-width:620px){body{font-size:14px}.main{padding:0 env(safe-area-inset-right,0px) max(12px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px)}.settings-view-shell{padding-top:8px}.supplier-primary{width:100%;flex-basis:100%}.supplier-menu{min-width:0;flex:1}.supplier-add-btn{flex:0 0 auto}.supplier-search-wrap{flex-basis:100%;order:6}.supplier-actions{width:100%;margin:0}.supplier-actions>.bulk-select-toggle{width:100%}.supplier-bulk-tray{position:static;width:100%;margin-top:5px;justify-content:stretch;box-shadow:none}.supplier-bulk-tray:before{display:none}.supplier-bulk-tray .btn{flex:1}.supplier-balance{margin-right:auto}.supplier-edit-picker{align-items:stretch;flex-direction:column}.supplier-edit-picker select,.supplier-edit-picker .btn{width:100%}.customer-bottom-grid{grid-template-columns:1fr 1fr}.module-toolbar input{min-width:100%}}
 
 /* ===== Responsive primitives and compact data renderers ===== */
+@media(width > 1100px){
+  .customer-order-search{flex:0 1 auto}
+  .customer-order-search>.customer-search{flex:0 1 auto;inline-size:max(200px,calc((100vw - 320px) / 4))}
+}
 @media(max-width:700px){
   .toolbar,.module-toolbar,.customer-command,.checks-toolbar{min-width:0;align-items:stretch;flex-wrap:wrap}
   .toolbar>.grow,.module-toolbar>input,.customer-command>.customer-search,.checks-toolbar>.checks-search{width:100%;max-width:none;min-width:0;flex:1 1 100%}
