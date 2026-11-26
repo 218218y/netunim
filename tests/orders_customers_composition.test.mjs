@@ -60,11 +60,14 @@ test('Customer order actions preserve journal operations, render path, and allow
   const {model,customerUi,customers}=fixture();
   const saves=[];
   customers.bindUi(ports((message,options)=>{saves.push(options);return true}));
+  customerUi.customerTab='orders';
   const prior=globalThis.document;
-  globalThis.document={querySelector:()=>null,querySelectorAll:()=>[]};
+  const main={innerHTML:''};
+  globalThis.document={querySelector:selector=>selector==='#main'?main:null,querySelectorAll:()=>[]};
   try{
     const id=customers.editor.addCustomerOrder();
     assert.equal(model.state.customerOrders.length,1);
+    assert.equal(model.state.customerOrders[0].orderNumber,'1');
     assert.deepEqual(saves.at(-1).domains,['customerOrders']);
     assert.deepEqual(saves.at(-1).operations.map(row=>[row.type,row.collection,row.id]),[['put','customerOrders',id]]);
     customers.actions['save-customer-order-field']({dataset:{blurArg0:id,blurArg1:'customerName'},value:'Ada'});
@@ -73,6 +76,45 @@ test('Customer order actions preserve journal operations, render path, and allow
     customers.actions['save-customer-order-field']({dataset:{blurArg0:id,blurArg1:'non-existent'},value:'unsafe'});
     assert.equal(saves.length,2,'unlisted fields cannot initiate a save');
     assert.equal(customerUi.customerSearch,'');
+  }finally{
+    if(prior===undefined)delete globalThis.document;else globalThis.document=prior;
+  }
+});
+
+test('Adding an order uses the highest number across pages and clears search to show the new first row',()=>{
+  const {model,customerUi,customers}=fixture();
+  const saves=[],scroll=[];
+  const dependencies=ports((message,options)=>{saves.push(options);return true});
+  dependencies.uiLayout.bindScrollViewport=(key,element,options)=>scroll.push(options.resetTop);
+  customers.bindUi(dependencies);
+  customerUi.customerTab='orders';
+  model.state.customerOrders=[
+    {id:'highest',orderNumber:'3674'},
+    ...Array.from({length:150},(_,index)=>({id:`order-${index+1}`,orderNumber:String(index+1)})),
+    {id:'legacy',orderNumber:'legacy-9999',customerName:'Legacy customer'},
+    {id:'blank',orderNumber:''},
+  ];
+  const main={innerHTML:''},results={innerHTML:''},prior=globalThis.document;
+  globalThis.document={querySelector:selector=>({'#main':main,'#customerSearchResults':results}[selector]??null),querySelectorAll:()=>[]};
+  const rowIds=html=>Array.from(html.matchAll(/data-customer-order-id="([^"]+)"/g),match=>match[1]);
+  try{
+    customers.renderCustomers();
+    assert.deepEqual(rowIds(main.innerHTML).slice(0,3),['highest','order-150','order-149']);
+    customers.actions['customer-results-page']({dataset:{clickArg0:'orders',clickArg1:'1'}});
+    assert.deepEqual(rowIds(results.innerHTML),['order-1','legacy','blank']);
+    const first=customers.actions['add-customer-order']();
+    assert.equal(saves.at(-1).operations[0].record.orderNumber,'3675');
+    assert.deepEqual(rowIds(main.innerHTML).slice(0,2),[first,'highest']);
+
+    customers.actions['save-customer-order-field']({dataset:{blurArg0:first,blurArg1:'orderNumber'},value:'4000'});
+    customerUi.customerSearch='Legacy customer';
+    customers.renderCustomers();
+    assert.deepEqual(rowIds(main.innerHTML),['legacy']);
+    const second=customers.actions['add-customer-order']();
+    assert.equal(saves.at(-1).operations[0].record.orderNumber,'4001');
+    assert.deepEqual(rowIds(main.innerHTML).slice(0,3),[second,first,'highest']);
+    assert.match(main.innerHTML,/<input class="customer-search"[^>]*value=""/);
+    assert.equal(scroll.at(-1),true);
   }finally{
     if(prior===undefined)delete globalThis.document;else globalThis.document=prior;
   }

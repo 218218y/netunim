@@ -3,6 +3,26 @@ import {ordersOpenCustomerDebtSummaryData} from '../../shared/orders-finance.js'
 import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
 import {createRevisionSelector} from '../../shared/revision-selector.js';
 
+const customerOrderCollator=new Intl.Collator('he',{numeric:true});
+const customerOrderSequence=/^\d+$/;
+
+export function compareCustomerOrdersNewestFirst(a,b){
+  const first=String(a.orderNumber??'').trim(),second=String(b.orderNumber??'').trim();
+  return Number(customerOrderSequence.test(second))-Number(customerOrderSequence.test(first))
+    ||customerOrderCollator.compare(second,first);
+}
+
+export function nextCustomerOrderNumber(orders){
+  let highest=0n;
+  for(const order of orders){
+    const number=String(order.orderNumber??'').trim();
+    if(!customerOrderSequence.test(number))continue;
+    const value=BigInt(number);
+    if(value>highest)highest=value;
+  }
+  return String(highest+1n);
+}
+
 export function customerDebtStatus(d,p=customerDebtProgressData(d)){
   if(p.paymentComplete&&p.invoiceComplete)return{key:'closed',text:'נסגר',cls:'green'};
   if(p.paymentPartial&&p.invoicePartial)return{key:'partial',text:'תשלום וחשבונית חלקיים',cls:'orange'};

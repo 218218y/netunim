@@ -7,6 +7,7 @@ import {applyVerifiedMorningDocumentToDebt,morningDebtAllocationMatches} from '.
 import {addVerifiedMorningDebtDocument,morningDebtDocuments} from './morning-debt-documents.js';
 import {morningDocumentLabel} from '../../core/morning-document-types.js';
 import {$} from '../../state/constants.js';
+import {nextCustomerOrderNumber} from './model.js';
 
 function saveDebtChange(debt,message,scheduleSave){
   debt.updatedAt=new Date().toISOString();
@@ -40,11 +41,17 @@ const CUSTOMER_ORDER_FIELDS=new Set(['orderNumber','customerName','mark1','mark2
 const DEBT_SCALAR_FIELDS=['customerName','amount','phone','email','customerId','clearingApproval','paid','supplied','invoiceIssued','note'];
 
 function addCustomerOrder(){
-  const now=new Date().toISOString(),row={id:uid('CORDER'),orderNumber:'',customerName:'',mark1:'',mark2:'',mark3:'',mattresses:'',note:'',urgent:false,createdAt:now,updatedAt:now};
-  model.state.customerOrders=Array.isArray(model.state.customerOrders)?model.state.customerOrders:[];
-  model.state.customerOrders.push(row);
-  if(customerUi)customerUi.customerSearch=''
-  scheduleSave('שורת מעקב הזמנה נוספה',{domains:['customerOrders'],operations:[{type:'put',collection:'customerOrders',id:row.id,mode:'insert',index:model.state.customerOrders.length-1,record:row}]});renderCustomers({resultsOnly:true});return row.id;
+  const orders=model.state.customerOrders=Array.isArray(model.state.customerOrders)?model.state.customerOrders:[];
+  const now=new Date().toISOString();
+  const row={id:uid('CORDER'),orderNumber:nextCustomerOrderNumber(orders),customerName:'',mark1:'',mark2:'',mark3:'',mattresses:'',note:'',urgent:false,createdAt:now,updatedAt:now};
+  orders.push(row);
+  if(customerUi){
+    customerUi.customerSearch='';
+    customerUi.resultTarget=row.id;
+  }
+  scheduleSave('שורת מעקב הזמנה נוספה',{domains:['customerOrders'],operations:[{type:'put',collection:'customerOrders',id:row.id,mode:'insert',index:orders.length-1,record:row}]});
+  renderCustomers({resetScroll:true});
+  return row.id;
 }
 
 function saveCustomerOrderField(id,field,el){
